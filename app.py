@@ -61,7 +61,8 @@ def inrn_filter(value, decimals=0):
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-SECRET_KEY_FILE = os.path.join(BASE_DIR, "secret_key.txt")
+# Same override pattern as db.py's DB_PATH - see that comment.
+SECRET_KEY_FILE = os.environ.get("SECRET_KEY_FILE", os.path.join(BASE_DIR, "secret_key.txt"))
 
 
 def _load_or_create_secret_key():
@@ -85,7 +86,7 @@ app.secret_key = _load_or_create_secret_key()
 app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024  # 25MB cap per upload request
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
 
-UPLOAD_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
+UPLOAD_ROOT = os.environ.get("UPLOAD_ROOT", os.path.join(BASE_DIR, "uploads"))
 
 MONTH_NAMES = ["", "January", "February", "March", "April", "May", "June",
                "July", "August", "September", "October", "November", "December"]
@@ -4191,15 +4192,22 @@ def api_product(pid):
     return jsonify(dict(cost_price=p["CostPrice"], selling_price=p["SellingPrice"], stock=stock, unit=p["Unit"]))
 
 
+db.init_db()  # safe: CREATE TABLE IF NOT EXISTS
+
+# Runs at import time so it also fires under a production WSGI server
+# (e.g. Gunicorn), which never executes the __main__ block below. Only
+# safe with a single worker process / single `python app.py` process -
+# each one that imports this module starts its own copy of the thread,
+# so running multiple Gunicorn workers would send every reminder email
+# once per worker. Keep Gunicorn at --workers 1 (SQLite is single-writer
+# anyway, so there's no benefit to more).
+if not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+    gst_reminders.start_background_reminder_thread()
+
 if __name__ == "__main__":
-    if not os.path.exists(db.DB_PATH):
-        db.init_db()
-    else:
-        db.init_db()  # safe: CREATE TABLE IF NOT EXISTS
-    # Flask's debug reloader re-executes this file in a second process;
-    # WERKZEUG_RUN_MAIN is only set in that second (actually-serving) one,
-    # so this guard stops the reminder thread starting twice and sending
-    # every email twice.
-    if not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
-        gst_reminders.start_background_reminder_thread()
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    # Off by default - the Werkzeug debugger this enables allows remote
+    # code execution if the app is ever reachable from outside localhost.
+    # Set FLASK_DEBUG=1 for local development only.
+    debug = os.environ.get("FLASK_DEBUG") == "1"
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=debug)
