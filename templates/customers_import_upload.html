@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Import Customers{% endblock %}
+{% block page_title %}Import Customers from Excel{% endblock %}
+{% block content %}
+<div class="card"><div class="card-body">
+  <p class="text-muted">
+    Download the template below, fill in one row per customer, and upload it back here. A row whose
+    <strong>Customer Name</strong> exactly matches an existing customer updates that customer's details; anything
+    else is added as a new customer.
+  </p>
+  <a href="{{ url_for('customers_import_template') }}" class="btn btn-outline-secondary mb-4"><i class="bi bi-download"></i> Download Template</a>
+
+  <form method="post" enctype="multipart/form-data">
+    <div class="row g-3">
+      <div class="col-md-8">
+        <label class="form-label">Filled-in Excel file (.xlsx) *</label>
+        <input required type="file" name="file" accept=".xlsx" class="form-control">
+      </div>
+      <div class="col-md-4 d-flex align-items-end">
+        <button type="submit" class="btn btn-primary w-100">Upload</button>
+      </div>
+    </div>
+  </form>
+</div></div>
+{% endblock %}

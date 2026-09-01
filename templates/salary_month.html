@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Salary Schedule{% endblock %}
+{% block page_title %}Salary Schedule{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div class="btn-group">
+    <a class="btn btn-outline-secondary" href="{{ url_for('salary_month', year=prev_year, month=prev_month) }}">&laquo; Prev</a>
+    <span class="btn btn-light disabled fw-bold">{{ month_name }} {{ year }}</span>
+    <a class="btn btn-outline-secondary" href="{{ url_for('salary_month', year=next_year, month=next_month) }}">Next &raquo;</a>
+  </div>
+  <div class="d-flex gap-2">
+    {% if missing %}
+    <form method="post" action="{{ url_for('salary_generate') }}">
+      <input type="hidden" name="year" value="{{ year }}"><input type="hidden" name="month" value="{{ month }}">
+      <button class="btn btn-brand" type="submit"><i class="bi bi-magic"></i> Generate Schedule for {{ missing|length }} Employee(s)</button>
+    </form>
+    {% endif %}
+    <form method="post" action="{{ url_for('salary_refresh') }}">
+      <input type="hidden" name="year" value="{{ year }}"><input type="hidden" name="month" value="{{ month }}">
+      <button class="btn btn-outline-secondary" type="submit" title="Re-pull active advances and recalculate pay for every Pending row (Join Date / attendance / leave policy). Paid rows are left untouched.">
+        <i class="bi bi-arrow-clockwise"></i> Refresh
+      </button>
+    </form>
+    <a href="{{ url_for('export_module', module='salary') }}" class="btn btn-outline-secondary"><i class="bi bi-file-earmark-excel"></i> Export to Excel</a>
+  <a href="{{ url_for('export_module_pdf', module='salary') }}" class="btn btn-outline-secondary"><i class="bi bi-file-earmark-pdf"></i> PDF</a>
+  </div>
+</div>
+<div class="d-flex justify-content-end mb-2">
+  <a href="{{ url_for('columns_customize', module='SalaryPayment') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-layout-three-columns"></i> Customize Columns</a>
+</div>
+
+{% if missing %}
+<div class="alert alert-warning">
+  Not yet generated for this month: {{ missing|map(attribute='EmployeeName')|join(', ') }}
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="table-responsive">
+  <table class="table mb-0 align-middle" id="tbl-salarypayment">
+    <thead><tr><th data-col="employee">Employee</th><th data-col="designation">Designation</th><th data-col="basic">Basic</th>
+      <th data-col="advance_deducted">Advance Deducted</th><th data-col="net_payable">Net Payable</th><th data-col="status">Status</th><th></th></tr></thead>
+    <tbody>
+      {% for r in records %}
+      <tr>
+        <td data-col="employee">{{ r.EmployeeName }}</td><td data-col="designation">{{ r.Designation or '-' }}</td>
+        <td data-col="basic">{{ (r.BasicAmount)|inr(2) }}
+          {% if r.LOPDays %}<br><span class="text-muted small">of {{ (r.GrossSalary)|inr(2) }} gross, {{ r.LOPDays|round(2) }} LOP day(s)</span>{% endif %}
+        </td><td data-col="advance_deducted">{{ (r.AdvanceDeducted)|inr(2) }}</td>
+        <td data-col="net_payable"><strong>{{ (r.NetPayable)|inr(2) }}</strong></td>
+        <td data-col="status">{% if r.Status=='Paid' %}<span class="badge badge-ok">Paid {{ r.PaymentDate }}</span>{% else %}<span class="badge badge-low">Pending</span>{% endif %}</td>
+        <td class="text-end">
+          {% if r.Status != 'Paid' %}
+          <form method="post" action="{{ url_for('salary_pay', pid=r.PaymentID) }}" class="d-flex gap-1 justify-content-end">
+            <input type="date" name="payment_date" class="form-control form-control-sm" style="width:140px" value="{{ today }}">
+            <select name="payment_mode" class="form-select form-select-sm" style="width:100px">
+              <option>Bank</option><option>Cash</option><option>UPI</option>
+            </select>
+            <button class="btn btn-sm btn-brand" type="submit">Mark Paid</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}<tr><td colspan="7" class="text-center text-muted py-4">No salary records for this month yet. Click "Generate Schedule" above.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+window.LIST_COLUMNS_TABLE_ID = 'tbl-salarypayment';
+window.LIST_COLUMNS_PREFS = {{ columns|tojson }};
+</script>
+<script src="{{ url_for('static', filename='js/list-columns.js') }}"></script>
+{% endblock %}

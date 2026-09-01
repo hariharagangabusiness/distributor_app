@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}Stock Issue Schemes & Dues{% endblock %}
+{% block page_title %}Stock Issue Schemes &amp; Dues{% endblock %}
+{% block content %}
+<div class="card mb-3"><div class="card-body">
+  <form method="get" class="row g-3 align-items-end">
+    <div class="col-md-3"><label class="form-label">From</label>
+      <input type="date" name="from" class="form-control" value="{{ date_from }}"></div>
+    <div class="col-md-3"><label class="form-label">To</label>
+      <input type="date" name="to" class="form-control" value="{{ date_to }}"></div>
+    <div class="col-md-2"><button type="submit" class="btn btn-brand">Update</button></div>
+  </form>
+</div></div>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-3 col-6"><div class="stat-card"><div class="stat-value">{{ (totals.expected)|inr(0) }}</div><div class="stat-label">Expected (van sales)</div></div></div>
+  <div class="col-md-3 col-6"><div class="stat-card"><div class="stat-value">{{ (totals.collected)|inr(0) }}</div><div class="stat-label">Collected</div></div></div>
+  <div class="col-md-3 col-6"><div class="stat-card"><div class="stat-value text-danger">{{ (totals.due)|inr(0) }}</div><div class="stat-label">Still Due</div></div></div>
+  <div class="col-md-3 col-6"><div class="stat-card"><div class="stat-value text-warning">{{ (totals.scheme)|inr(0) }}</div><div class="stat-label">Scheme Claim (claimable from company)</div></div></div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-header"><i class="bi bi-cash-coin text-danger"></i> Pending Dues from Salespeople ({{ due_issues|length }})</div>
+  <div class="table-responsive">
+  <table class="table mb-0">
+    <thead><tr><th>Date</th><th>Salesperson</th><th>Expected</th><th>Collected</th><th>Due</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+      {% for i in due_issues %}
+      <tr>
+        <td>{{ i.IssueDate }}</td><td>{{ i.EmployeeName }}</td>
+        <td>{{ (i.ExpectedAmount or 0)|inr(2) }}</td>
+        <td>{{ (i.CashCollected or 0)|inr(2) }}</td>
+        <td class="text-danger fw-bold">{{ (i.AmountDue or 0)|inr(2) }}</td>
+        <td><span class="badge {% if i.PaymentStatus=='Partial' %}text-bg-warning{% else %}text-bg-danger{% endif %}">{{ i.PaymentStatus }}</span></td>
+        <td><a href="{{ url_for('stock_issue_view', issue_id=i.IssueID) }}" class="btn btn-sm btn-outline-secondary">View</a></td>
+      </tr>
+      {% else %}<tr><td colspan="7" class="text-center text-muted py-3">No pending dues in this period.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-header"><i class="bi bi-receipt text-warning"></i> Pending Scheme Claims from Company ({{ claim_pending|length }})</div>
+  <div class="table-responsive">
+  <table class="table mb-0">
+    <thead><tr><th>Date</th><th>Salesperson</th><th>Scheme Amount</th><th>Claim Status</th><th></th></tr></thead>
+    <tbody>
+      {% for i in claim_pending %}
+      <tr>
+        <td>{{ i.IssueDate }}</td><td>{{ i.EmployeeName }}</td>
+        <td>{{ (i.SchemeAmount or 0)|inr(2) }}</td>
+        <td><span class="badge {% if i.ClaimStatus=='Claimed' %}text-bg-warning{% else %}text-bg-secondary{% endif %}">{{ i.ClaimStatus }}</span></td>
+        <td><a href="{{ url_for('stock_issue_view', issue_id=i.IssueID) }}" class="btn btn-sm btn-outline-secondary">View</a></td>
+      </tr>
+      {% else %}<tr><td colspan="5" class="text-center text-muted py-3">No pending scheme claims in this period.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header"><i class="bi bi-gift text-info"></i> Discount / Free-Scheme Line Detail ({{ free_lines|length }})</div>
+  <div class="table-responsive">
+  <table class="table mb-0">
+    <thead><tr><th>Date</th><th>Salesperson</th><th>Product</th><th>Qty Free</th><th>Discount ₹ (margin, not claimable)</th><th>Scheme Claim ₹ (claimable)</th><th>Comments</th></tr></thead>
+    <tbody>
+      {% for l in free_lines %}
+      <tr>
+        <td>{{ l.IssueDate }}</td><td>{{ l.EmployeeName }}</td><td>{{ l.ProductName }}</td>
+        <td>{{ l.QtyFree or 0 }}</td><td>{{ (l.DiscountAmount or 0)|inr(2) }}</td>
+        <td>{{ (l.SchemeClaimAmount or 0)|inr(2) }}</td>
+        <td class="text-muted small">{{ l.LineComments or '' }}</td>
+      </tr>
+      {% else %}<tr><td colspan="7" class="text-center text-muted py-3">No discount/free-scheme lines in this period.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+
+<div class="card mt-3">
+  <div class="card-header"><i class="bi bi-calendar3 text-secondary"></i> Day-wise Cost vs Sales</div>
+  <div class="card-body pb-0">
+    <p class="text-muted small mb-0">Plain day-wise view: Cost = qty issued × each product's Cost Price, Sales =
+      that day's Stock Issue Expected/Collected amounts. Incentive is <strong>not</strong> included here — see
+      Profit &amp; Loss for the margin view that does account for it.</p>
+  </div>
+  <div class="table-responsive">
+  <table class="table mb-0">
+    <thead><tr><th>Date</th><th>Cost</th><th>Sales (Expected)</th><th>Sales (Collected)</th><th>Cost vs Sales</th>
+      <th>Qty Sold</th><th>Discount ₹</th><th>Scheme ₹</th><th>Unaccounted</th></tr></thead>
+    <tbody>
+      {% for d in daywise %}
+      <tr>
+        <td>{{ d.date }}</td>
+        <td>{{ (d.cost)|inr(2) }}</td>
+        <td>{{ (d.expected)|inr(2) }}</td>
+        <td>{{ (d.collected)|inr(2) }}</td>
+        <td class="{% if d.margin >= 0 %}text-success{% else %}text-danger{% endif %} fw-bold">{{ (d.margin)|inr(2) }}</td>
+        <td>{{ d.qty_sold|inrn(2) }}</td>
+        <td>{{ (d.discount)|inr(2) }}</td>
+        <td>{{ (d.scheme)|inr(2) }}</td>
+        <td class="{% if d.unaccounted != 0 %}text-danger fw-bold{% endif %}">{{ d.unaccounted|inrn(2) }}</td>
+      </tr>
+      {% else %}<tr><td colspan="9" class="text-center text-muted py-3">No stock issues in this period.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endblock %}

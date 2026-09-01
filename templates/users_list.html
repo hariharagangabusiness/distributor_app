@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Manage Users{% endblock %}
+{% block page_title %}Manage Users{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-end mb-3">
+  <a href="{{ url_for('user_add') }}" class="btn btn-brand btn-sm"><i class="bi bi-person-plus"></i> Add User</a>
+</div>
+<div class="card">
+  <div class="card-header">Login Accounts</div>
+  <div class="table-responsive">
+    <table class="table mb-0 align-middle">
+      <thead><tr><th>Username</th><th>Full Name</th><th>Role</th><th>Status</th><th>Last Login</th><th></th></tr></thead>
+      <tbody>
+        {% for u in users %}
+        <tr>
+          <td>{{ u.Username }}{% if current_user and u.UserID == current_user.UserID %} <span class="badge text-bg-secondary">You</span>{% endif %}</td>
+          <td>{{ u.FullName or '-' }}</td>
+          <td>{{ u.Role }}</td>
+          <td>{% if u.Active %}<span class="badge badge-ok">Active</span>{% else %}<span class="badge text-bg-secondary">Deactivated</span>{% endif %}</td>
+          <td class="text-muted small">{{ u.LastLoginAt or 'Never' }}</td>
+          <td class="text-end">
+            <a href="{{ url_for('user_reset_password', uid=u.UserID) }}" class="btn btn-sm btn-outline-secondary">Reset Password</a>
+            <form method="post" action="{{ url_for('user_toggle', uid=u.UserID) }}" class="d-inline"
+                  {% if current_user and u.UserID == current_user.UserID %}onsubmit="return false;"{% endif %}>
+              <button class="btn btn-sm btn-outline-{{ 'danger' if u.Active else 'secondary' }}" type="submit"
+                      {% if current_user and u.UserID == current_user.UserID %}disabled title="You can't deactivate your own account"{% endif %}>
+                {{ 'Deactivate' if u.Active else 'Reactivate' }}
+              </button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="text-center text-muted py-4">No users yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+<p class="text-muted small mt-2">"Admin" accounts can manage users and reset passwords; "Staff" accounts can use everything else in the app. Deactivating a login blocks it from signing in without deleting its history.</p>
+{% endblock %}

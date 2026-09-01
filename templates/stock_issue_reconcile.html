@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+{% block title %}Reconcile Stock Issue{% endblock %}
+{% block page_title %}{% if is_reedit %}Edit Reconciliation{% else %}Reconcile{% endif %} — {{ issue.EmployeeName }}, {{ issue.IssueDate }}{% endblock %}
+{% block content %}
+{% if is_reedit %}
+<div class="alert alert-warning">Editing an already-reconciled stock issue (Admin only). Saving replaces the previous
+  sold/returned/free/discount figures and cash collected entirely — recompute carefully.</div>
+{% endif %}
+{% if target_progress %}
+<div class="alert alert-secondary d-flex justify-content-between align-items-center flex-wrap gap-2">
+  <span><i class="bi bi-bullseye"></i> {{ issue.EmployeeName }}'s month-to-date pace: {{ target_progress.mtd.qty_sold|round(2) }} /
+    {{ target_progress.prorated_qty|round(2) }} Qty Sold ({{ target_progress.qty_pct_mtd if target_progress.qty_pct_mtd is not none else '-' }}%),
+    discount used {{ '%.2f'|format(target_progress.mtd.discount) }} of a {{ '%.2f'|format(target_progress.DiscountCapAmount) }} fixed monthly cap
+    (before this reconciliation's own figures are counted in).</span>
+</div>
+{% endif %}
+<div class="card"><div class="card-body">
+<form method="post">
+  {% if is_reedit and money_locked %}
+  <div class="alert alert-warning">
+    <strong>This issue already has a due payment and/or scheme claim recorded against it.</strong>
+    Those amounts were based on the figures you're about to change — choose what to do with them:
+    <div class="form-check mt-2">
+      <input class="form-check-input" type="radio" name="money_data_action" id="money-keep" value="keep" checked>
+      <label class="form-check-label" for="money-keep">
+        <strong>Keep it</strong> — leave the existing due-payment history and claim status as-is; only the
+        sold/returned/free/discount figures and cash collected get corrected. Re-enter the full amount collected
+        so far (including any due payments already received) across the Cash and Bank fields below.
+      </label>
+    </div>
+    <div class="form-check">
+      <input class="form-check-input" type="radio" name="money_data_action" id="money-clear" value="clear">
+      <label class="form-check-label" for="money-clear">
+        <strong>Clear it and start fresh</strong> — erases the existing due-payment records and resets the claim
+        status back to Not Claimed, so you can re-record them accurately against the corrected figures.
+      </label>
+    </div>
+  </div>
+  {% endif %}
+  <p class="text-muted">Enter how many of each product actually sold, how many came back unsold, and how many
+    were given away free under a company scheme. If any sold units went at a discounted price, enter the total
+    discount for that line — this is a real margin reduction the distributor absorbs, not something claimable
+    back from the company. Separately, if this line's scheme is claimable back from the company, enter the
+    actual Rs amount claimable in <strong>Scheme Claim ₹</strong> (it starts pre-filled from Qty Free × Unit
+    Price as a guess, but the company's real reimbursement rate may differ — edit freely). Anything issued but
+    not accounted for as sold, returned, or free (damaged, lost, etc.) shows up as an "unaccounted" quantity on
+    the summary once you save.</p>
+  <div class="table-responsive">
+  <table class="table" id="lines-table">
+    <thead><tr><th>Product</th><th>Qty Issued</th><th>Unit Price</th><th>Qty Sold</th><th>Qty Returned</th>
+      <th>Qty Free (scheme)</th><th>Discount ₹ (margin, not claimable)</th><th>Scheme Claim ₹ (claimable)</th>
+      <th>Comments</th><th>Expected ₹</th></tr></thead>
+    <tbody>
+      {% for l in lines %}
+      <tr data-price="{{ l.UnitPrice }}" data-issued="{{ l.QtyIssued }}" data-scheme-per-unit="{{ ((l.CostPrice or 0) * (l.SchemePercent or 0) / 100)|round(4) }}" data-scheme-name="{{ l.SchemeName or '' }}" data-scheme-percent="{{ l.SchemePercent or 0 }}">
+        <td>{{ l.ProductName }}</td>
+        <td>{{ l.QtyIssued }} {{ l.Unit }}</td>
+        <td>{{ (l.UnitPrice)|inr(2) }}</td>
+        <td><input type="number" step="0.01" class="form-control qty-sold-input" name="qty_sold_{{ l.LineID }}" style="width:100px" value="{{ l.QtySold or 0 }}" required></td>
+        <td><input type="number" step="0.01" class="form-control qty-returned-input" name="qty_returned_{{ l.LineID }}" style="width:100px" value="{{ l.QtyReturned or 0 }}" required></td>
+        <td><input type="number" step="0.01" class="form-control qty-free-input" name="qty_free_{{ l.LineID }}" style="width:100px" value="{{ l.QtyFree or 0 }}"></td>
+        <td><input type="number" step="0.01" class="form-control discount-input" name="discount_amount_{{ l.LineID }}" style="width:100px" value="{{ l.DiscountAmount or 0 }}">
+          {% if l.SchemePercent %}<div class="small text-info scheme-hint"></div>{% endif %}
+        </td>
+        <td><input type="number" step="0.01" class="form-control scheme-claim-input" name="scheme_claim_{{ l.LineID }}" style="width:100px" value="{{ l.SchemeClaimAmount or 0 }}"></td>
+        <td><input type="text" class="form-control" name="comments_{{ l.LineID }}" style="width:160px" placeholder="scheme / reason" value="{{ l.LineComments or '' }}"></td>
+        <td class="expected-cell align-middle">0.00</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr class="table-light fw-bold">
+        <td>Total</td>
+        <td id="total-issued">0</td>
+        <td></td>
+        <td id="total-sold">0</td>
+        <td id="total-returned">0</td>
+        <td id="total-free">0</td>
+        <td id="total-discount">0.00</td>
+        <td id="total-scheme-claim">0.00</td>
+        <td></td>
+        <td id="total-expected">0.00</td>
+      </tr>
+    </tfoot>
+  </table>
+  </div>
+
+  <div class="row g-3 mb-3">
+    <div class="col-md-3"><label class="form-label">Cash *</label>
+      <input required type="number" step="0.01" name="cash_amount" id="cash_amount" class="form-control"
+             value="{{ issue.CashAmount if issue.CashAmount is not none else (issue.CashCollected or 0) }}"></div>
+    <div class="col-md-3"><label class="form-label">Bank *</label>
+      <input required type="number" step="0.01" name="bank_amount" id="bank_amount" class="form-control"
+             value="{{ issue.BankAmount or 0 }}"></div>
+    <div class="col-md-3"><label class="form-label">Total Collected (auto)</label>
+      <input type="text" id="cash_collected_total" class="form-control" disabled value="0.00"></div>
+    <div class="col-md-3"><label class="form-label">Expected Amount (auto)</label>
+      <input type="text" id="expected-total" class="form-control" disabled value="0.00"></div>
+    <div class="col-md-4"><label class="form-label">Discrepancy (auto)</label>
+      <input type="text" id="discrepancy-total" class="form-control" disabled value="0.00"></div>
+    <div class="col-md-8"><label class="form-label">Notes</label>
+      <input name="notes" class="form-control" value="{{ issue.Notes or '' }}"></div>
+  </div>
+
+  <div class="d-flex gap-2">
+    <button type="submit" class="btn btn-brand">Save Reconciliation</button>
+    <a href="{{ url_for('stock_issue_view', issue_id=issue.IssueID) }}" class="btn btn-outline-secondary">Cancel</a>
+  </div>
+</form>
+</div></div>
+{% endblock %}
+{% block scripts %}
+<script>
+function recalc() {
+  let total = 0;
+  let totalIssued = 0, totalSold = 0, totalReturned = 0, totalFree = 0, totalDiscount = 0, totalSchemeClaim = 0;
+  document.querySelectorAll('#lines-table tbody tr').forEach(row => {
+    const price = parseFloat(row.dataset.price) || 0;
+    const issued = parseFloat(row.dataset.issued) || 0;
+    const qtySold = parseFloat(row.querySelector('.qty-sold-input').value) || 0;
+    const qtyReturned = parseFloat(row.querySelector('.qty-returned-input').value) || 0;
+    const qtyFree = parseFloat(row.querySelector('.qty-free-input').value) || 0;
+    const discount = parseFloat(row.querySelector('.discount-input').value) || 0;
+    const schemeClaim = parseFloat(row.querySelector('.scheme-claim-input').value) || 0;
+    const expected = Math.max((price * qtySold) - discount, 0);
+    row.querySelector('.expected-cell').textContent = expected.toFixed(2);
+    total += expected;
+    totalIssued += issued;
+    totalSold += qtySold;
+    totalReturned += qtyReturned;
+    totalFree += qtyFree;
+    totalDiscount += discount;
+    totalSchemeClaim += schemeClaim;
+  });
+  document.getElementById('expected-total').value = total.toFixed(2);
+  const cash = parseFloat(document.getElementById('cash_amount').value) || 0;
+  const bank = parseFloat(document.getElementById('bank_amount').value) || 0;
+  const collected = cash + bank;
+  document.getElementById('cash_collected_total').value = collected.toFixed(2);
+  document.getElementById('discrepancy-total').value = (collected - total).toFixed(2);
+  // Column totals row (every numeric column except Unit Price, which isn't meaningful summed
+  // across different products).
+  document.getElementById('total-issued').textContent = totalIssued.toFixed(2);
+  document.getElementById('total-sold').textContent = totalSold.toFixed(2);
+  document.getElementById('total-returned').textContent = totalReturned.toFixed(2);
+  document.getElementById('total-free').textContent = totalFree.toFixed(2);
+  document.getElementById('total-discount').textContent = totalDiscount.toFixed(2);
+  document.getElementById('total-scheme-claim').textContent = totalSchemeClaim.toFixed(2);
+  document.getElementById('total-expected').textContent = total.toFixed(2);
+}
+
+// Scheme discount suggestion: for a product with a Scheme % set, suggest a
+// discount of (Cost Price x Scheme %) per unit sold, auto-filled into the
+// Discount field as Qty Sold changes - but only until the user edits that
+// field directly (an already-saved figure, on re-edit, also counts as
+// "touched" so it's never silently overwritten).
+document.querySelectorAll('#lines-table tbody tr').forEach(row => {
+  const perUnit = parseFloat(row.dataset.schemePerUnit) || 0;
+  if (!perUnit) return;
+  const discountInput = row.querySelector('.discount-input');
+  const hint = row.querySelector('.scheme-hint');
+  let touched = (parseFloat(discountInput.value) || 0) > 0;
+  function applySuggestion() {
+    if (touched) return;
+    const qtySold = parseFloat(row.querySelector('.qty-sold-input').value) || 0;
+    const suggested = Math.round(perUnit * qtySold * 100) / 100;
+    discountInput.value = suggested;
+    recalc();
+  }
+  if (hint) {
+    hint.textContent = `${row.dataset.schemeName || 'Scheme'} (${row.dataset.schemePercent}% of cost) suggests ₹${perUnit.toFixed(2)}/unit`;
+  }
+  row.querySelector('.qty-sold-input').addEventListener('input', applySuggestion);
+  discountInput.addEventListener('input', () => { touched = true; });
+  applySuggestion();
+});
+
+// Scheme Claim Rs starting guess: Qty Free x Unit Price, purely as a starting point -
+// the company's actual reimbursement rate may not match retail price, so this is a
+// plain editable Rs field, not a locked calculation. Same "touched" pattern as Discount:
+// once the user (or a prior save) has put a value in, it's never silently overwritten.
+document.querySelectorAll('#lines-table tbody tr').forEach(row => {
+  const price = parseFloat(row.dataset.price) || 0;
+  const claimInput = row.querySelector('.scheme-claim-input');
+  const qtyFreeInput = row.querySelector('.qty-free-input');
+  let claimTouched = (parseFloat(claimInput.value) || 0) > 0;
+  function applyClaimSuggestion() {
+    if (claimTouched) return;
+    const qtyFree = parseFloat(qtyFreeInput.value) || 0;
+    claimInput.value = Math.round(price * qtyFree * 100) / 100;
+  }
+  qtyFreeInput.addEventListener('input', applyClaimSuggestion);
+  claimInput.addEventListener('input', () => { claimTouched = true; });
+  applyClaimSuggestion();
+});
+
+document.querySelectorAll('.qty-sold-input, .qty-returned-input, .qty-free-input, .discount-input, .scheme-claim-input').forEach(el => el.addEventListener('input', recalc));
+document.getElementById('cash_amount').addEventListener('input', recalc);
+document.getElementById('bank_amount').addEventListener('input', recalc);
+recalc();
+</script>
+{% endblock %}

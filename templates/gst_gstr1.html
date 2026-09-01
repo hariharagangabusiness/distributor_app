@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}GSTR-1 — {{ month_name }} {{ year }}{% endblock %}
+{% block page_title %}GSTR-1 — {{ month_name }} {{ year }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div class="btn-group">
+    <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('gst_gstr1', year=prev_year, month=prev_month) }}">&larr; Prev</a>
+    <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('gst_gstr1', year=next_year, month=next_month) }}">Next &rarr;</a>
+  </div>
+  <a href="{{ url_for('gst_dashboard') }}" class="small">&larr; Back to GST Filing</a>
+</div>
+
+<div class="alert alert-info small">
+  Outward-supplies summary computed from Sales recorded for {{ month_name }} {{ year }}. Compare this against
+  what you actually file as GSTR-1 on the GST portal.
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-3"><div class="stat-card"><div class="stat-value">{{ summary.invoice_count }}</div><div class="stat-label">Invoices</div></div></div>
+  <div class="col-md-3"><div class="stat-card"><div class="stat-value">{{ (summary.total_taxable)|inr(0) }}</div><div class="stat-label">Taxable Value</div></div></div>
+  <div class="col-md-3"><div class="stat-card"><div class="stat-value">{{ (summary.total_tax)|inr(0) }}</div><div class="stat-label">Total Tax</div></div></div>
+  <div class="col-md-3"><div class="stat-card"><div class="stat-value">{{ (summary.total_value)|inr(0) }}</div><div class="stat-label">Total Invoice Value</div></div></div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-header">B2B vs B2C Split</div>
+      <div class="table-responsive"><table class="table mb-0">
+        <thead><tr><th></th><th>Taxable</th><th>Tax</th></tr></thead>
+        <tbody>
+          <tr><td>B2B (customer has GSTIN)</td><td>{{ (summary.b2b_taxable)|inr(2) }}</td><td>{{ (summary.b2b_tax)|inr(2) }}</td></tr>
+          <tr><td>B2C (no GSTIN on customer)</td><td>{{ (summary.b2c_taxable)|inr(2) }}</td><td>{{ (summary.b2c_tax)|inr(2) }}</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-header">Rate-wise Summary</div>
+      <div class="table-responsive"><table class="table mb-0">
+        <thead><tr><th>GST%</th><th>Taxable</th><th>CGST</th><th>SGST</th><th>IGST</th></tr></thead>
+        <tbody>
+          {% for r in summary.by_rate %}
+          <tr><td>{{ r.rate|round(1) }}%</td><td>{{ (r.taxable)|inr(2) }}</td><td>{{ (r.cgst)|inr(2) }}</td><td>{{ (r.sgst)|inr(2) }}</td><td>{{ (r.igst)|inr(2) }}</td></tr>
+          {% else %}<tr><td colspan="5" class="text-muted">No sales this month.</td></tr>{% endfor %}
+        </tbody>
+      </table></div>
+    </div>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-header">HSN-wise Summary</div>
+  <div class="table-responsive"><table class="table mb-0">
+    <thead><tr><th>HSN</th><th>Qty</th><th>Taxable</th><th>Tax</th></tr></thead>
+    <tbody>
+      {% for h in summary.by_hsn %}
+      <tr><td>{{ h.hsn }}</td><td>{{ h.qty|round(2) }}</td><td>{{ (h.taxable)|inr(2) }}</td><td>{{ (h.tax)|inr(2) }}</td></tr>
+      {% else %}<tr><td colspan="4" class="text-muted">No sales this month.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</div>
+
+<div class="card">
+  <div class="card-header">Invoices ({{ summary.invoice_count }})</div>
+  <div class="table-responsive"><table class="table mb-0">
+    <thead><tr><th>Date</th><th>Invoice #</th><th>Customer</th><th>Type</th><th>Taxable</th><th>Tax</th><th>Total</th></tr></thead>
+    <tbody>
+      {% for inv in summary.invoices %}
+      <tr>
+        <td>{{ inv.sale.SaleDate }}</td>
+        <td><a href="{{ url_for('sale_view', sid=inv.sale.SaleID) }}">{{ inv.sale.InvoiceNumber }}</a></td>
+        <td>{{ inv.sale.CustomerName }}</td>
+        <td>{{ 'B2B' if inv.is_b2b else 'B2C' }}</td>
+        <td>{{ (inv.sale.TaxableAmount)|inr(2) }}</td>
+        <td>{{ (inv.tax)|inr(2) }}</td>
+        <td>{{ (inv.sale.TotalAmount)|inr(2) }}</td>
+      </tr>
+      {% else %}<tr><td colspan="7" class="text-muted">No sales recorded for {{ month_name }} {{ year }}.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endblock %}

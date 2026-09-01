@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Review Sales Import{% endblock %}
+{% block page_title %}Review Sales Import{% endblock %}
+{% block content %}
+<form method="post" action="{{ url_for('sales_import_confirm') }}">
+  <input type="hidden" name="row_count" value="{{ rows|length }}">
+  <input type="hidden" name="group_count" value="{{ groups|length }}">
+
+  {% for g in groups %}
+  {% set g_idx = loop.index0 %}
+  {% set first_row = g.rows[0] %}
+  <div class="card mb-3">
+    <div class="card-header">
+      <strong>Invoice: {{ g.invoice_number or '(auto-generated)' }}</strong>
+      <span class="text-muted">({{ g.rows|length }} line(s))</span>
+    </div>
+    <div class="card-body">
+      <div class="row g-3 mb-3">
+        <div class="col-md-3"><label class="form-label">Invoice Number</label>
+          <input name="invoice_number_{{ g_idx }}" class="form-control" value="{{ g.invoice_number }}" placeholder="leave blank to auto-generate"></div>
+        <div class="col-md-2"><label class="form-label">Sale Date</label>
+          <input type="date" name="sale_date_{{ g_idx }}" class="form-control" value="{{ g.sale_date }}"></div>
+        <div class="col-md-3"><label class="form-label">Customer *</label>
+          <select name="customer_id_{{ g_idx }}" class="form-select customer-select" data-group="{{ g_idx }}">
+            <option value="__skip__">-- skip this invoice --</option>
+            <option value="__new__" {% if not first_row.customer_match %}selected{% endif %}>-- Create New Customer --</option>
+            {% for c in customers %}
+            <option value="{{ c.CustomerID }}" {% if first_row.customer_match and first_row.customer_match.CustomerID == c.CustomerID %}selected{% endif %}>{{ c.CustomerName }}</option>
+            {% endfor %}
+          </select>
+          <input type="text" name="new_customer_name_{{ g_idx }}" class="form-control mt-1 new-customer-name" data-group="{{ g_idx }}" placeholder="New customer name" value="{{ first_row.customer_name }}" style="{% if first_row.customer_match %}display:none{% endif %}">
+        </div>
+        <div class="col-md-2"><label class="form-label">Payment Status</label>
+          <select name="payment_status_{{ g_idx }}" class="form-select">
+            <option {% if g.payment_status == 'Unpaid' %}selected{% endif %}>Unpaid</option>
+            <option {% if g.payment_status == 'Partial' %}selected{% endif %}>Partial</option>
+            <option {% if g.payment_status == 'Paid' %}selected{% endif %}>Paid</option>
+          </select></div>
+        <div class="col-md-2"><label class="form-label">Amount Received</label>
+          <input type="number" step="0.01" name="amount_received_{{ g_idx }}" class="form-control" value="{{ g.amount_received }}"></div>
+      </div>
+
+      <div class="table-responsive">
+      <table class="table table-sm align-middle">
+        <thead>
+          <tr><th>Product (from file)</th><th>Qty</th><th>Rate</th><th>Match to Product</th></tr>
+        </thead>
+        <tbody>
+          {% for row in g.rows %}
+          {% set i = row.global_index %}
+          <tr>
+            <td>{{ row.product }}
+              <input type="hidden" name="row_group_{{ i }}" value="{{ g_idx }}">
+              <input type="hidden" name="row_qty_{{ i }}" value="{{ row.qty }}">
+              <input type="hidden" name="row_rate_{{ i }}" value="{{ row.rate }}">
+            </td>
+            <td>{{ row.qty }}</td>
+            <td>{{ row.rate }}</td>
+            <td>
+              <select name="row_product_id_{{ i }}" class="form-select form-select-sm">
+                <option value="__skip__" {% if not row.product_match %}selected{% endif %}>-- no match, skip this line --</option>
+                {% for p in products %}
+                <option value="{{ p.ProductID }}" {% if row.product_match and row.product_match.ProductID == p.ProductID %}selected{% endif %}>{{ p.ProductName }} ({{ p.SKU }})</option>
+                {% endfor %}
+              </select>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+
+  <button type="submit" class="btn btn-primary">Confirm &amp; Create Sale(s)</button>
+  <a href="{{ url_for('sales_import_upload') }}" class="btn btn-outline-secondary">Cancel / Upload a different file</a>
+</form>
+{% endblock %}
+{% block scripts %}
+<script>
+// Show/hide the "new customer name" box based on the picker.
+document.querySelectorAll('.customer-select').forEach(sel => {
+  const groupIdx = sel.dataset.group;
+  const nameBox = document.querySelector(`.new-customer-name[data-group="${groupIdx}"]`);
+  function sync() { nameBox.style.display = sel.value === '__new__' ? '' : 'none'; }
+  sel.addEventListener('change', sync);
+  sync();
+});
+</script>
+{% endblock %}

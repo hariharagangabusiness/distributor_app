@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Custom Fields{% endblock %}
+{% block page_title %}Custom Fields{% endblock %}
+{% block content %}
+<div class="row g-3">
+  <div class="col-md-3">
+    <div class="card">
+      <div class="card-header">Tabs</div>
+      <div class="list-group list-group-flush">
+        {% for key, label in modules %}
+        <a href="{{ url_for('custom_fields_admin', module=key) }}"
+           class="list-group-item list-group-item-action {% if key==module %}active{% endif %}">{{ label }}</a>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  <div class="col-md-9">
+    <div class="card mb-3">
+      <div class="card-header">Add a custom field to {{ module_label }}</div>
+      <div class="card-body">
+        <form method="post" action="{{ url_for('custom_field_add') }}" class="row g-2 align-items-end">
+          <input type="hidden" name="module" value="{{ module }}">
+          <div class="col-md-4">
+            <label class="form-label">Field Label</label>
+            <input required name="field_label" class="form-control" placeholder="e.g. PAN Number">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Field Type</label>
+            <select name="field_type" class="form-select" id="field_type">
+              {% for t in field_types %}<option value="{{ t }}">{{ t|capitalize }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="col-md-3" id="dropdown-options-wrap" style="display:none">
+            <label class="form-label">Dropdown Options (comma-separated)</label>
+            <input name="dropdown_options" class="form-control" placeholder="Option A, Option B">
+          </div>
+          <div class="col-md-2">
+            <button class="btn btn-brand w-100" type="submit">Add Field</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">Fields on {{ module_label }}</div>
+      <div class="table-responsive">
+        <table class="table mb-0 align-middle">
+          <thead><tr><th>Label</th><th>Type</th><th>Options</th><th>Status</th><th></th></tr></thead>
+          <tbody>
+            {% for f in fields %}
+            <tr>
+              <td>{{ f.FieldLabel }}</td>
+              <td>{{ f.FieldType|capitalize }}</td>
+              <td class="text-muted small">{{ f.DropdownOptions or '-' }}</td>
+              <td>{% if f.Active %}<span class="badge badge-ok">Active</span>{% else %}<span class="badge text-bg-secondary">Hidden</span>{% endif %}</td>
+              <td class="text-end">
+                <form method="post" action="{{ url_for('custom_field_toggle', field_id=f.FieldID) }}" class="d-inline">
+                  <input type="hidden" name="module" value="{{ module }}">
+                  <button class="btn btn-sm btn-outline-secondary" type="submit">{{ 'Hide' if f.Active else 'Unhide' }}</button>
+                </form>
+                <form method="post" action="{{ url_for('custom_field_delete', field_id=f.FieldID) }}" class="d-inline" onsubmit="return confirm('Delete this field and all its stored values? This cannot be undone.');">
+                  <input type="hidden" name="module" value="{{ module }}">
+                  <button class="btn btn-sm btn-outline-danger" type="submit">Delete</button>
+                </form>
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5" class="text-center text-muted py-4">No custom fields defined yet for this tab.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <p class="text-muted small mt-2">Hidden fields keep their stored data but stop appearing on forms and lists. Deleting a field permanently removes it and everything stored in it.</p>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+document.getElementById('field_type').addEventListener('change', function() {
+  document.getElementById('dropdown-options-wrap').style.display = (this.value === 'dropdown') ? '' : 'none';
+});
+</script>
+{% endblock %}

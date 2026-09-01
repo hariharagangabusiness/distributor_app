@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Purchase {{ purchase.PONumber }}{% endblock %}
+{% block page_title %}Purchase — {{ purchase.PONumber }}{% endblock %}
+{% block content %}
+<div class="card mb-3"><div class="card-body">
+  <div class="row">
+    <div class="col-md-4"><strong>Supplier:</strong> {{ purchase.SupplierName }}<br>{{ purchase.Phone or '' }}<br>{{ purchase.Address or '' }}
+      {% if purchase.SupplierGSTIN %}<br><span class="text-muted small">GSTIN: {{ purchase.SupplierGSTIN }}</span>{% endif %}</div>
+    <div class="col-md-4"><strong>Date:</strong> {{ purchase.PurchaseDate }}<br><strong>Invoice #:</strong> {{ purchase.InvoiceNumber or '-' }}
+      <br><span class="text-muted small">{{ 'Inter-state (IGST)' if purchase.IsInterState else 'Intra-state (CGST+SGST)' }}{% if purchase.ReverseCharge %} · Reverse Charge{% endif %}{% if not purchase.ITCEligible %} · <span class="text-danger">ITC not claimed</span>{% endif %}</span></div>
+    <div class="col-md-4 d-flex justify-content-between">
+      <div><strong>Status:</strong> {{ purchase.Status }}<br><strong>Payment:</strong> {{ purchase.PaymentStatus }} (Paid {{ (purchase.AmountPaid)|inr(2) }})</div>
+      {% if current_user.Role == 'Admin' %}
+      <div><a href="{{ url_for('purchase_edit', pid=purchase.PurchaseID) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-pencil"></i> Edit</a></div>
+      {% endif %}
+    </div>
+  </div>
+</div></div>
+<div class="card">
+  <div class="table-responsive">
+  <table class="table mb-0">
+    <thead><tr><th>Product</th><th>HSN</th><th>GST%</th><th>Qty</th><th>Unit Cost</th><th>Taxable</th><th>CGST</th><th>SGST</th><th>IGST</th><th>Line Total (excl. GST)</th></tr></thead>
+    <tbody>
+      {% for l in lines %}
+      <tr><td>{{ l.ProductName }}</td><td>{{ l.HSNCode or '-' }}</td><td>{{ l.GSTRate|round(1) }}%</td><td>{{ l.Qty }} {{ l.Unit }}</td><td>{{ (l.UnitCost)|inr(2) }}</td>
+        <td>{{ (l.TaxableValue)|inr(2) }}</td><td>{{ (l.CGSTAmount)|inr(2) }}</td><td>{{ (l.SGSTAmount)|inr(2) }}</td><td>{{ (l.IGSTAmount)|inr(2) }}</td><td>{{ (l.LineTotal)|inr(2) }}</td></tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr><th colspan="5" class="text-end">Taxable Amount</th><th colspan="4"></th><th>{{ (purchase.TaxableAmount)|inr(2) }}</th></tr>
+      <tr><th colspan="9" class="text-end">CGST + SGST + IGST</th><th>{{ (purchase.CGSTAmount + purchase.SGSTAmount + purchase.IGSTAmount)|inr(2) }}</th></tr>
+      <tr><th colspan="9" class="text-end">Grand Total</th><th>{{ (purchase.TotalAmount)|inr(2) }}</th></tr>
+    </tfoot>
+  </table>
+  </div>
+</div>
+{% include "_custom_fields_display.html" %}
+{% include "_attachments.html" %}
+<a href="{{ url_for('purchases_list') }}" class="btn btn-outline-secondary mt-3">Back to Purchases</a>
+{% endblock %}

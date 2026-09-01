@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Sales{% endblock %}
+{% block page_title %}Sales{% endblock %}
+{% block content %}
+{% if filt == 'unassigned' %}
+<div class="alert alert-warning d-flex justify-content-between align-items-center">
+  <span>Showing only sales still billed to <strong>Unassigned</strong> — open one and use Reassign to split it to the real customer(s).</span>
+  <a href="{{ url_for('sales_list') }}" class="btn btn-sm btn-outline-secondary">Show all sales</a>
+</div>
+{% endif %}
+<div class="d-flex justify-content-end gap-2 mb-3">
+  <a href="{{ url_for('sales_import_upload') }}" class="btn btn-outline-secondary"><i class="bi bi-upload"></i> Import from Excel</a>
+  <a href="{{ url_for('export_module', module='sales') }}" class="btn btn-outline-secondary"><i class="bi bi-file-earmark-excel"></i> Export to Excel</a>
+  <a href="{{ url_for('export_module_pdf', module='sales') }}" class="btn btn-outline-secondary"><i class="bi bi-file-earmark-pdf"></i> PDF</a>
+  <a href="{{ url_for('sale_form') }}" class="btn btn-brand"><i class="bi bi-plus-lg"></i> New Sale</a>
+</div>
+<div class="d-flex justify-content-end mb-2">
+  <a href="{{ url_for('columns_customize', module='Sale') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-layout-three-columns"></i> Customize Columns</a>
+</div>
+<div class="card">
+  <div class="table-responsive">
+  <table class="table table-hover mb-0 align-middle" id="tbl-sale">
+    <thead><tr><th data-col="invoice_number">Invoice #</th><th data-col="customer">Customer</th><th data-col="date">Date</th>
+      <th data-col="status">Status</th><th data-col="payment">Payment</th><th data-col="due_date">Due Date</th>
+      <th data-col="total">Total</th><th></th></tr></thead>
+    <tbody>
+      {% for s in sales %}
+      <tr>
+        <td data-col="invoice_number">{{ s.InvoiceNumber }}</td>
+        <td data-col="customer">{{ s.CustomerName }}{% if s.IsUnassignedBucket %} <span class="badge text-bg-warning">Unassigned</span>{% endif %}</td>
+        <td data-col="date">{{ s.SaleDate }}</td><td data-col="status">{{ s.Status }}</td>
+        <td data-col="payment">{% if s.PaymentStatus=='Paid' %}<span class="badge badge-ok">Paid</span>
+            {% elif s.PaymentStatus=='Partial' %}<span class="badge badge-over">Partial</span>
+            {% else %}<span class="badge badge-low">Unpaid</span>{% endif %}</td>
+        <td data-col="due_date">{{ s.PaymentDueDate or '-' }}</td>
+        <td data-col="total">{{ (s.TotalAmount)|inr(2) }}</td>
+        <td class="text-end">
+          <a href="{{ url_for('sale_view', sid=s.SaleID) }}" class="btn btn-sm btn-outline-secondary">View</a>
+          {% if s.IsUnassignedBucket %}<a href="{{ url_for('sale_reassign', sid=s.SaleID) }}" class="btn btn-sm btn-warning">Reassign</a>{% endif %}
+        </td>
+      </tr>
+      {% else %}<tr><td colspan="8" class="text-center text-muted py-4">No sales recorded yet.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+window.LIST_COLUMNS_TABLE_ID = 'tbl-sale';
+window.LIST_COLUMNS_PREFS = {{ columns|tojson }};
+</script>
+<script src="{{ url_for('static', filename='js/list-columns.js') }}"></script>
+{% endblock %}

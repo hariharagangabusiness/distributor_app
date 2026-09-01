@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Customize Columns — {{ module_label }}{% endblock %}
+{% block page_title %}Customize Columns — {{ module_label }}{% endblock %}
+{% block content %}
+<div class="card" style="max-width:640px"><div class="card-body">
+<form method="post">
+  <input type="hidden" name="return_to" value="{{ request.referrer or url_for('dashboard') }}">
+  <p class="text-muted small">Choose which columns appear on the {{ module_label }} list and the order they appear in (lower number = shown first, left to right).</p>
+  <table class="table align-middle">
+    <thead><tr><th>Show</th><th>Column</th><th style="width:110px">Order</th></tr></thead>
+    <tbody>
+      {% for c in columns %}
+      <tr>
+        <td>
+          <div class="form-check">
+            <input type="checkbox" class="form-check-input" name="visible_{{ c.key }}" id="v_{{ c.key }}" {% if c.visible %}checked{% endif %}>
+          </div>
+        </td>
+        <td><label for="v_{{ c.key }}">{{ c.label }}</label></td>
+        <td><input type="number" class="form-control form-control-sm" name="order_{{ c.key }}" value="{{ c.order }}"></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <div class="mt-3 d-flex gap-2">
+    <button class="btn btn-brand" type="submit">Save Columns</button>
+    <a href="{{ request.referrer or url_for('dashboard') }}" class="btn btn-outline-secondary">Cancel</a>
+  </div>
+</form>
+</div></div>
+{% endblock %}

@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+{% block title %}{% if purchase %}Edit Purchase{% else %}New Purchase{% endif %}{% endblock %}
+{% block page_title %}{% if purchase %}Edit Purchase {{ purchase.PONumber }}{% else %}New Purchase{% endif %}{% endblock %}
+{% block content %}
+{% if not company.StateCode %}
+<div class="alert alert-warning">
+  Your <a href="{{ url_for('settings_form') }}">Company / GST Settings</a> state isn't set yet — that's needed to
+  work out CGST/SGST vs IGST on this purchase. You can still record it now and it'll show as intra-state until
+  settings are filled in.
+</div>
+{% endif %}
+{% if purchase %}
+<div class="alert alert-info">
+  Editing an already-saved purchase recalculates its GST breakup and replaces the stock movement it originally
+  created — make sure the correction is right before saving.
+</div>
+{% endif %}
+<div class="card"><div class="card-body">
+<form method="post">
+  <div class="row g-3 mb-3">
+    <div class="col-md-3"><label class="form-label">PO Number</label>
+      <input name="po_number" class="form-control" placeholder="auto-generated if blank" value="{{ purchase.PONumber if purchase else '' }}"></div>
+    <div class="col-md-3"><label class="form-label">Supplier *</label>
+      <select required name="supplier_id" id="supplier_id" class="form-select">
+        <option value="">-- select --</option>
+        {% for s in suppliers %}<option value="{{ s.SupplierID }}" data-gstin="{{ s.GSTIN or '' }}" {% if purchase and purchase.SupplierID == s.SupplierID %}selected{% endif %}>{{ s.SupplierName }}{% if s.GSTIN %} ({{ s.GSTIN }}){% endif %}</option>{% endfor %}
+      </select></div>
+    <div class="col-md-2"><label class="form-label">Purchase Date *</label>
+      <input required type="date" name="purchase_date" class="form-control" value="{{ purchase.PurchaseDate if purchase else today }}"></div>
+    <div class="col-md-2"><label class="form-label">Invoice #</label>
+      <input name="invoice_number" class="form-control" value="{{ purchase.InvoiceNumber if purchase else '' }}"></div>
+    <div class="col-md-2"><label class="form-label">Status</label>
+      <select name="status" class="form-select">
+        <option value="Received" {% if not purchase or purchase.Status == 'Received' %}selected{% endif %}>Received (adds stock)</option>
+        <option value="Ordered" {% if purchase and purchase.Status == 'Ordered' %}selected{% endif %}>Ordered (not yet received)</option>
+        <option value="Draft" {% if purchase and purchase.Status == 'Draft' %}selected{% endif %}>Draft</option>
+      </select></div>
+
+    <div class="col-md-3"><label class="form-label">Payment Status</label>
+      <select name="payment_status" class="form-select">
+        <option {% if purchase and purchase.PaymentStatus == 'Unpaid' %}selected{% endif %}>Unpaid</option>
+        <option {% if purchase and purchase.PaymentStatus == 'Partial' %}selected{% endif %}>Partial</option>
+        <option {% if purchase and purchase.PaymentStatus == 'Paid' %}selected{% endif %}>Paid</option>
+      </select></div>
+    <div class="col-md-3"><label class="form-label">Amount Paid</label>
+      <input type="number" step="0.01" name="amount_paid" class="form-control" value="{{ purchase.AmountPaid if purchase else 0 }}"></div>
+    <div class="col-md-6 d-flex align-items-end gap-4">
+      <div class="form-check" id="interstate-check-wrap">
+        <input type="checkbox" class="form-check-input" name="interstate_purchase" id="interstate_purchase" {% if purchase and purchase.IsInterState %}checked{% endif %}>
+        <label class="form-check-label" for="interstate_purchase">Inter-state purchase (IGST)</label>
+        <div class="form-text" id="interstate-hint">No GSTIN on file for this supplier yet — check this if the supplier is in another state.</div>
+      </div>
+      <div class="form-check">
+        <input type="checkbox" class="form-check-input" name="reverse_charge" id="reverse_charge" {% if purchase and purchase.ReverseCharge %}checked{% endif %}>
+        <label class="form-check-label" for="reverse_charge">Reverse Charge</label>
+      </div>
+      <div class="form-check">
+        <input type="checkbox" class="form-check-input" name="itc_eligible" id="itc_eligible" {% if not purchase or purchase.ITCEligible %}checked{% endif %}>
+        <label class="form-check-label" for="itc_eligible">ITC eligible</label>
+      </div>
+    </div>
+    <div class="col-md-12"><label class="form-label">Notes</label>
+      <input name="notes" class="form-control" value="{{ purchase.Notes if purchase else '' }}"></div>
+  </div>
+
+  <h6>Line Items <span class="text-muted fw-normal">(unit cost is the taxable value per unit, excl. GST)</span></h6>
+  <div class="table-responsive">
+  <table class="table" id="lines-table">
+    <thead><tr><th style="width:30%">Product</th><th>HSN</th><th>GST%</th><th>Qty</th><th>Unit Cost</th><th>Taxable</th><th>Tax</th><th>Line Total</th><th></th></tr></thead>
+    <tbody id="lines-body"></tbody>
+  </table>
+  </div>
+  <button type="button" class="btn btn-sm btn-outline-secondary mb-3" id="add-line">+ Add Line</button>
+
+  <div class="d-flex justify-content-end">
+    <table class="table table-sm" style="max-width:340px">
+      <tr><td>Taxable Amount</td><td class="text-end" id="sum-taxable">0.00</td></tr>
+      <tr id="row-cgst"><td>CGST</td><td class="text-end" id="sum-cgst">0.00</td></tr>
+      <tr id="row-sgst"><td>SGST</td><td class="text-end" id="sum-sgst">0.00</td></tr>
+      <tr id="row-igst"><td>IGST</td><td class="text-end" id="sum-igst">0.00</td></tr>
+      <tr><td><strong>Grand Total (rounded)</strong></td><td class="text-end"><strong id="sum-grand">0.00</strong></td></tr>
+    </table>
+  </div>
+
+  {% include "_custom_fields_form.html" %}
+
+  <div class="d-flex gap-2">
+    <button type="submit" class="btn btn-brand">Save Purchase</button>
+    <a href="{{ url_for('purchase_view', pid=purchase.PurchaseID) if purchase else url_for('purchases_list') }}" class="btn btn-outline-secondary">Cancel</a>
+  </div>
+</form>
+</div></div>
+
+<template id="line-template">
+  <tr>
+    <td>
+      <select name="product_id[]" class="form-select prod-select" required>
+        <option value="">-- select product --</option>
+        {% for p in products %}<option value="{{ p.ProductID }}" data-cost="{{ p.CostPrice }}" data-hsn="{{ p.HSNCode or '' }}" data-gst="{{ p.GSTRate or 0 }}">{{ p.ProductName }} ({{ p.Unit }})</option>{% endfor %}
+      </select>
+    </td>
+    <td class="hsn-cell text-muted small">-</td>
+    <td class="gst-cell text-muted small">-</td>
+    <td><input type="number" step="0.01" name="qty[]" class="form-control qty-input" style="width:80px" required></td>
+    <td><input type="number" step="0.01" name="unit_cost[]" class="form-control cost-input" style="width:90px" required></td>
+    <td class="taxable-cell align-middle">0.00</td>
+    <td class="tax-cell align-middle">0.00</td>
+    <td class="line-total align-middle fw-bold">0.00</td>
+    <td><button type="button" class="btn btn-sm btn-outline-danger remove-line">✕</button></td>
+  </tr>
+</template>
+{% endblock %}
+{% block scripts %}
+<script>
+const body = document.getElementById('lines-body');
+const tmpl = document.getElementById('line-template');
+const supplierSelect = document.getElementById('supplier_id');
+const interstateCheck = document.getElementById('interstate_purchase');
+const interstateWrap = document.getElementById('interstate-check-wrap');
+const interstateHint = document.getElementById('interstate-hint');
+const companyStateCode = "{{ company.StateCode or '' }}";
+const existingLines = [
+  {% if existing_lines %}
+  {% for l in existing_lines %}
+  {product_id: {{ l.ProductID }}, qty: {{ l.Qty }}, unit_cost: {{ l.UnitCost }}},
+  {% endfor %}
+  {% endif %}
+];
+
+// If the selected supplier has a GSTIN on file, its first 2 digits settle
+// inter-state vs intra-state for certain - the checkbox is hidden and the
+// server derives it from the GSTIN the same way. Only suppliers without a
+// GSTIN on file (unregistered/composition) need the manual checkbox.
+function applySupplierGstinState() {
+  const opt = supplierSelect.options[supplierSelect.selectedIndex];
+  const gstin = opt ? (opt.dataset.gstin || '') : '';
+  const supplierState = gstin.slice(0, 2);
+  if (gstin && /^[0-9]{2}/.test(gstin)) {
+    interstateWrap.style.display = 'none';
+    interstateCheck.checked = !!(companyStateCode && supplierState !== companyStateCode);
+  } else {
+    interstateWrap.style.display = '';
+  }
+}
+supplierSelect.addEventListener('change', () => { applySupplierGstinState(); recalc(); });
+interstateCheck.addEventListener('change', recalc);
+
+function isInterState() {
+  return interstateCheck.checked;
+}
+
+function addLine(prefill) {
+  const clone = tmpl.content.cloneNode(true);
+  body.appendChild(clone);
+  const row = body.lastElementChild;
+  wireRow(row);
+  if (prefill) {
+    const prod = row.querySelector('.prod-select');
+    prod.value = String(prefill.product_id);
+    const opt = prod.options[prod.selectedIndex];
+    if (opt && opt.value) {
+      row.querySelector('.hsn-cell').textContent = opt.dataset.hsn || '-';
+      row.querySelector('.gst-cell').textContent = (opt.dataset.gst || 0) + '%';
+      row.dataset.gst = opt.dataset.gst || 0;
+    }
+    row.querySelector('.qty-input').value = prefill.qty;
+    row.querySelector('.cost-input').value = prefill.unit_cost;
+  }
+  recalc();
+}
+
+function wireRow(row) {
+  const prod = row.querySelector('.prod-select');
+  const qty = row.querySelector('.qty-input');
+  const cost = row.querySelector('.cost-input');
+  prod.addEventListener('change', () => {
+    const opt = prod.options[prod.selectedIndex];
+    cost.value = opt.dataset.cost || 0;
+    row.querySelector('.hsn-cell').textContent = opt.dataset.hsn || '-';
+    row.querySelector('.gst-cell').textContent = (opt.dataset.gst || 0) + '%';
+    row.dataset.gst = opt.dataset.gst || 0;
+    recalc();
+  });
+  qty.addEventListener('input', recalc);
+  cost.addEventListener('input', recalc);
+  row.querySelector('.remove-line').addEventListener('click', () => { row.remove(); recalc(); });
+}
+
+function recalc() {
+  let taxableSum = 0, cgstSum = 0, sgstSum = 0, igstSum = 0;
+  const interState = isInterState();
+  document.getElementById('row-cgst').style.display = interState ? 'none' : '';
+  document.getElementById('row-sgst').style.display = interState ? 'none' : '';
+  document.getElementById('row-igst').style.display = interState ? '' : 'none';
+
+  body.querySelectorAll('tr').forEach(row => {
+    const qty = parseFloat(row.querySelector('.qty-input').value) || 0;
+    const cost = parseFloat(row.querySelector('.cost-input').value) || 0;
+    const gstRate = parseFloat(row.dataset.gst || 0);
+    const taxable = qty * cost;
+    let cgst = 0, sgst = 0, igst = 0;
+    if (interState) {
+      igst = taxable * gstRate / 100;
+    } else {
+      cgst = taxable * (gstRate / 2) / 100;
+      sgst = taxable * (gstRate / 2) / 100;
+    }
+    const tax = cgst + sgst + igst;
+    row.querySelector('.taxable-cell').textContent = taxable.toFixed(2);
+    row.querySelector('.tax-cell').textContent = tax.toFixed(2);
+    row.querySelector('.line-total').textContent = (taxable + tax).toFixed(2);
+    taxableSum += taxable; cgstSum += cgst; sgstSum += sgst; igstSum += igst;
+  });
+
+  const rawTotal = taxableSum + cgstSum + sgstSum + igstSum;
+  const grandTotal = Math.round(rawTotal);
+
+  document.getElementById('sum-taxable').textContent = taxableSum.toFixed(2);
+  document.getElementById('sum-cgst').textContent = cgstSum.toFixed(2);
+  document.getElementById('sum-sgst').textContent = sgstSum.toFixed(2);
+  document.getElementById('sum-igst').textContent = igstSum.toFixed(2);
+  document.getElementById('sum-grand').textContent = grandTotal.toFixed(2);
+}
+
+document.getElementById('add-line').addEventListener('click', () => addLine());
+applySupplierGstinState();
+if (existingLines.length) {
+  existingLines.forEach(l => addLine(l));
+} else {
+  addLine();
+}
+recalc();
+</script>
+{% endblock %}

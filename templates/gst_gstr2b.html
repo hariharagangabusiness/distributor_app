@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}GSTR-2B Uploads{% endblock %}
+{% block page_title %}GSTR-2B Uploads{% endblock %}
+{% block content %}
+<a href="{{ url_for('gst_dashboard') }}" class="small d-inline-block mb-3">&larr; Back to GST Filing</a>
+
+<div class="alert alert-info small">
+  Download the GSTR-2B Excel statement for a month from the GST portal (Services → Returns → Returns Dashboard →
+  GSTR-2B → Download Excel), then upload it here. It's parsed for ITC totals (Integrated/Central/State tax) used
+  on the GSTR-3B page. Parsing is best-effort and format-dependent — always check the parsed total against the
+  "Summary" sheet in the file you downloaded, especially the first time.
+</div>
+
+<div class="card mb-3"><div class="card-body">
+<form method="post" action="{{ url_for('gst_gstr2b_upload') }}" enctype="multipart/form-data" class="row g-3 align-items-end">
+  <div class="col-md-3"><label class="form-label">Return Period</label>
+    <input type="month" name="period" class="form-control" value="{{ today[:7] }}" required></div>
+  <div class="col-md-5"><label class="form-label">GSTR-2B Excel File (.xlsx)</label>
+    <input type="file" name="file" accept=".xlsx" class="form-control" required></div>
+  <div class="col-md-3"><button type="submit" class="btn btn-brand">Upload & Parse</button></div>
+</form>
+</div></div>
+
+<div class="card">
+  <div class="table-responsive">
+  <table class="table mb-0">
+    <thead><tr><th>Period</th><th>File</th><th>Uploaded</th><th>Status</th><th>IGST</th><th>CGST</th><th>SGST</th><th>Records</th><th></th></tr></thead>
+    <tbody>
+      {% for u in uploads %}
+      <tr>
+        <td>{{ u.Period }}</td>
+        <td><a href="{{ url_for('gst_gstr2b_download', upload_id=u.UploadID) }}">{{ u.FileName }}</a></td>
+        <td class="small text-muted">{{ u.UploadedAt }}</td>
+        <td>{% if u.ParseStatus == 'Parsed' %}<span class="badge text-bg-success">Parsed</span>{% else %}<span class="badge text-bg-danger" title="{{ u.ParseMessage }}">Failed</span>{% endif %}</td>
+        <td>{{ (u.ITCIntegrated)|inr(2) }}</td>
+        <td>{{ (u.ITCCentral)|inr(2) }}</td>
+        <td>{{ (u.ITCState)|inr(2) }}</td>
+        <td>{{ u.RecordCount }}</td>
+        <td>
+          <form method="post" action="{{ url_for('gst_gstr2b_delete', upload_id=u.UploadID) }}" onsubmit="return confirm('Remove this upload? The file and its parsed totals will be deleted.');">
+            <button type="submit" class="btn btn-sm btn-outline-danger">✕</button>
+          </form>
+        </td>
+      </tr>
+      {% if u.ParseStatus != 'Parsed' and u.ParseMessage %}
+      <tr><td colspan="9" class="small text-danger">{{ u.ParseMessage }}</td></tr>
+      {% endif %}
+      {% else %}
+      <tr><td colspan="9" class="text-muted">No GSTR-2B files uploaded yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endblock %}

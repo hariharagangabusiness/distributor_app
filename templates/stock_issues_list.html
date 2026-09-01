@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Stock Issues{% endblock %}
+{% block page_title %}Stock Issues — Van/Route Sales{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-end gap-2 mb-3">
+  <a href="{{ url_for('export_module', module='stock_issues') }}" class="btn btn-outline-secondary"><i class="bi bi-file-earmark-excel"></i> Export to Excel</a>
+  <a href="{{ url_for('export_module_pdf', module='stock_issues') }}" class="btn btn-outline-secondary"><i class="bi bi-file-earmark-pdf"></i> PDF</a>
+  <a href="{{ url_for('stock_issue_form') }}" class="btn btn-brand"><i class="bi bi-plus-lg"></i> Issue Stock</a>
+</div>
+<div class="card">
+  <div class="table-responsive">
+  <table class="table mb-0">
+    <thead><tr><th>Date</th><th>Salesperson</th><th>Status</th><th>Month Target</th><th>Expected</th><th>Collected</th><th>Discrepancy</th>
+      <th>Qty Sold</th><th>Discount</th><th>Scheme Amount</th><th>Unaccounted</th><th></th></tr></thead>
+    <tbody>
+      {% for i in issues %}
+      <tr>
+        <td>{{ i.IssueDate }}</td>
+        <td>{{ i.EmployeeName }}</td>
+        <td><span class="badge {% if i.Status == 'Reconciled' %}text-bg-success{% else %}text-bg-warning{% endif %}">{{ i.Status }}</span></td>
+        <td>
+          {% if i.TargetProgress %}
+          <span class="badge {% if (i.TargetProgress.qty_pct_mtd or 0) >= 100 %}text-bg-success{% elif (i.TargetProgress.qty_pct_mtd or 0) >= 75 %}text-bg-warning{% else %}text-bg-danger{% endif %}"
+                title="Qty Sold MTD {{ i.TargetProgress.mtd.qty_sold|round(2) }} of {{ i.TargetProgress.prorated_qty|round(2) }} pace">
+            {{ i.TargetProgress.qty_pct_mtd if i.TargetProgress.qty_pct_mtd is not none else '-' }}% MTD
+          </span>
+          {% else %}<span class="text-muted small">no target</span>{% endif %}
+        </td>
+        <td>{% if i.ExpectedAmount is not none %}{{ (i.ExpectedAmount)|inr(2) }}{% else %}-{% endif %}</td>
+        <td>{% if i.CashCollected is not none %}{{ (i.CashCollected)|inr(2) }}{% else %}-{% endif %}</td>
+        <td>
+          {% if i.Discrepancy is not none %}
+          <span class="{% if i.Discrepancy < 0 %}text-danger{% elif i.Discrepancy > 0 %}text-success{% endif %}">{{ (i.Discrepancy)|inr(2) }}</span>
+          {% else %}-{% endif %}
+        </td>
+        <td>{{ i.QtySoldTotal|inrn(2) }}</td>
+        <td>{{ (i.DiscountTotal)|inr(2) }}</td>
+        <td>{{ (i.SchemeTotal)|inr(2) }}</td>
+        <td class="{% if i.UnaccountedTotal != 0 %}text-danger fw-bold{% endif %}">{{ i.UnaccountedTotal|inrn(2) }}</td>
+        <td>
+          <a href="{{ url_for('stock_issue_view', issue_id=i.IssueID) }}" class="btn btn-sm btn-outline-secondary">View</a>
+          {% if i.Status != 'Reconciled' %}
+          <a href="{{ url_for('stock_issue_reconcile', issue_id=i.IssueID) }}" class="btn btn-sm btn-brand">Reconcile</a>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="12" class="text-muted text-center py-4">No stock issues yet.</td></tr>
+      {% endfor %}
+    </tbody>
+    {% if issues %}
+    <tfoot>
+      <tr class="table-light fw-bold">
+        <td colspan="4">Total</td>
+        <td>{{ (totals.expected)|inr(2) }}</td>
+        <td>{{ (totals.collected)|inr(2) }}</td>
+        <td>{{ (totals.discrepancy)|inr(2) }}</td>
+        <td>{{ totals.qty_sold|inrn(2) }}</td>
+        <td>{{ (totals.discount)|inr(2) }}</td>
+        <td>{{ (totals.scheme)|inr(2) }}</td>
+        <td class="{% if totals.unaccounted != 0 %}text-danger{% endif %}">{{ totals.unaccounted|inrn(2) }}</td>
+        <td></td>
+      </tr>
+    </tfoot>
+    {% endif %}
+  </table>
+  </div>
+</div>
+{% endblock %}

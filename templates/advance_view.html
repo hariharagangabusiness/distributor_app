@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Advance — {{ advance.EmployeeName }}{% endblock %}
+{% block page_title %}Advance Payment Detail{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <a href="{{ url_for('advances_list') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left"></i> Back to Advances</a>
+  {% if advance.Status=='Active' %}
+  <form method="post" action="{{ url_for('advance_close', aid=advance.AdvanceID) }}" onsubmit="return confirm('Write off remaining balance and close this advance?');">
+    <input type="hidden" name="return_to" value="{{ request.path }}">
+    <button class="btn btn-sm btn-outline-danger" type="submit">Close Advance</button>
+  </form>
+  {% endif %}
+</div>
+
+<div class="card">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span>{{ advance.EmployeeName }} <span class="text-muted small">({{ advance.Designation or '-' }})</span></span>
+    {% if advance.Status=='Active' %}<span class="badge badge-over">Active</span>{% else %}<span class="badge badge-ok">Closed</span>{% endif %}
+  </div>
+  <div class="card-body">
+    <div class="row g-3">
+      <div class="col-md-3"><span class="text-muted small">Date</span><br>{{ advance.AdvanceDate }}</div>
+      <div class="col-md-3"><span class="text-muted small">Amount</span><br>{{ (advance.Amount)|inr(2) }}</div>
+      <div class="col-md-3"><span class="text-muted small">Repay (months)</span><br>{{ advance.RepaymentMonths }}</div>
+      <div class="col-md-3"><span class="text-muted small">Monthly Deduction</span><br>{{ (advance.MonthlyDeduction)|inr(2) }}</div>
+      <div class="col-md-3"><span class="text-muted small">Balance Remaining</span><br>{{ (advance.BalanceRemaining)|inr(2) }}</div>
+      <div class="col-md-3"><span class="text-muted small">Phone</span><br>{{ advance.Phone or '-' }}</div>
+      <div class="col-md-6"><span class="text-muted small">Reason</span><br>{{ advance.Reason or '-' }}</div>
+    </div>
+  </div>
+</div>
+
+{% include "_custom_fields_display.html" %}
+{% include "_attachments.html" %}
+{% endblock %}

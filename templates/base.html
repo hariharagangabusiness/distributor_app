@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}Distributor Ops{% endblock %} | Hari Hara Ganga</title>
+<link rel="icon" type="image/png" href="{{ url_for('static', filename='img/favicon.png') }}">
+<script>
+  // Applied before the stylesheets below are parsed, so the page never
+  // flashes the wrong theme on load. Falls back to light if nothing
+  // saved yet (or if this browser blocks localStorage).
+  (function () {
+    try {
+      var t = localStorage.getItem('theme');
+      document.documentElement.setAttribute('data-bs-theme', t === 'dark' ? 'dark' : 'light');
+    } catch (e) {}
+  })();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+<link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+<body>
+<div class="d-flex">
+  <nav class="sidebar">
+    <div class="sidebar-brand">
+      <img src="{{ url_for('static', filename='img/logo.png') }}" alt="" class="sidebar-logo"> Hari Hara Ganga
+    </div>
+    <ul class="nav flex-column">
+      <li class="nav-item"><a class="nav-link {% if request.path=='/dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}"><i class="bi bi-speedometer2"></i> Dashboard
+        {% if alert_counts.total %}<span class="badge text-bg-danger ms-1">{{ alert_counts.total }}</span>{% endif %}
+      </a></li>
+      <li class="nav-item"><a class="nav-link {% if request.path.startswith('/reports') and not request.path.startswith('/reports/stock-issues') and not request.path.startswith('/reports/pnl') %}active{% endif %}" href="{{ url_for('reports_hub') }}"><i class="bi bi-bar-chart-line"></i> Reports</a></li>
+
+      <li class="nav-section" data-group="inventory">Inventory <i class="bi bi-chevron-down nav-section-chevron"></i></li>
+      <li class="nav-item nav-collapsible" data-group="inventory"><a class="nav-link {% if request.path.startswith('/inventory') %}active{% endif %}" href="{{ url_for('inventory_list') }}"><i class="bi bi-box-seam"></i> Products & Stock
+        {% if alert_counts.low or alert_counts.over %}<span class="badge text-bg-warning ms-1">{{ alert_counts.low + alert_counts.over }}</span>{% endif %}
+      </a></li>
+
+      {% if current_user and current_user.Role == 'Admin' %}
+      <li class="nav-section" data-group="purchasing">Purchasing <i class="bi bi-chevron-down nav-section-chevron"></i></li>
+      <li class="nav-item nav-collapsible" data-group="purchasing"><a class="nav-link {% if request.path.startswith('/suppliers') %}active{% endif %}" href="{{ url_for('suppliers_list') }}"><i class="bi bi-truck"></i> Suppliers</a></li>
+      <li class="nav-item nav-collapsible" data-group="purchasing"><a class="nav-link {% if request.path.startswith('/purchases') %}active{% endif %}" href="{{ url_for('purchases_list') }}"><i class="bi bi-cart-plus"></i> Purchases</a></li>
+      {% endif %}
+
+      <li class="nav-section" data-group="sales">Sales <i class="bi bi-chevron-down nav-section-chevron"></i></li>
+      <li class="nav-item nav-collapsible" data-group="sales"><a class="nav-link {% if request.path.startswith('/customers') %}active{% endif %}" href="{{ url_for('customers_list') }}"><i class="bi bi-people"></i> Customers</a></li>
+      <li class="nav-item nav-collapsible" data-group="sales"><a class="nav-link {% if request.path.startswith('/sales') %}active{% endif %}" href="{{ url_for('sales_list') }}"><i class="bi bi-cart-check"></i> Sales</a></li>
+      <li class="nav-item nav-collapsible" data-group="sales"><a class="nav-link {% if request.path.startswith('/stock-issues') %}active{% endif %}" href="{{ url_for('stock_issues_list') }}"><i class="bi bi-truck"></i> Stock Issues</a></li>
+      <li class="nav-item nav-collapsible" data-group="sales"><a class="nav-link {% if request.path.startswith('/reports/stock-issues') %}active{% endif %}" href="{{ url_for('stock_issues_report') }}"><i class="bi bi-percent"></i> Stock Issue Schemes &amp; Dues</a></li>
+      <li class="nav-item nav-collapsible" data-group="sales"><a class="nav-link {% if request.path.startswith('/targets') %}active{% endif %}" href="{{ url_for('targets_view') }}"><i class="bi bi-bullseye"></i> Targets</a></li>
+
+      <li class="nav-section" data-group="finance">Finance <i class="bi bi-chevron-down nav-section-chevron"></i></li>
+      <li class="nav-item nav-collapsible" data-group="finance"><a class="nav-link {% if request.path.startswith('/expenses') %}active{% endif %}" href="{{ url_for('expenses_list') }}"><i class="bi bi-cash-stack"></i> Operating Expenses</a></li>
+      {% if current_user and current_user.Role == 'Admin' %}
+      <li class="nav-item nav-collapsible" data-group="finance"><a class="nav-link {% if request.path.startswith('/gst') %}active{% endif %}" href="{{ url_for('gst_dashboard') }}"><i class="bi bi-receipt"></i> GST Filing
+        {% if alert_counts.gst %}<span class="badge text-bg-danger ms-1">{{ alert_counts.gst }}</span>{% endif %}
+      </a></li>
+      <li class="nav-item nav-collapsible" data-group="finance"><a class="nav-link {% if request.path.startswith('/reports/pnl') %}active{% endif %}" href="{{ url_for('pnl_report') }}"><i class="bi bi-graph-up-arrow"></i> Profit &amp; Loss</a></li>
+      <li class="nav-item nav-collapsible" data-group="finance"><a class="nav-link {% if request.path.startswith('/scheme-claims') %}active{% endif %}" href="{{ url_for('scheme_claims_list') }}"><i class="bi bi-award"></i> Scheme Claims</a></li>
+      {% endif %}
+
+      <li class="nav-section" data-group="fleet">Fleet <i class="bi bi-chevron-down nav-section-chevron"></i></li>
+      <li class="nav-item nav-collapsible" data-group="fleet"><a class="nav-link {% if request.path.startswith('/vehicles') %}active{% endif %}" href="{{ url_for('vehicles_list') }}"><i class="bi bi-truck-front"></i> Vehicles</a></li>
+      <li class="nav-item nav-collapsible" data-group="fleet"><a class="nav-link {% if request.path.startswith('/maintenance') %}active{% endif %}" href="{{ url_for('maintenance_list') }}"><i class="bi bi-tools"></i> Maintenance
+        {% if alert_counts.maint or alert_counts.docs %}<span class="badge text-bg-warning ms-1">{{ alert_counts.maint + alert_counts.docs }}</span>{% endif %}
+      </a></li>
+
+      <li class="nav-section" data-group="payroll">Payroll <i class="bi bi-chevron-down nav-section-chevron"></i></li>
+      <li class="nav-item nav-collapsible" data-group="payroll"><a class="nav-link {% if request.path.startswith('/attendance') %}active{% endif %}" href="{{ url_for('attendance_month') }}"><i class="bi bi-calendar-check"></i> Leave & Attendance</a></li>
+      {% if current_user and current_user.Role == 'Admin' %}
+      <li class="nav-item nav-collapsible" data-group="payroll"><a class="nav-link {% if request.path.startswith('/employees') %}active{% endif %}" href="{{ url_for('employees_list') }}"><i class="bi bi-person-badge"></i> Employees</a></li>
+      <li class="nav-item nav-collapsible" data-group="payroll"><a class="nav-link {% if request.path.startswith('/salary') %}active{% endif %}" href="{{ url_for('salary_month') }}"><i class="bi bi-calendar-month"></i> Salary Schedule
+        {% if alert_counts.sal %}<span class="badge text-bg-warning ms-1">{{ alert_counts.sal }}</span>{% endif %}
+      </a></li>
+      <li class="nav-item nav-collapsible" data-group="payroll"><a class="nav-link {% if request.path.startswith('/advances') %}active{% endif %}" href="{{ url_for('advances_list') }}"><i class="bi bi-wallet2"></i> Advance Payments</a></li>
+      {% endif %}
+
+      {% if current_user and current_user.Role == 'Admin' %}
+      <li class="nav-section" data-group="setup">Setup <i class="bi bi-chevron-down nav-section-chevron"></i></li>
+      <li class="nav-item nav-collapsible" data-group="setup"><a class="nav-link {% if request.path.startswith('/settings') and not request.path.startswith('/settings/custom-fields') %}active{% endif %}" href="{{ url_for('settings_form') }}"><i class="bi bi-gear"></i> Company / GST Settings</a></li>
+      <li class="nav-item nav-collapsible" data-group="setup"><a class="nav-link {% if request.path.startswith('/settings/custom-fields') %}active{% endif %}" href="{{ url_for('custom_fields_admin') }}"><i class="bi bi-input-cursor-text"></i> Custom Fields</a></li>
+      <li class="nav-item nav-collapsible" data-group="setup"><a class="nav-link {% if request.path.startswith('/dashboard/customize') %}active{% endif %}" href="{{ url_for('dashboard_customize') }}"><i class="bi bi-grid-3x3-gap"></i> Customize Dashboard</a></li>
+      <li class="nav-item nav-collapsible" data-group="setup"><a class="nav-link {% if request.path.startswith('/users') %}active{% endif %}" href="{{ url_for('users_list') }}"><i class="bi bi-people-fill"></i> Manage Users</a></li>
+      {% endif %}
+    </ul>
+  </nav>
+
+  {% set path = request.path %}
+  {% if path == '/dashboard' or path.startswith('/dashboard/customize') %}
+    {% set page_section = 'setup' if path.startswith('/dashboard/customize') else 'dashboard' %}
+  {% elif path.startswith('/reports/stock-issues') %}
+    {% set page_section = 'sales' %}
+  {% elif path.startswith('/reports/pnl') %}
+    {% set page_section = 'finance' %}
+  {% elif path.startswith('/reports') %}
+    {% set page_section = 'reports' %}
+  {% elif path.startswith('/inventory') %}
+    {% set page_section = 'inventory' %}
+  {% elif path.startswith('/suppliers') or path.startswith('/purchases') %}
+    {% set page_section = 'purchasing' %}
+  {% elif path.startswith('/customers') or path.startswith('/sales') or path.startswith('/stock-issues') or path.startswith('/targets') %}
+    {% set page_section = 'sales' %}
+  {% elif path.startswith('/expenses') or path.startswith('/gst') or path.startswith('/scheme-claims') %}
+    {% set page_section = 'finance' %}
+  {% elif path.startswith('/vehicles') or path.startswith('/maintenance') %}
+    {% set page_section = 'fleet' %}
+  {% elif path.startswith('/attendance') or path.startswith('/employees') or path.startswith('/salary') or path.startswith('/advances') %}
+    {% set page_section = 'payroll' %}
+  {% elif path.startswith('/settings') or path.startswith('/users') %}
+    {% set page_section = 'setup' %}
+  {% else %}
+    {% set page_section = '' %}
+  {% endif %}
+  <main class="content" data-section="{{ page_section }}">
+    <div class="page-watermark" style="background-image: url('{{ url_for('static', filename='img/logo-emblem.png') }}');"></div>
+    <div class="topbar d-flex justify-content-between align-items-center">
+      <h5 class="mb-0">{% block page_title %}{% endblock %}</h5>
+      <div class="d-flex align-items-center gap-3">
+        <button type="button" id="themeToggle" class="btn btn-sm btn-outline-secondary" title="Toggle dark mode">
+          <i class="bi bi-moon-stars-fill" id="themeToggleIcon"></i>
+        </button>
+        <div class="text-muted small d-none d-sm-block">{{ current_date }}</div>
+        {% if current_user %}
+        <div class="dropdown">
+          <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
+            <i class="bi bi-person-circle"></i> {{ current_user.FullName or current_user.Username }}
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end">
+            <li><span class="dropdown-item-text text-muted small">Signed in as {{ current_user.Username }} ({{ current_user.Role }})</span></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><a class="dropdown-item" href="{{ url_for('change_password') }}"><i class="bi bi-key"></i> Change Password</a></li>
+            <li>
+              <form method="post" action="{{ url_for('logout') }}" class="m-0">
+                <button type="submit" class="dropdown-item"><i class="bi bi-box-arrow-right"></i> Logout</button>
+              </form>
+            </li>
+          </ul>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    <div class="page-body">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for category, message in messages %}
+            <div class="alert alert-{{ 'danger' if category=='error' else category }} alert-dismissible fade show" role="alert">
+              {{ message }}
+              <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+  (function () {
+    var html = document.documentElement;
+    var btn = document.getElementById('themeToggle');
+    var icon = document.getElementById('themeToggleIcon');
+    function setIcon(theme) {
+      icon.className = theme === 'dark' ? 'bi bi-sun-fill' : 'bi bi-moon-stars-fill';
+    }
+    setIcon(html.getAttribute('data-bs-theme') || 'light');
+    btn.addEventListener('click', function () {
+      var next = (html.getAttribute('data-bs-theme') === 'dark') ? 'light' : 'dark';
+      html.setAttribute('data-bs-theme', next);
+      setIcon(next);
+      try { localStorage.setItem('theme', next); } catch (e) {}
+    });
+  })();
+
+  // Sidebar category collapse/un-collapse. Each category header (.nav-section)
+  // toggles the .nav-collapsible items that share its data-group. State is
+  // remembered per browser (localStorage) so a collapsed section stays
+  // collapsed across page navigations, but a section containing the current
+  // page is always force-expanded on load so the active link is never hidden.
+  (function () {
+    var STORAGE_KEY = 'sidebarCollapsedGroups';
+    var collapsed = {};
+    try { collapsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch (e) {}
+
+    function itemsFor(group) {
+      return document.querySelectorAll('.nav-collapsible[data-group="' + group + '"]');
+    }
+
+    function applyState(header, group, isCollapsed) {
+      header.classList.toggle('collapsed', isCollapsed);
+      itemsFor(group).forEach(function (el) { el.style.display = isCollapsed ? 'none' : ''; });
+    }
+
+    document.querySelectorAll('.nav-section[data-group]').forEach(function (header) {
+      var group = header.getAttribute('data-group');
+      // Force-expand a section that contains the currently active link, regardless
+      // of its remembered collapsed state, so navigating never hides where you are.
+      var hasActive = document.querySelector('.nav-collapsible[data-group="' + group + '"] .nav-link.active');
+      var isCollapsed = hasActive ? false : !!collapsed[group];
+      applyState(header, group, isCollapsed);
+
+      header.addEventListener('click', function () {
+        isCollapsed = !isCollapsed;
+        applyState(header, group, isCollapsed);
+        collapsed[group] = isCollapsed;
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(collapsed)); } catch (e) {}
+      });
+    });
+  })();
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

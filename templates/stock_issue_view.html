@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}Stock Issue{% endblock %}
+{% block page_title %}Stock Issue — {{ issue.EmployeeName }}, {{ issue.IssueDate }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-end gap-2 mb-3">
+  {% if issue.Status != 'Reconciled' %}
+  <a href="{{ url_for('stock_issue_add_lines', issue_id=issue.IssueID) }}" class="btn btn-outline-brand"><i class="bi bi-plus-lg"></i> Add More Products</a>
+  <a href="{{ url_for('stock_issue_reconcile', issue_id=issue.IssueID) }}" class="btn btn-brand"><i class="bi bi-check2-circle"></i> Reconcile</a>
+  {% elif current_user and current_user.Role == 'Admin' %}
+  <a href="{{ url_for('stock_issue_reconcile', issue_id=issue.IssueID) }}" class="btn btn-outline-secondary"><i class="bi bi-pencil"></i> Edit Reconciliation</a>
+  {% endif %}
+  {% if current_user and current_user.Role == 'Admin' %}
+  <form method="post" action="{{ url_for('stock_issue_delete', issue_id=issue.IssueID) }}" onsubmit="return confirm({% if money_locked %}'This issue has a due payment and/or scheme claim recorded against it. Deleting it will also erase that due-payment history and reset its claim status, and reverses its stock impact and linked Sale. This cannot be undone. Continue?'{% else %}'Delete this stock issue? This reverses its stock impact and cannot be undone.'{% endif %});">
+    <button type="submit" class="btn btn-outline-danger"><i class="bi bi-trash"></i> Delete</button>
+  </form>
+  {% endif %}
+</div>
+<div class="card mb-3"><div class="card-body">
+  <div class="row">
+    <div class="col-md-3"><strong>Salesperson:</strong> {{ issue.EmployeeName }}<br>{{ issue.Phone or '' }}</div>
+    <div class="col-md-3"><strong>Issue Date:</strong> {{ issue.IssueDate }}<br><strong>Status:</strong>
+      <span class="badge {% if issue.Status == 'Reconciled' %}text-bg-success{% else %}text-bg-warning{% endif %}">{{ issue.Status }}</span></div>
+    <div class="col-md-3">
+      {% if issue.Status == 'Reconciled' %}
+      <strong>Expected:</strong> {{ (issue.ExpectedAmount)|inr(2) }}<br>
+      <strong>Collected:</strong> {{ (issue.CashCollected)|inr(2) }}<br>
+      <strong>Payment:</strong>
+      <span class="badge {% if issue.PaymentStatus=='Paid' %}text-bg-success{% elif issue.PaymentStatus=='Partial' %}text-bg-warning{% else %}text-bg-danger{% endif %}">{{ issue.PaymentStatus }}</span>
+      {% if issue.AmountDue and issue.AmountDue > 0 %}<br><span class="text-danger">Due: {{ (issue.AmountDue)|inr(2) }}</span>{% endif %}
+      {% else %}
+      <span class="text-muted">Not reconciled yet — awaiting end-of-day tally.</span>
+      {% endif %}
+    </div>
+    <div class="col-md-3">
+      {% if issue.Status == 'Reconciled' and issue.SchemeAmount and issue.SchemeAmount > 0 %}
+      <strong>Scheme Claim (from company):</strong> {{ (issue.SchemeAmount)|inr(2) }}<br>
+      <strong>Claim status:</strong>
+      <span class="badge {% if issue.ClaimStatus=='Received' %}text-bg-success{% elif issue.ClaimStatus=='Claimed' %}text-bg-warning{% else %}text-bg-secondary{% endif %}">{{ issue.ClaimStatus }}</span>
+      {% endif %}
+    </div>
+  </div>
+  {% if issue.Notes %}<div class="mt-2 text-muted small">{{ issue.Notes }}</div>{% endif %}
+
+  {% if target_progress %}
+  <div class="mt-3 border-top pt-3">
+    <strong><i class="bi bi-bullseye"></i> {{ issue.EmployeeName }}'s Month Target</strong>
+    <span class="text-muted small">({{ target_progress.mtd.qty_sold|round(2) }} / {{ target_progress.prorated_qty|round(2) }} Qty Sold MTD pace,
+      full-month target {{ target_progress.QtySoldTarget|round(2) }})</span>
+    <span class="badge {% if (target_progress.qty_pct_mtd or 0) >= 100 %}text-bg-success{% elif (target_progress.qty_pct_mtd or 0) >= 75 %}text-bg-warning{% else %}text-bg-danger{% endif %} ms-1">
+      {{ target_progress.qty_pct_mtd if target_progress.qty_pct_mtd is not none else '-' }}% of pace</span>
+    <a href="{{ url_for('targets_view', year=issue.IssueDate[:4]|int, month=issue.IssueDate[5:7]|int, employee_id=issue.EmployeeID) }}" class="small ms-2">View on Targets tab →</a>
+  </div>
+  {% endif %}
+
+  {% if issue.Status == 'Reconciled' and issue.AmountDue and issue.AmountDue > 0 %}
+  <div class="mt-3 border-top pt-3">
+    <strong>Record Due Payment</strong>
+    <form method="post" action="{{ url_for('stock_issue_collect_due', issue_id=issue.IssueID) }}" class="row g-2 mt-1">
+      <div class="col-md-3"><input type="number" step="0.01" name="amount" class="form-control" placeholder="Amount" required></div>
+      <div class="col-md-3"><input type="date" name="payment_date" class="form-control" value="{{ today }}"></div>
+      <div class="col-md-4"><input type="text" name="notes" class="form-control" placeholder="Notes (optional)"></div>
+      <div class="col-md-2"><button type="submit" class="btn btn-brand w-100">Record</button></div>
+    </form>
+  </div>
+  {% endif %}
+
+  {% if issue.Status == 'Reconciled' and issue.SchemeAmount and issue.SchemeAmount > 0 and issue.ClaimStatus != 'Received' %}
+  <div class="mt-3 border-top pt-3">
+    <strong>Scheme Claim from Company</strong>
+    {% if issue.ClaimStatus == 'Not Claimed' %}
+    <form method="post" action="{{ url_for('stock_issue_claim', issue_id=issue.IssueID) }}" class="row g-2 mt-1">
+      <input type="hidden" name="action" value="claimed">
+      <div class="col-md-3"><input type="number" step="0.01" name="claimed_amount" class="form-control" value="{{ '%.2f'|format(issue.SchemeAmount) }}"></div>
+      <div class="col-md-5"><input type="text" name="notes" class="form-control" placeholder="Notes (optional)"></div>
+      <div class="col-md-4"><button type="submit" class="btn btn-outline-secondary w-100">Mark Claimed</button></div>
+    </form>
+    {% elif issue.ClaimStatus == 'Claimed' %}
+    <div class="text-muted small mb-1">Claimed {{ (issue.ClaimedAmount or 0)|inr(2) }} on {{ issue.ClaimedAt[:10] if issue.ClaimedAt else '' }}</div>
+    <form method="post" action="{{ url_for('stock_issue_claim', issue_id=issue.IssueID) }}" class="row g-2 mt-1">
+      <input type="hidden" name="action" value="received">
+      <div class="col-md-3"><input type="number" step="0.01" name="received_amount" class="form-control" value="{{ '%.2f'|format(issue.ClaimedAmount or issue.SchemeAmount) }}"></div>
+      <div class="col-md-5"><input type="text" name="notes" class="form-control" placeholder="Notes (optional)"></div>
+      <div class="col-md-4"><button type="submit" class="btn btn-outline-secondary w-100">Mark Received</button></div>
+    </form>
+    {% endif %}
+  </div>
+  {% endif %}
+</div></div>
+
+<div class="card">
+  <div class="table-responsive">
+  <table class="table mb-0">
+    <thead><tr><th>Product</th><th>Qty Issued</th><th>Unit Price</th>
+      {% if issue.Status == 'Reconciled' %}<th>Qty Sold</th><th>Qty Returned</th><th>Qty Free</th><th>Discount ₹ (margin)</th><th>Scheme Claim ₹</th><th>Unaccounted</th><th>Comments</th>{% endif %}
+    </tr></thead>
+    <tbody>
+      {% for l in lines %}
+      <tr>
+        <td>{{ l.ProductName }}</td>
+        <td>{{ l.QtyIssued }} {{ l.Unit }}</td>
+        <td>{{ (l.UnitPrice)|inr(2) }}</td>
+        {% if issue.Status == 'Reconciled' %}
+        <td>{{ l.QtySold }} {{ l.Unit }}</td>
+        <td>{{ l.QtyReturned }} {{ l.Unit }}</td>
+        <td>{{ l.QtyFree or 0 }} {{ l.Unit }}</td>
+        <td>{{ (l.DiscountAmount or 0)|inr(2) }}</td>
+        <td>{{ (l.SchemeClaimAmount or 0)|inr(2) }}</td>
+        {% set unaccounted = l.QtyIssued - (l.QtySold or 0) - (l.QtyReturned or 0) - (l.QtyFree or 0) %}
+        <td class="{% if unaccounted != 0 %}text-danger fw-bold{% endif %}">{{ unaccounted|round(2) }} {{ l.Unit }}</td>
+        <td class="text-muted small">{{ l.LineComments or '' }}</td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+    </tbody>
+    {% if lines %}
+    <tfoot>
+      <tr class="table-light fw-bold">
+        <td>Total</td>
+        <td>{{ line_totals.qty_issued|round(2) }}</td>
+        <td></td>
+        {% if issue.Status == 'Reconciled' %}
+        <td>{{ line_totals.qty_sold|round(2) }}</td>
+        <td>{{ line_totals.qty_returned|round(2) }}</td>
+        <td>{{ line_totals.qty_free|round(2) }}</td>
+        <td>{{ (line_totals.discount)|inr(2) }}</td>
+        <td>{{ (line_totals.scheme_claim)|inr(2) }}</td>
+        <td class="{% if line_totals.unaccounted != 0 %}text-danger{% endif %}">{{ line_totals.unaccounted|round(2) }}</td>
+        <td></td>
+        {% endif %}
+      </tr>
+    </tfoot>
+    {% endif %}
+  </table>
+  </div>
+</div>
+{% endblock %}

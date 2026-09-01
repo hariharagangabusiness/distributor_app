@@ -1,0 +1,40 @@
+{# Reusable attachments block.
+   Include with: {% include "_attachments.html" %}
+   Requires the calling template to set these variables before including:
+     att_module     - one of Employee / Advance / Vehicle / Purchase / Expense
+     att_record_id  - the record's primary key
+     attachments    - list of Attachments rows (from get_attachments())
+#}
+<div class="card mt-3">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span><i class="bi bi-paperclip"></i> Attachments</span>
+    <span class="text-muted small">{{ attachments|length }} file(s)</span>
+  </div>
+  <div class="card-body">
+    <form method="post" action="{{ url_for('attachment_upload', module=att_module, record_id=att_record_id) }}" enctype="multipart/form-data" class="d-flex gap-2 mb-3">
+      <input type="file" name="files" class="form-control form-control-sm" multiple>
+      <input type="hidden" name="return_to" value="{{ request.path }}">
+      <button type="submit" class="btn btn-sm btn-outline-secondary text-nowrap"><i class="bi bi-upload"></i> Upload</button>
+    </form>
+    {% if attachments %}
+    <ul class="list-group list-group-flush">
+      {% for a in attachments %}
+      <li class="list-group-item d-flex justify-content-between align-items-center px-0">
+        <div>
+          <a href="{{ url_for('attachment_download', attachment_id=a.AttachmentID) }}"><i class="bi bi-file-earmark"></i> {{ a.FileName }}</a>
+          <span class="text-muted small ms-2">{{ (a.FileSize / 1024) | round(1) }} KB &middot; {{ a.UploadedAt }}</span>
+        </div>
+        {% if current_user and current_user.Role == 'Admin' %}
+        <form method="post" action="{{ url_for('attachment_delete', attachment_id=a.AttachmentID) }}" onsubmit="return confirm('Delete this attachment?');">
+          <input type="hidden" name="return_to" value="{{ request.path }}">
+          <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+        </form>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="text-muted small">No attachments yet — upload receipts, photos, RC/insurance copies, ID proofs, etc.</div>
+    {% endif %}
+  </div>
+</div>

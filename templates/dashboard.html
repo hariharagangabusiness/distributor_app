@@ -1,0 +1,225 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+{% block content %}
+
+{% if unassigned_sales_count %}
+<div class="alert alert-warning d-flex justify-content-between align-items-center">
+  <span><i class="bi bi-exclamation-triangle"></i> <strong>{{ unassigned_sales_count }}</strong> sale(s) totaling
+    {{ (unassigned_sales_amount)|inr(2) }} are billed to <strong>Unassigned</strong> (from reconciled Stock
+    Issues) and still need to be reassigned to the actual customer(s).</span>
+  <a href="{{ url_for('sales_list') }}?filter=unassigned" class="btn btn-sm btn-warning text-nowrap">Review →</a>
+</div>
+{% endif %}
+
+<div class="d-flex justify-content-end gap-2 mb-2">
+  <a href="{{ url_for('reports_hub') }}" class="btn btn-sm btn-brand"><i class="bi bi-bar-chart-line"></i> Reports & Exports</a>
+  <a href="{{ url_for('dashboard_customize') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-sliders"></i> Customize Dashboard</a>
+</div>
+
+{% macro widget_stats() %}
+<div class="row g-3 mb-1">
+  <div class="col-md-2 col-6"><div class="stat-card sc-sales"><div class="stat-value">{{ (sales_today)|inr(0) }}</div><div class="stat-label">Sales Today</div></div></div>
+  <div class="col-md-2 col-6"><div class="stat-card sc-sales"><div class="stat-value">{{ (sales_month)|inr(0) }}</div><div class="stat-label">Sales this Month</div></div></div>
+  <div class="col-md-2 col-6"><div class="stat-card sc-purchases"><div class="stat-value">{{ (purchases_month)|inr(0) }}</div><div class="stat-label">Purchases this Month</div></div></div>
+  <div class="col-md-2 col-6"><div class="stat-card sc-expenses"><div class="stat-value">{{ (expenses_month)|inr(0) }}</div><div class="stat-label">Expenses this Month</div></div></div>
+  <div class="col-md-2 col-6"><div class="stat-card sc-receivable"><div class="stat-value">{{ (receivable)|inr(0) }}</div><div class="stat-label">Receivable</div></div></div>
+  <div class="col-md-2 col-6"><div class="stat-card sc-payable"><div class="stat-value">{{ (payable)|inr(0) }}</div><div class="stat-label">Payable</div></div></div>
+</div>
+<div class="row g-3 mb-1">
+  <div class="col-md-3 col-6"><div class="stat-card sc-vansales"><div class="stat-value">{{ (stock_issue_due)|inr(0) }}</div><div class="stat-label">Van Sales Due</div></div></div>
+  <div class="col-md-3 col-6"><div class="stat-card sc-schemeclaims"><div class="stat-value">{{ (scheme_claim_pending)|inr(0) }}</div><div class="stat-label">Scheme Claims Pending</div></div></div>
+</div>
+{% endmacro %}
+
+{% macro widget_targets() %}
+<div class="card mb-3">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span><i class="bi bi-bullseye text-secondary"></i> Sales Target — MTD ({{ month_name }} {{ year }})</span>
+    <a href="{{ url_for('targets_view') }}" class="small">Open Targets →</a>
+  </div>
+  <div class="card-body">
+    {% if target_summary %}
+    <div class="row g-3">
+      <div class="col-md-4">
+        <div class="text-muted small">Qty Sold</div>
+        <div class="fs-5 fw-bold">{{ target_summary.qty_actual|inrn(2) }} <span class="fs-6 text-muted fw-normal">/ {{ target_summary.qty_prorated|inrn(2) }} pace</span></div>
+        <div class="progress mt-1" style="height:6px">
+          <div class="progress-bar {% if (target_summary.qty_pct or 0) >= 100 %}bg-success{% elif (target_summary.qty_pct or 0) >= 75 %}bg-warning{% else %}bg-danger{% endif %}" style="width: {{ [target_summary.qty_pct or 0, 100]|min }}%"></div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="text-muted small">Sales Value (Expected)</div>
+        <div class="fs-5 fw-bold">{{ (target_summary.expected_actual)|inr(2) }} <span class="fs-6 text-muted fw-normal">/ {{ (target_summary.value_prorated)|inr(2) }} pace</span></div>
+        <div class="progress mt-1" style="height:6px">
+          <div class="progress-bar {% if (target_summary.value_pct or 0) >= 100 %}bg-success{% elif (target_summary.value_pct or 0) >= 75 %}bg-warning{% else %}bg-danger{% endif %}" style="width: {{ [target_summary.value_pct or 0, 100]|min }}%"></div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="text-muted small">Discount (fixed cap)</div>
+        <div class="fs-5 fw-bold {% if (target_summary.discount_pct or 0) > 100 %}text-danger{% endif %}">{{ (target_summary.discount_actual)|inr(2) }} <span class="fs-6 text-muted fw-normal">/ {{ (target_summary.discount_cap)|inr(2) }} cap</span></div>
+        <div class="progress mt-1" style="height:6px">
+          <div class="progress-bar {% if (target_summary.discount_pct or 0) > 100 %}bg-danger{% elif (target_summary.discount_pct or 0) >= 75 %}bg-warning{% else %}bg-success{% endif %}" style="width: {{ [target_summary.discount_pct or 0, 100]|min }}%"></div>
+        </div>
+      </div>
+    </div>
+    <div class="text-muted small mt-2">Incentive earned so far: <strong>{{ (target_summary.incentive_mtd)|inr(2) }}</strong> &middot;
+      across {{ target_summary.employee_count }} salesperson(s) with a whole-month target set.</div>
+    {% else %}
+    <p class="text-muted mb-0">No sales targets set for this month yet. <a href="{{ url_for('targets_view') }}">Set one on the Targets tab →</a></p>
+    {% endif %}
+  </div>
+</div>
+{% endmacro %}
+
+{% macro widget_low_stock() %}
+<div class="card mb-3">
+  <div class="card-header"><i class="bi bi-exclamation-triangle text-danger"></i> Low Stock ({{ low_stock|length }})</div>
+  <div class="card-body">
+    {% if low_stock %}
+      {% for p in low_stock[:8] %}
+      <div class="alert-tile badge-low">
+        <span>{{ p.ProductName }} <span class="text-muted">({{ p.SKU or '-' }})</span></span>
+        <span>{{ p.CurrentStock|round(1) }} / min {{ p.MinStock|round(1) }} {{ p.Unit }}</span>
+      </div>
+      {% endfor %}
+      <a href="{{ url_for('inventory_list', filter='low') }}" class="small">View all low stock items →</a>
+    {% else %}<p class="text-muted mb-0">No products below minimum stock.</p>{% endif %}
+  </div>
+</div>
+{% endmacro %}
+
+{% macro widget_over_stock() %}
+<div class="card mb-3">
+  <div class="card-header"><i class="bi bi-arrow-up-circle text-warning"></i> Overstock ({{ over_stock|length }})</div>
+  <div class="card-body">
+    {% if over_stock %}
+      {% for p in over_stock[:8] %}
+      <div class="alert-tile badge-over">
+        <span>{{ p.ProductName }}</span>
+        <span>{{ p.CurrentStock|round(1) }} / max {{ p.MaxStock|round(1) }} {{ p.Unit }}</span>
+      </div>
+      {% endfor %}
+      <a href="{{ url_for('inventory_list', filter='over') }}" class="small">View all overstock items →</a>
+    {% else %}<p class="text-muted mb-0">No products above maximum stock.</p>{% endif %}
+  </div>
+</div>
+{% endmacro %}
+
+{% macro widget_maintenance_due() %}
+<div class="card mb-3">
+  <div class="card-header"><i class="bi bi-tools text-warning"></i> Vehicle Maintenance Due (next 7 days) ({{ maintenance|length }})</div>
+  <div class="card-body">
+    {% if maintenance %}
+      {% for m in maintenance %}
+      <div class="alert-tile badge-over">
+        <span>{{ m.RegistrationNumber }} — {{ m.ServiceType }}</span>
+        <span>Due {{ m.NextDueDate }}</span>
+      </div>
+      {% endfor %}
+    {% else %}<p class="text-muted mb-0">No maintenance due in the next 7 days.</p>{% endif %}
+  </div>
+</div>
+{% endmacro %}
+
+{% macro widget_docs_expiring() %}
+<div class="card mb-3">
+  <div class="card-header"><i class="bi bi-file-earmark-text text-danger"></i> Vehicle Documents Expiring (30 days) ({{ docs|length }})</div>
+  <div class="card-body">
+    {% if docs %}
+      {% for d in docs %}
+      <div class="alert-tile badge-low">
+        <span>{{ d.RegistrationNumber }} — {{ d.DocType }}</span>
+        <span>Expires {{ d.ExpiryDate }}</span>
+      </div>
+      {% endfor %}
+    {% else %}<p class="text-muted mb-0">No documents expiring in the next 30 days.</p>{% endif %}
+  </div>
+</div>
+{% endmacro %}
+
+{% macro widget_salary_status() %}
+<div class="card mb-3">
+  <div class="card-header"><i class="bi bi-calendar-month text-warning"></i> Salary — {{ month_name }} {{ year }}</div>
+  <div class="card-body">
+    {% if missing_salary %}
+      <p class="mb-1 small text-muted">Not yet generated:</p>
+      {% for e in missing_salary[:6] %}
+      <div class="alert-tile badge-over"><span>{{ e.EmployeeName }}</span><span>{{ e.Designation }}</span></div>
+      {% endfor %}
+    {% endif %}
+    {% if pending_salary %}
+      <p class="mb-1 small text-muted mt-2">Generated, not yet paid:</p>
+      {% for s in pending_salary[:6] %}
+      <div class="alert-tile badge-low"><span>{{ s.EmployeeName }}</span><span>{{ (s.NetPayable)|inr(0) }}</span></div>
+      {% endfor %}
+    {% endif %}
+    {% if not missing_salary and not pending_salary %}<p class="text-muted mb-0">All salaries generated and paid for this month.</p>{% endif %}
+    <a href="{{ url_for('salary_month') }}" class="small">Go to salary schedule →</a>
+  </div>
+</div>
+{% endmacro %}
+
+{% macro widget_active_advances() %}
+<div class="card mb-3">
+  <div class="card-header"><i class="bi bi-wallet2 text-info"></i> Active Employee Advances ({{ advances|length }})</div>
+  <div class="card-body">
+    {% if advances %}
+      {% for a in advances[:8] %}
+      <div class="alert-tile badge-over">
+        <span>{{ a.EmployeeName }}</span>
+        <span>Balance {{ (a.BalanceRemaining)|inr(0) }}</span>
+      </div>
+      {% endfor %}
+    {% else %}<p class="text-muted mb-0">No outstanding employee advances.</p>{% endif %}
+  </div>
+</div>
+{% endmacro %}
+
+{% macro widget_gst_due() %}
+<div class="card mb-3">
+  <div class="card-header"><i class="bi bi-receipt text-danger"></i> GST Filing Due (next 14 days) ({{ gst_due|length }})</div>
+  <div class="card-body">
+    {% if gst_due %}
+      {% for d in gst_due %}
+      <div class="alert-tile badge-low">
+        <span>{{ d.return_type }} ({{ d.period }})</span>
+        <span>Due {{ d.due_date.strftime('%d %b %Y') }}</span>
+      </div>
+      {% endfor %}
+    {% else %}<p class="text-muted mb-0">Nothing due in the next 14 days.</p>{% endif %}
+    <a href="{{ url_for('gst_dashboard') }}" class="small">Go to GST Filing →</a>
+  </div>
+</div>
+{% endmacro %}
+
+{% set widget_renderers = {
+  'stats': widget_stats,
+  'targets': widget_targets,
+  'low_stock': widget_low_stock,
+  'over_stock': widget_over_stock,
+  'maintenance_due': widget_maintenance_due,
+  'docs_expiring': widget_docs_expiring,
+  'salary_status': widget_salary_status,
+  'active_advances': widget_active_advances,
+  'gst_due': widget_gst_due,
+} %}
+
+{% set admin_only_widgets = ['salary_status', 'active_advances', 'gst_due'] %}
+<div class="row g-3">
+  {% for key in widget_order %}
+    {% if widget_visible.get(key, True) and key in widget_renderers
+          and not (key in admin_only_widgets and not (current_user and current_user.Role == 'Admin')) %}
+      {% if key in ('stats', 'targets') %}
+        <div class="col-12">{{ widget_renderers[key]() }}</div>
+      {% else %}
+        <div class="col-lg-6">{{ widget_renderers[key]() }}</div>
+      {% endif %}
+    {% endif %}
+  {% endfor %}
+</div>
+{% if not widget_order %}
+  <p class="text-muted">No dashboard widgets configured.
+  {% if current_user and current_user.Role == 'Admin' %}<a href="{{ url_for('dashboard_customize') }}">Customize your dashboard →</a>{% endif %}</p>
+{% endif %}
+{% endblock %}

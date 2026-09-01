@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Employees{% endblock %}
+{% block page_title %}Employees{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-end gap-2 mb-3">
+  <a href="{{ url_for('export_module', module='employees') }}" class="btn btn-outline-secondary"><i class="bi bi-file-earmark-excel"></i> Export to Excel</a>
+  <a href="{{ url_for('export_module_pdf', module='employees') }}" class="btn btn-outline-secondary"><i class="bi bi-file-earmark-pdf"></i> PDF</a>
+  <a href="{{ url_for('employee_form') }}" class="btn btn-brand"><i class="bi bi-plus-lg"></i> Add Employee</a>
+</div>
+<div class="d-flex justify-content-end mb-2">
+  <a href="{{ url_for('columns_customize', module='Employee') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-layout-three-columns"></i> Customize Columns</a>
+</div>
+<div class="card">
+  <div class="table-responsive">
+  <table class="table table-hover mb-0 align-middle" id="tbl-employee">
+    <thead><tr><th data-col="name">Name</th><th data-col="designation">Designation</th><th data-col="phone">Phone</th>
+      <th data-col="join_date">Join Date</th><th data-col="monthly_salary">Monthly Salary</th><th data-col="status">Status</th><th></th></tr></thead>
+    <tbody>
+      {% for e in employees %}
+      <tr>
+        <td data-col="name">{{ e.EmployeeName }}</td><td data-col="designation">{{ e.Designation or '-' }}</td><td data-col="phone">{{ e.Phone or '-' }}</td>
+        <td data-col="join_date">{{ e.JoinDate or '-' }}</td><td data-col="monthly_salary">{{ (e.MonthlySalary)|inr(2) }}</td>
+        <td data-col="status">{% if e.Status=='Active' %}<span class="badge badge-ok">Active</span>{% else %}<span class="badge text-bg-secondary">{{ e.Status }}</span>{% endif %}</td>
+        <td class="text-end"><a href="{{ url_for('employee_form', eid=e.EmployeeID) }}" class="btn btn-sm btn-outline-secondary">Edit</a></td>
+      </tr>
+      {% else %}<tr><td colspan="7" class="text-center text-muted py-4">No employees yet.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+window.LIST_COLUMNS_TABLE_ID = 'tbl-employee';
+window.LIST_COLUMNS_PREFS = {{ columns|tojson }};
+</script>
+<script src="{{ url_for('static', filename='js/list-columns.js') }}"></script>
+{% endblock %}

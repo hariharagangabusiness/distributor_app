@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit' if supplier else 'Add' }} Supplier{% endblock %}
+{% block page_title %}{{ 'Edit Supplier' if supplier else 'Add Supplier' }}{% endblock %}
+{% block content %}
+<div class="card" style="max-width:640px"><div class="card-body">
+<form method="post">
+  <div class="row g-3">
+    <div class="col-md-8"><label class="form-label">Supplier Name *</label>
+      <input required name="supplier_name" class="form-control" value="{{ supplier.SupplierName if supplier else '' }}"></div>
+    <div class="col-md-4"><label class="form-label">GSTIN</label>
+      <input name="gstin" class="form-control" value="{{ supplier.GSTIN if supplier else '' }}"></div>
+    <div class="col-md-6"><label class="form-label">Contact Person</label>
+      <input name="contact_person" class="form-control" value="{{ supplier.ContactPerson if supplier else '' }}"></div>
+    <div class="col-md-6"><label class="form-label">Phone</label>
+      <input name="phone" class="form-control" value="{{ supplier.Phone if supplier else '' }}"></div>
+    <div class="col-md-6"><label class="form-label">Email</label>
+      <input name="email" class="form-control" value="{{ supplier.Email if supplier else '' }}"></div>
+    <div class="col-md-12"><label class="form-label">Address</label>
+      <textarea name="address" class="form-control" rows="2">{{ supplier.Address if supplier else '' }}</textarea></div>
+    <div class="col-md-12 form-check ms-1">
+      <input type="checkbox" class="form-check-input" name="active" id="active" {% if not supplier or supplier.Active %}checked{% endif %}>
+      <label class="form-check-label" for="active">Active</label></div>
+  </div>
+  {% include "_custom_fields_form.html" %}
+  <div class="mt-4 d-flex gap-2">
+    <button class="btn btn-brand" type="submit">Save Supplier</button>
+    <a href="{{ url_for('suppliers_list') }}" class="btn btn-outline-secondary">Cancel</a>
+  </div>
+</form>
+</div></div>
+{% endblock %}

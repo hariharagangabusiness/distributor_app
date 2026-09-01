@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Log Maintenance{% endblock %}
+{% block page_title %}Log Vehicle Maintenance{% endblock %}
+{% block content %}
+<div class="card" style="max-width:720px"><div class="card-body">
+<form method="post">
+  <div class="row g-3">
+    <div class="col-md-6"><label class="form-label">Vehicle *</label>
+      <select required name="vehicle_id" class="form-select">
+        <option value="">-- select --</option>
+        {% for v in vehicles %}<option value="{{ v.VehicleID }}">{{ v.RegistrationNumber }}</option>{% endfor %}
+      </select></div>
+    <div class="col-md-6"><label class="form-label">Service Type *</label>
+      <select required name="service_type" class="form-select">
+        {% for t in service_types %}<option>{{ t }}</option>{% endfor %}
+      </select></div>
+    <div class="col-md-4"><label class="form-label">Service Date *</label>
+      <input required type="date" name="service_date" class="form-control" value="{{ today }}"></div>
+    <div class="col-md-4"><label class="form-label">Odometer at service (km)</label>
+      <input type="number" step="1" name="odometer" class="form-control"></div>
+    <div class="col-md-4"><label class="form-label">Cost</label>
+      <input type="number" step="0.01" name="cost" class="form-control" value="0"></div>
+    <div class="col-md-6"><label class="form-label">Next Due Date</label>
+      <input type="date" name="next_due_date" class="form-control"></div>
+    <div class="col-md-6"><label class="form-label">Next Due Odometer (km)</label>
+      <input type="number" step="1" name="next_due_odometer" class="form-control"></div>
+    <div class="col-md-6"><label class="form-label">Service Center</label>
+      <input name="service_center" class="form-control"></div>
+    <div class="col-md-12"><label class="form-label">Notes</label>
+      <textarea name="notes" class="form-control" rows="2"></textarea></div>
+  </div>
+  {% include "_custom_fields_form.html" %}
+  <div class="mt-4 d-flex gap-2">
+    <button class="btn btn-brand" type="submit">Save Record</button>
+    <a href="{{ url_for('maintenance_list') }}" class="btn btn-outline-secondary">Cancel</a>
+  </div>
+</form>
+</div></div>
+{% endblock %}

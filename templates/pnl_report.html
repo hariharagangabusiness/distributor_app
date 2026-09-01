@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Profit & Loss{% endblock %}
+{% block page_title %}Profit &amp; Loss{% endblock %}
+{% block content %}
+<div class="card mb-3"><div class="card-body">
+  <form method="get" class="row g-3 align-items-end">
+    <div class="col-md-3"><label class="form-label">From</label>
+      <input type="date" name="from" class="form-control" value="{{ date_from }}"></div>
+    <div class="col-md-3"><label class="form-label">To</label>
+      <input type="date" name="to" class="form-control" value="{{ date_to }}"></div>
+    <div class="col-md-2"><button type="submit" class="btn btn-brand">Update</button></div>
+  </form>
+</div></div>
+
+<div class="alert alert-info">
+  A working-paper view computed from Sales, Purchases/Products, Operating Expenses, and Salary Payments already
+  recorded elsewhere in the app — nothing is entered here. Cost of Goods Sold uses each product's <em>current</em>
+  cost price, not necessarily what it cost at the time of an older sale, so treat it as a close estimate rather
+  than an exact figure for past periods where costs have changed.
+</div>
+
+<div class="card">
+  <div class="table-responsive">
+  <table class="table mb-0">
+    <tbody>
+      <tr class="table-light"><td colspan="2"><strong>Revenue</strong></td></tr>
+      <tr><td class="ps-4">Sales (taxable, excl. GST)</td><td class="text-end">{{ (revenue)|inr(2) }}</td></tr>
+
+      <tr class="table-light"><td colspan="2"><strong>Cost of Goods Sold</strong></td></tr>
+      <tr><td class="ps-4">Product cost of goods sold</td><td class="text-end">{{ (cogs)|inr(2) }}</td></tr>
+
+      <tr class="table-secondary"><td><strong>Gross Profit</strong></td><td class="text-end"><strong>{{ (gross_profit)|inr(2) }}</strong></td></tr>
+
+      <tr class="table-light"><td colspan="2"><strong>Incentive Income</strong></td></tr>
+      <tr><td class="ps-4">Distributor incentive (units sold × Incentive/unit)</td><td class="text-end">{{ (incentive_income)|inr(2) }}</td></tr>
+
+      <tr class="table-light"><td colspan="2"><strong>Operating Expenses</strong></td></tr>
+      {% for r in expense_rows %}
+      <tr><td class="ps-4">{{ r.Category }}</td><td class="text-end">{{ (r.total)|inr(2) }}</td></tr>
+      {% else %}
+      <tr><td class="ps-4 text-muted">No expenses in this period</td><td class="text-end">-</td></tr>
+      {% endfor %}
+      <tr><td class="ps-4"><em>Total Operating Expenses</em></td><td class="text-end"><em>{{ (total_expenses)|inr(2) }}</em></td></tr>
+
+      <tr class="table-light"><td colspan="2"><strong>Salary Payouts</strong></td></tr>
+      <tr><td class="ps-4">Salary paid (Status = Paid)</td><td class="text-end">{{ (total_salary)|inr(2) }}</td></tr>
+
+      <tr class="table-secondary"><td><strong>Total Operating Costs</strong></td><td class="text-end"><strong>{{ (total_operating_costs)|inr(2) }}</strong></td></tr>
+
+      <tr class="{% if net_profit >= 0 %}table-success{% else %}table-danger{% endif %}">
+        <td><strong>Net Profit{% if net_profit < 0 %} (Loss){% endif %}</strong></td>
+        <td class="text-end"><strong>{{ (net_profit)|inr(2) }}</strong></td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% block title %}Reassign Sale{% endblock %}
+{% block page_title %}Reassign — {{ sale.InvoiceNumber }}{% endblock %}
+{% block content %}
+<div class="card mb-3"><div class="card-body">
+  <p class="text-muted mb-0">This sale is billed to the system "Unassigned" customer. For each product line, break
+    its quantity down across one or more customers — pick an existing customer or type a new one's details directly
+    (no need to add them separately first). Splits going to the <em>same</em> new customer name+phone in this one
+    submission are grouped into a single new customer and sale. Any quantity you don't assign a split to stays
+    behind on this sale.</p>
+</div></div>
+
+<form method="post">
+<div class="table-responsive">
+<table class="table align-middle">
+  <thead><tr><th>Product</th><th>Total Qty</th><th>Rate</th><th style="min-width:420px">Split across customers</th></tr></thead>
+  <tbody>
+    {% for l in lines %}
+    <tr>
+      <td>{{ l.ProductName }}</td>
+      <td>{{ l.Qty }} {{ l.Unit }}</td>
+      <td>{{ (l.UnitPrice)|inr(2) }}</td>
+      <td>
+        <div class="splits-container" data-line="{{ l.LineID }}" data-total-qty="{{ l.Qty }}" data-unit="{{ l.Unit }}"></div>
+        <div class="small text-muted mt-1 remaining-note" data-line="{{ l.LineID }}"></div>
+        <button type="button" class="btn btn-sm btn-outline-secondary mt-1 add-split-btn" data-line="{{ l.LineID }}">
+          <i class="bi bi-plus-lg"></i> Add split
+        </button>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<div class="d-flex gap-2">
+  <button type="submit" class="btn btn-brand">Save Reassignment</button>
+  <a href="{{ url_for('sale_view', sid=sale.SaleID) }}" class="btn btn-outline-secondary">Cancel</a>
+</div>
+</form>
+
+<template id="split-row-template">
+  <div class="split-row border rounded p-2 mb-2">
+    <div class="d-flex gap-1 align-items-start flex-wrap">
+      <input type="number" step="any" min="0" class="form-control form-control-sm split-qty" style="width:100px" placeholder="Qty">
+      <select class="form-select form-select-sm split-choice" style="width:220px">
+        <option value="keep">-- pick a customer --</option>
+        <option value="new">-- type a new customer --</option>
+        {% for c in customers %}
+        <option value="existing:{{ c.CustomerID }}">{{ c.CustomerName }}</option>
+        {% endfor %}
+      </select>
+      <button type="button" class="btn btn-sm btn-outline-danger remove-split-btn"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div class="new-customer-fields mt-1" style="display:none">
+      <input type="text" class="form-control form-control-sm mb-1 f-name" placeholder="Customer name *">
+      <input type="text" class="form-control form-control-sm mb-1 f-phone" placeholder="Phone">
+      <input type="text" class="form-control form-control-sm mb-1 f-address" placeholder="Address">
+      <input type="text" class="form-control form-control-sm mb-1 f-gstin" placeholder="GSTIN (optional)">
+      <select class="form-select form-select-sm f-state">
+        <option value="">-- state (for GST) --</option>
+        {% for code, name in indian_states %}
+        <option value="{{ code }}">{{ name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+</template>
+{% endblock %}
+{% block scripts %}
+<script>
+function updateRemaining(container) {
+  const total = parseFloat(container.dataset.totalQty);
+  let allocated = 0;
+  container.querySelectorAll('.split-row').forEach(row => {
+    const choice = row.querySelector('.split-choice').value;
+    const qty = parseFloat(row.querySelector('.split-qty').value) || 0;
+    if (choice && choice !== 'keep') allocated += qty;
+  });
+  const remaining = Math.round((total - allocated) * 10000) / 10000;
+  const note = document.querySelector(`.remaining-note[data-line="${container.dataset.line}"]`);
+  if (remaining > 0) {
+    note.textContent = `${remaining} ${container.dataset.unit} not yet assigned — stays on this Unassigned sale.`;
+    note.className = 'small text-muted mt-1 remaining-note';
+  } else if (remaining < 0) {
+    note.textContent = `Over-allocated by ${-remaining} ${container.dataset.unit} — reduce a quantity above.`;
+    note.className = 'small text-danger mt-1 remaining-note';
+  } else {
+    note.textContent = 'Fully assigned.';
+    note.className = 'small text-success mt-1 remaining-note';
+  }
+  note.dataset.line = container.dataset.line;
+}
+
+function wireRow(row, lineId, container) {
+  const select = row.querySelector('.split-choice');
+  const qtyInput = row.querySelector('.split-qty');
+  const box = row.querySelector('.new-customer-fields');
+  const removeBtn = row.querySelector('.remove-split-btn');
+
+  select.name = `split_choice_${lineId}[]`;
+  qtyInput.name = `split_qty_${lineId}[]`;
+  row.querySelector('.f-name').name = `split_new_name_${lineId}[]`;
+  row.querySelector('.f-phone').name = `split_new_phone_${lineId}[]`;
+  row.querySelector('.f-address').name = `split_new_address_${lineId}[]`;
+  row.querySelector('.f-gstin').name = `split_new_gstin_${lineId}[]`;
+  row.querySelector('.f-state').name = `split_new_state_${lineId}[]`;
+
+  function sync() {
+    box.style.display = select.value === 'new' ? '' : 'none';
+    updateRemaining(container);
+  }
+  select.addEventListener('change', sync);
+  qtyInput.addEventListener('input', () => updateRemaining(container));
+  removeBtn.addEventListener('click', () => { row.remove(); updateRemaining(container); });
+  sync();
+}
+
+function addSplitRow(lineId, prefillQty) {
+  const container = document.querySelector(`.splits-container[data-line="${lineId}"]`);
+  const tpl = document.getElementById('split-row-template');
+  const row = tpl.content.firstElementChild.cloneNode(true);
+  if (prefillQty !== undefined) row.querySelector('.split-qty').value = prefillQty;
+  container.appendChild(row);
+  wireRow(row, lineId, container);
+}
+
+document.querySelectorAll('.add-split-btn').forEach(btn => {
+  btn.addEventListener('click', () => addSplitRow(btn.dataset.line));
+});
+
+// Start each line with one empty split row so the common case (whole line to
+// one customer) only needs picking a customer and typing the quantity.
+document.querySelectorAll('.splits-container').forEach(container => {
+  addSplitRow(container.dataset.line);
+});
+</script>
+{% endblock %}

@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Maintenance{% endblock %}
+{% block page_title %}Vehicle Maintenance{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-end gap-2 mb-3">
+  <a href="{{ url_for('export_module', module='maintenance') }}" class="btn btn-outline-secondary"><i class="bi bi-file-earmark-excel"></i> Export to Excel</a>
+  <a href="{{ url_for('export_module_pdf', module='maintenance') }}" class="btn btn-outline-secondary"><i class="bi bi-file-earmark-pdf"></i> PDF</a>
+  <a href="{{ url_for('maintenance_form') }}" class="btn btn-brand"><i class="bi bi-plus-lg"></i> Log Maintenance</a>
+</div>
+<div class="d-flex justify-content-end mb-2">
+  <a href="{{ url_for('columns_customize', module='Maintenance') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-layout-three-columns"></i> Customize Columns</a>
+</div>
+
+{% if due %}
+<div class="card mb-3">
+  <div class="card-header"><i class="bi bi-exclamation-triangle text-warning"></i> Due within 30 days</div>
+  <div class="card-body">
+    {% for m in due %}
+    <div class="alert-tile badge-over"><span>{{ m.RegistrationNumber }} — {{ m.ServiceType }}</span><span>Due {{ m.NextDueDate }}</span></div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-header">Service History</div>
+  <div class="table-responsive">
+  <table class="table mb-0 align-middle" id="tbl-maintenance">
+    <thead><tr><th data-col="vehicle">Vehicle</th><th data-col="service_type">Service Type</th><th data-col="date">Date</th>
+      <th data-col="odometer">Odometer</th><th data-col="next_due_date">Next Due Date</th><th data-col="cost">Cost</th><th data-col="service_center">Service Center</th></tr></thead>
+    <tbody>
+      {% for r in records %}
+      <tr>
+        <td data-col="vehicle">{{ r.RegistrationNumber }}</td><td data-col="service_type">{{ r.ServiceType }}</td><td data-col="date">{{ r.ServiceDate }}</td>
+        <td data-col="odometer">{{ r.Odometer|round(0) if r.Odometer else '-' }}</td><td data-col="next_due_date">{{ r.NextDueDate or '-' }}</td>
+        <td data-col="cost">{{ (r.Cost)|inr(2) }}</td><td data-col="service_center">{{ r.ServiceCenter or '-' }}</td>
+      </tr>
+      {% else %}<tr><td colspan="7" class="text-center text-muted py-4">No maintenance records yet.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+window.LIST_COLUMNS_TABLE_ID = 'tbl-maintenance';
+window.LIST_COLUMNS_PREFS = {{ columns|tojson }};
+</script>
+<script src="{{ url_for('static', filename='js/list-columns.js') }}"></script>
+{% endblock %}

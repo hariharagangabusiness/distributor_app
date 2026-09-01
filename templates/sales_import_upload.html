@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Import Sales{% endblock %}
+{% block page_title %}Import Sales from Excel{% endblock %}
+{% block content %}
+<div class="card"><div class="card-body">
+  <p class="text-muted">
+    Download the template below, fill in one row per sale line, and upload it back here. Rows sharing the same
+    <strong>Invoice Number</strong> become one multi-line Sale — leave Invoice Number blank for a single-line sale
+    (each blank row becomes its own Sale). You'll get a chance to match/fix Customers and Products before anything
+    is saved.
+  </p>
+  <a href="{{ url_for('sales_import_template') }}" class="btn btn-outline-secondary mb-4"><i class="bi bi-download"></i> Download Template</a>
+
+  <form method="post" enctype="multipart/form-data">
+    <div class="row g-3">
+      <div class="col-md-8">
+        <label class="form-label">Filled-in Excel file (.xlsx) *</label>
+        <input required type="file" name="file" accept=".xlsx" class="form-control">
+      </div>
+      <div class="col-md-4 d-flex align-items-end">
+        <button type="submit" class="btn btn-primary w-100">Upload &amp; Review</button>
+      </div>
+    </div>
+  </form>
+</div></div>
+{% endblock %}

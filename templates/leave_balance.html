@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Leave Balances{% endblock %}
+{% block page_title %}Leave Balances — {{ year }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div class="btn-group">
+    <a class="btn btn-outline-secondary" href="{{ url_for('leave_balance', year=year-1) }}">&laquo; {{ year-1 }}</a>
+    <span class="btn btn-light disabled fw-bold">{{ year }}</span>
+    <a class="btn btn-outline-secondary" href="{{ url_for('leave_balance', year=year+1) }}">{{ year+1 }} &raquo;</a>
+  </div>
+  <a href="{{ url_for('attendance_month') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left"></i> Back to Attendance</a>
+</div>
+
+{% if not leave_types %}
+<div class="alert alert-warning">No leave types configured yet. <a href="{{ url_for('leave_types_admin') }}">Add one here</a>.</div>
+{% endif %}
+
+<div class="card">
+  <div class="table-responsive">
+    <table class="table mb-0 align-middle">
+      <thead>
+        <tr>
+          <th rowspan="2" class="align-middle">Employee</th>
+          {% for lt in leave_types %}<th colspan="3" class="text-center">{{ lt.LeaveTypeName }} ({{ lt.LeaveCode }})</th>{% endfor %}
+        </tr>
+        <tr>
+          {% for lt in leave_types %}
+          <th class="text-center small text-muted">Quota</th><th class="text-center small text-muted">Used</th><th class="text-center small text-muted">Balance</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td>{{ row.employee.EmployeeName }}</td>
+          {% for pt in row.per_type %}
+          <td class="text-center">{{ pt.quota|round(1) }}</td>
+          <td class="text-center">{{ pt.used|round(1) }}</td>
+          <td class="text-center {% if pt.balance <= 0 %}text-danger fw-bold{% endif %}">{{ pt.balance|round(1) }}</td>
+          {% endfor %}
+        </tr>
+        {% else %}
+        <tr><td colspan="{{ 1 + leave_types|length * 3 }}" class="text-center text-muted py-4">No active employees.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+<p class="text-muted small mt-2">Quota is shared — the same figure for every employee, set on the <a href="{{ url_for('leave_types_admin') }}">Leave Types</a> page. "Used" counts only leave days that were actually covered by quota (paid); days taken beyond quota became Loss-of-Pay days instead and don't reduce this balance further.</p>
+{% endblock %}

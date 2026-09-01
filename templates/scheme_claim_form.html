@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit' if claim else 'Add' }} Scheme Claim{% endblock %}
+{% block page_title %}{{ 'Edit Scheme Claim' if claim else 'Add Scheme Claim' }}{% endblock %}
+{% block content %}
+<div class="card" style="max-width:760px">
+  <div class="card-body">
+  <form method="post">
+    <div class="row g-3">
+      <div class="col-md-8">
+        <label class="form-label">Scheme Name *</label>
+        <input required name="scheme_name" class="form-control" placeholder="e.g. Q3 Volume Rebate, Diwali Promo"
+               value="{{ claim.SchemeName if claim else '' }}">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Date *</label>
+        <input required type="date" name="claim_date" class="form-control" value="{{ claim.ClaimDate if claim else today }}">
+      </div>
+      <div class="col-md-12">
+        <label class="form-label">Applicable Products / Line</label>
+        <input name="applicable_products" class="form-control" placeholder="e.g. all detergent SKUs, or specific product names"
+               value="{{ claim.ApplicableProducts if claim else '' }}">
+      </div>
+      <div class="col-md-12">
+        <label class="form-label">Description / Scheme Terms</label>
+        <textarea name="description" class="form-control" rows="3">{{ claim.Description if claim else '' }}</textarea>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Claim Amount *</label>
+        <input required type="number" step="0.01" name="claim_amount" class="form-control" value="{{ claim.ClaimAmount if claim else 0 }}">
+      </div>
+      <div class="col-md-12">
+        <label class="form-label">Notes</label>
+        <textarea name="notes" class="form-control" rows="2">{{ claim.Notes if claim else '' }}</textarea>
+      </div>
+    </div>
+    <div class="mt-4 d-flex gap-2">
+      <button type="submit" class="btn btn-brand">Save Claim</button>
+      <a href="{{ url_for('scheme_claims_list') }}" class="btn btn-outline-secondary">Cancel</a>
+    </div>
+  </form>
+  </div>
+</div>
+{% endblock %}

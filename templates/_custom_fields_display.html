@@ -1,0 +1,31 @@
+{# Reusable read-only custom-fields display block for view pages.
+   Include with: {% include "_custom_fields_display.html" %}
+   Requires the calling template to set:
+     custom_fields       - list of CustomFieldDefinitions rows
+     custom_values       - dict of {FieldKey: value}
+     custom_attachments  - dict {FieldID: [Attachments rows]}, for attachment-type fields
+#}
+{% if custom_fields %}
+<div class="card mt-3">
+  <div class="card-header">Custom Fields</div>
+  <div class="card-body">
+    <div class="row g-2">
+      {% for cf in custom_fields %}
+      {% set val = custom_values.get(cf.FieldKey, '') %}
+      <div class="col-md-4"><span class="text-muted small">{{ cf.FieldLabel }}</span><br>
+        {% if cf.FieldType == 'checkbox' %}
+          {{ 'Yes' if val == '1' else 'No' }}
+        {% elif cf.FieldType == 'attachment' %}
+          {% set cf_atts = (custom_attachments or {}).get(cf.FieldID, []) %}
+          {% if cf_atts %}
+            {% for a in cf_atts %}<a href="{{ url_for('attachment_download', attachment_id=a.AttachmentID) }}" class="d-block"><i class="bi bi-file-earmark"></i> {{ a.FileName }}</a>{% endfor %}
+          {% else %}-{% endif %}
+        {% else %}
+          {{ val or '-' }}
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endif %}

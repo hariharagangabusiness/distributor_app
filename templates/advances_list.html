@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Advance Payments{% endblock %}
+{% block page_title %}Employee Advance Payments{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-end gap-2 mb-3">
+  <a href="{{ url_for('export_module', module='advances') }}" class="btn btn-outline-secondary"><i class="bi bi-file-earmark-excel"></i> Export to Excel</a>
+  <a href="{{ url_for('export_module_pdf', module='advances') }}" class="btn btn-outline-secondary"><i class="bi bi-file-earmark-pdf"></i> PDF</a>
+  <a href="{{ url_for('advance_form') }}" class="btn btn-brand"><i class="bi bi-plus-lg"></i> Record Advance</a>
+</div>
+<div class="d-flex justify-content-end mb-2">
+  <a href="{{ url_for('columns_customize', module='Advance') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-layout-three-columns"></i> Customize Columns</a>
+</div>
+<div class="card">
+  <div class="table-responsive">
+  <table class="table table-hover mb-0 align-middle" id="tbl-advance">
+    <thead><tr><th data-col="employee">Employee</th><th data-col="date">Date</th><th data-col="amount">Amount</th>
+      <th data-col="reason">Reason</th><th data-col="repay_months">Repay (months)</th><th data-col="monthly_deduction">Monthly Deduction</th>
+      <th data-col="balance">Balance</th><th data-col="status">Status</th><th></th></tr></thead>
+    <tbody>
+      {% for a in advances %}
+      <tr>
+        <td data-col="employee">{{ a.EmployeeName }}</td><td data-col="date">{{ a.AdvanceDate }}</td><td data-col="amount">{{ (a.Amount)|inr(2) }}</td>
+        <td data-col="reason">{{ a.Reason or '-' }}</td><td data-col="repay_months">{{ a.RepaymentMonths }}</td><td data-col="monthly_deduction">{{ (a.MonthlyDeduction)|inr(2) }}</td>
+        <td data-col="balance">{{ (a.BalanceRemaining)|inr(2) }}</td>
+        <td data-col="status">{% if a.Status=='Active' %}<span class="badge badge-over">Active</span>{% else %}<span class="badge badge-ok">Closed</span>{% endif %}</td>
+        <td class="text-end">
+          <a href="{{ url_for('advance_view', aid=a.AdvanceID) }}" class="btn btn-sm btn-outline-secondary">View</a>
+          {% if a.Status=='Active' %}
+          <form method="post" action="{{ url_for('advance_close', aid=a.AdvanceID) }}" onsubmit="return confirm('Write off remaining balance and close this advance?');" class="d-inline">
+            <button class="btn btn-sm btn-outline-secondary" type="submit">Close</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}<tr><td colspan="9" class="text-center text-muted py-4">No advances recorded yet.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+<p class="text-muted small mt-2">Advances are automatically deducted from salary each month (up to the monthly deduction amount) when you generate and pay the monthly salary schedule.</p>
+{% endblock %}
+{% block scripts %}
+<script>
+window.LIST_COLUMNS_TABLE_ID = 'tbl-advance';
+window.LIST_COLUMNS_PREFS = {{ columns|tojson }};
+</script>
+<script src="{{ url_for('static', filename='js/list-columns.js') }}"></script>
+{% endblock %}

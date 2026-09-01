@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Inventory{% endblock %}
+{% block page_title %}Products & Stock{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between mb-3">
+  <form class="d-flex gap-2" method="get">
+    <input type="text" name="q" value="{{ q }}" class="form-control" placeholder="Search product / SKU" style="width:260px">
+    <select name="filter" class="form-select" style="width:180px" onchange="this.form.submit()">
+      <option value="" {% if filt=='' %}selected{% endif %}>All products</option>
+      <option value="low" {% if filt=='low' %}selected{% endif %}>Low stock only</option>
+      <option value="over" {% if filt=='over' %}selected{% endif %}>Overstock only</option>
+    </select>
+    <button class="btn btn-outline-secondary" type="submit">Filter</button>
+  </form>
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('export_module', module='products') }}" class="btn btn-outline-secondary"><i class="bi bi-file-earmark-excel"></i> Export to Excel</a>
+  <a href="{{ url_for('export_module_pdf', module='products') }}" class="btn btn-outline-secondary"><i class="bi bi-file-earmark-pdf"></i> PDF</a>
+    <a href="{{ url_for('inventory_form') }}" class="btn btn-brand"><i class="bi bi-plus-lg"></i> Add Product</a>
+  </div>
+</div>
+<div class="d-flex justify-content-end mb-2">
+  <a href="{{ url_for('columns_customize', module='Product') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-layout-three-columns"></i> Customize Columns</a>
+</div>
+
+<div class="card">
+  <div class="table-responsive">
+  <table class="table table-hover mb-0 align-middle" id="tbl-product">
+    <thead><tr>
+      <th data-col="product_name">Product</th><th data-col="sku">SKU</th><th data-col="category">Category</th>
+      <th data-col="stock">Stock</th><th data-col="min_stock">Min</th><th data-col="max_stock">Max</th>
+      <th data-col="cost_price">Cost</th><th data-col="selling_price">Selling</th>
+      <th data-col="scheme">Scheme</th>
+      <th data-col="incentive">Incentive</th>
+      <th data-col="supplier">Supplier</th><th data-col="status">Status</th><th>
+    </tr></thead>
+    <tbody>
+      {% for p in products %}
+      <tr>
+        <td data-col="product_name">{{ p.ProductName }}</td>
+        <td data-col="sku">{{ p.SKU or '-' }}</td>
+        <td data-col="category">{{ p.Category or '-' }}</td>
+        <td data-col="stock">{{ p.CurrentStock|round(1) }} {{ p.Unit }}</td>
+        <td data-col="min_stock">{{ p.MinStock|round(1) }}</td>
+        <td data-col="max_stock">{{ p.MaxStock|round(1) }}</td>
+        <td data-col="cost_price">{{ (p.CostPrice)|inr(2) }}</td>
+        <td data-col="selling_price">{{ (p.SellingPrice)|inr(2) }}</td>
+        <td data-col="scheme">{% if p.SchemePercent %}<span class="badge text-bg-info">{{ p.SchemeName or 'Scheme' }} {{ p.SchemePercent|round(1) }}%</span>{% else %}-{% endif %}</td>
+        <td data-col="incentive">{% if p.IncentivePerUnit %}{{ (p.IncentivePerUnit)|inr(2) }}{% else %}-{% endif %}</td>
+        <td data-col="supplier">{{ p.DefaultSupplierName or '-' }}</td>
+        <td data-col="status">
+          {% if p.CurrentStock <= p.MinStock %}<span class="badge badge-low">Low</span>
+          {% elif p.MaxStock > 0 and p.CurrentStock >= p.MaxStock %}<span class="badge badge-over">Overstock</span>
+          {% else %}<span class="badge badge-ok">OK</span>{% endif %}
+        </td>
+        <td class="text-end">
+          <a href="{{ url_for('inventory_adjust', pid=p.ProductID) }}" class="btn btn-sm btn-outline-secondary">Adjust</a>
+          <a href="{{ url_for('inventory_form', pid=p.ProductID) }}" class="btn btn-sm btn-outline-secondary">Edit</a>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="13" class="text-center text-muted py-4">No products found.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+window.LIST_COLUMNS_TABLE_ID = 'tbl-product';
+window.LIST_COLUMNS_PREFS = {{ columns|tojson }};
+</script>
+<script src="{{ url_for('static', filename='js/list-columns.js') }}"></script>
+{% endblock %}

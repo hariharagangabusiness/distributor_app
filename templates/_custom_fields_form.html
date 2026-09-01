@@ -1,0 +1,69 @@
+{# Reusable custom-fields input block for add/edit forms.
+   Include with: {% include "_custom_fields_form.html" %}
+   Requires the calling template to set:
+     custom_fields      - list of CustomFieldDefinitions rows (from get_custom_field_defs())
+     custom_values      - dict of {FieldKey: value} (from get_custom_values()), {} for a new record
+     cf_record_id        - the current record's ID, or None/undefined for a not-yet-saved record
+     custom_attachments  - dict {FieldID: [Attachments rows]} (from get_custom_attachments()), {} if none
+#}
+{% if custom_fields %}
+<div class="row g-3 mt-1">
+  <div class="col-12"><hr class="my-2"><div class="text-muted small text-uppercase fw-semibold">Custom Fields</div></div>
+  {% for cf in custom_fields %}
+  {% set val = custom_values.get(cf.FieldKey, '') %}
+  <div class="col-md-6">
+    <label class="form-label">{{ cf.FieldLabel }}</label>
+    {% if cf.FieldType == 'text' %}
+      <input type="text" class="form-control" name="custom_{{ cf.FieldKey }}" value="{{ val }}">
+    {% elif cf.FieldType == 'number' %}
+      <input type="number" step="any" class="form-control" name="custom_{{ cf.FieldKey }}" value="{{ val }}">
+    {% elif cf.FieldType == 'date' %}
+      <input type="date" class="form-control" name="custom_{{ cf.FieldKey }}" value="{{ val }}">
+    {% elif cf.FieldType == 'dropdown' %}
+      <select class="form-select" name="custom_{{ cf.FieldKey }}">
+        <option value="">-- Select --</option>
+        {% for opt in (cf.DropdownOptions or '').split(',') %}
+          {% set opt = opt.strip() %}
+          {% if opt %}<option value="{{ opt }}" {% if opt == val %}selected{% endif %}>{{ opt }}</option>{% endif %}
+        {% endfor %}
+      </select>
+    {% elif cf.FieldType == 'checkbox' %}
+      <div class="form-check mt-2">
+        <input type="checkbox" class="form-check-input" name="custom_{{ cf.FieldKey }}" id="custom_{{ cf.FieldKey }}" {% if val == '1' %}checked{% endif %}>
+        <label class="form-check-label" for="custom_{{ cf.FieldKey }}">Yes</label>
+      </div>
+    {% elif cf.FieldType == 'attachment' %}
+      {% if cf_record_id %}
+        {% set cf_atts = (custom_attachments or {}).get(cf.FieldID, []) %}
+        <div class="border rounded p-2">
+          <form method="post" action="{{ url_for('attachment_upload', module='CustomField:' ~ cf.FieldID, record_id=cf_record_id) }}" enctype="multipart/form-data" class="d-flex gap-2 mb-2">
+            <input type="file" name="files" class="form-control form-control-sm">
+            <input type="hidden" name="return_to" value="{{ request.path }}">
+            <button type="submit" class="btn btn-sm btn-outline-secondary text-nowrap"><i class="bi bi-upload"></i></button>
+          </form>
+          {% if cf_atts %}
+          <ul class="list-unstyled mb-0 small">
+            {% for a in cf_atts %}
+            <li class="d-flex justify-content-between align-items-center">
+              <a href="{{ url_for('attachment_download', attachment_id=a.AttachmentID) }}"><i class="bi bi-file-earmark"></i> {{ a.FileName }}</a>
+              {% if current_user and current_user.Role == 'Admin' %}
+              <form method="post" action="{{ url_for('attachment_delete', attachment_id=a.AttachmentID) }}" onsubmit="return confirm('Delete this file?');" class="d-inline">
+                <input type="hidden" name="return_to" value="{{ request.path }}">
+                <button type="submit" class="btn btn-sm btn-link text-danger p-0"><i class="bi bi-trash"></i></button>
+              </form>
+              {% endif %}
+            </li>
+            {% endfor %}
+          </ul>
+          {% else %}
+          <div class="text-muted small mb-0">No file uploaded yet.</div>
+          {% endif %}
+        </div>
+      {% else %}
+        <div class="text-muted small">Save this record first, then come back to upload a file for this field.</div>
+      {% endif %}
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}

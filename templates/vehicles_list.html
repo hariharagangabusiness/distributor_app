@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Vehicles{% endblock %}
+{% block page_title %}Vehicles{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-end gap-2 mb-3">
+  <a href="{{ url_for('export_module', module='vehicles') }}" class="btn btn-outline-secondary"><i class="bi bi-file-earmark-excel"></i> Export to Excel</a>
+  <a href="{{ url_for('export_module_pdf', module='vehicles') }}" class="btn btn-outline-secondary"><i class="bi bi-file-earmark-pdf"></i> PDF</a>
+  <a href="{{ url_for('vehicle_form') }}" class="btn btn-brand"><i class="bi bi-plus-lg"></i> Add Vehicle</a>
+</div>
+<div class="d-flex justify-content-end mb-2">
+  <a href="{{ url_for('columns_customize', module='Vehicle') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-layout-three-columns"></i> Customize Columns</a>
+</div>
+<div class="card">
+  <div class="table-responsive">
+  <table class="table table-hover mb-0 align-middle" id="tbl-vehicle">
+    <thead><tr><th data-col="reg_number">Reg. No</th><th data-col="type">Type</th><th data-col="make_model">Make/Model</th><th data-col="odometer">Odometer</th>
+      <th data-col="insurance">Insurance</th><th data-col="permit">Permit</th><th data-col="puc">PUC</th><th data-col="fitness">Fitness</th><th data-col="status">Status</th><th></th></tr></thead>
+    <tbody>
+      {% for v in vehicles %}
+      <tr>
+        <td data-col="reg_number">{{ v.RegistrationNumber }}</td><td data-col="type">{{ v.VehicleType or '-' }}</td>
+        <td data-col="make_model">{{ v.Make or '' }} {{ v.Model or '' }}</td><td data-col="odometer">{{ v.CurrentOdometer|round(0) }} km</td>
+        <td data-col="insurance" class="{{ 'text-danger fw-bold' if v.InsuranceExpiry and v.InsuranceExpiry <= today }}">{{ v.InsuranceExpiry or '-' }}</td>
+        <td data-col="permit" class="{{ 'text-danger fw-bold' if v.PermitExpiry and v.PermitExpiry <= today }}">{{ v.PermitExpiry or '-' }}</td>
+        <td data-col="puc" class="{{ 'text-danger fw-bold' if v.PUCExpiry and v.PUCExpiry <= today }}">{{ v.PUCExpiry or '-' }}</td>
+        <td data-col="fitness" class="{{ 'text-danger fw-bold' if v.FitnessExpiry and v.FitnessExpiry <= today }}">{{ v.FitnessExpiry or '-' }}</td>
+        <td data-col="status">{{ v.Status }}</td>
+        <td class="text-end"><a href="{{ url_for('vehicle_form', vid=v.VehicleID) }}" class="btn btn-sm btn-outline-secondary">Edit</a></td>
+      </tr>
+      {% else %}<tr><td colspan="10" class="text-center text-muted py-4">No vehicles yet.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+window.LIST_COLUMNS_TABLE_ID = 'tbl-vehicle';
+window.LIST_COLUMNS_PREFS = {{ columns|tojson }};
+</script>
+<script src="{{ url_for('static', filename='js/list-columns.js') }}"></script>
+{% endblock %}

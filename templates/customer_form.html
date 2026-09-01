@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit' if customer else 'Add' }} Customer{% endblock %}
+{% block page_title %}{{ 'Edit Customer' if customer else 'Add Customer' }}{% endblock %}
+{% block content %}
+<div class="card" style="max-width:640px"><div class="card-body">
+<form method="post">
+  <div class="row g-3">
+    <div class="col-md-8"><label class="form-label">Customer Name *</label>
+      <input required name="customer_name" class="form-control" value="{{ customer.CustomerName if customer else '' }}"></div>
+    <div class="col-md-4"><label class="form-label">GSTIN</label>
+      <input name="gstin" class="form-control" value="{{ customer.GSTIN if customer else '' }}"></div>
+    <div class="col-md-6"><label class="form-label">Contact Person</label>
+      <input name="contact_person" class="form-control" value="{{ customer.ContactPerson if customer else '' }}"></div>
+    <div class="col-md-6"><label class="form-label">Phone</label>
+      <input name="phone" class="form-control" value="{{ customer.Phone if customer else '' }}"></div>
+    <div class="col-md-6"><label class="form-label">Email</label>
+      <input name="email" class="form-control" value="{{ customer.Email if customer else '' }}"></div>
+    <div class="col-md-6"><label class="form-label">State (for GST place of supply) *</label>
+      <select required name="state_code" class="form-select">
+        <option value="">-- select --</option>
+        {% for code, name in states %}
+        <option value="{{ code }}" {% if customer and customer.StateCode==code %}selected{% endif %}>{{ name }} ({{ code }})</option>
+        {% endfor %}
+      </select></div>
+    <div class="col-md-3"><label class="form-label">Credit Limit</label>
+      <input type="number" step="0.01" name="credit_limit" class="form-control" value="{{ customer.CreditLimit if customer else 0 }}"></div>
+    <div class="col-md-3"><label class="form-label">Credit Days</label>
+      <input type="number" name="credit_days" class="form-control" value="{{ customer.CreditDays if customer else 0 }}"></div>
+    <div class="col-md-12"><label class="form-label">Address</label>
+      <textarea name="address" class="form-control" rows="2">{{ customer.Address if customer else '' }}</textarea></div>
+    <div class="col-md-12 form-check ms-1">
+      <input type="checkbox" class="form-check-input" name="active" id="active" {% if not customer or customer.Active %}checked{% endif %}>
+      <label class="form-check-label" for="active">Active</label></div>
+  </div>
+  {% include "_custom_fields_form.html" %}
+  <div class="mt-4 d-flex gap-2">
+    <button class="btn btn-brand" type="submit">Save Customer</button>
+    <a href="{{ url_for('customers_list') }}" class="btn btn-outline-secondary">Cancel</a>
+  </div>
+</form>
+</div></div>
+{% endblock %}

@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}GST Filing{% endblock %}
+{% block page_title %}GST Filing{% endblock %}
+{% block content %}
+<div class="alert alert-info small">
+  These reports are a <strong>working reference</strong> computed from your Sales and Purchases here — they aren't
+  fetched from, and aren't submitted to, the GST portal. Always confirm figures and due dates on
+  <a href="https://services.gst.gov.in" target="_blank" rel="noopener">services.gst.gov.in</a> before filing.
+  Due dates are set by the Government of India and can change by notification.
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-4">
+    <div class="card h-100"><div class="card-body">
+      <h6><i class="bi bi-file-earmark-text"></i> GSTR-1</h6>
+      <p class="text-muted small mb-2">Monthly outward supplies (sales) summary, computed from your Sales records.</p>
+      <a href="{{ url_for('gst_gstr1') }}" class="btn btn-sm btn-brand">View this month</a>
+    </div></div>
+  </div>
+  <div class="col-md-4">
+    <div class="card h-100"><div class="card-body">
+      <h6><i class="bi bi-upload"></i> GSTR-2B</h6>
+      <p class="text-muted small mb-2">Upload the GSTR-2B Excel you download from the GST portal each month, for ITC reconciliation.</p>
+      <a href="{{ url_for('gst_gstr2b_list') }}" class="btn btn-sm btn-brand">Manage uploads</a>
+    </div></div>
+  </div>
+  <div class="col-md-4">
+    <div class="card h-100"><div class="card-body">
+      <h6><i class="bi bi-calculator"></i> GSTR-3B</h6>
+      <p class="text-muted small mb-2">Monthly summary — outward tax liability, ITC (from GSTR-2B if uploaded, else your purchase records), and net payable.</p>
+      <a href="{{ url_for('gst_gstr3b') }}" class="btn btn-sm btn-brand">View this month</a>
+    </div></div>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-header"><i class="bi bi-calendar-event"></i> Upcoming Due Dates
+    <span class="text-muted small fw-normal">— {{ 'QRMP' if company.GstFilingScheme == 'QRMP' else 'Monthly' }} scheme{% if company.GstFilingScheme == 'QRMP' %}, state code {{ company.StateCode or '?' }}{% endif %}
+      · <a href="{{ url_for('settings_form') }}">change</a></span>
+  </div>
+  <div class="table-responsive">
+  <table class="table mb-0">
+    <thead><tr><th>Return</th><th>Period</th><th>Due Date</th><th>Notes</th></tr></thead>
+    <tbody>
+      {% for d in due_items %}
+      <tr class="{% if d.due_date < today %}text-muted{% elif (d.due_date - today).days <= 3 %}table-danger{% elif (d.due_date - today).days <= 7 %}table-warning{% endif %}">
+        <td>{{ d.return_type }}</td>
+        <td>{{ d.period }}</td>
+        <td>{{ d.due_date.strftime('%d %b %Y') }}{% if d.due_date < today %} <span class="badge text-bg-secondary">past</span>{% endif %}</td>
+        <td class="small text-muted">{{ d.description }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+
+{% if not company.GstRemindersEnabled %}
+<div class="alert alert-secondary small">
+  Email reminders for these due dates are currently off. Turn them on and add your email(s) on the
+  <a href="{{ url_for('settings_form') }}">Company / GST Settings</a> page — in-app due-date alerts (shown above
+  and on the Dashboard) always work regardless.
+</div>
+{% endif %}
+
+{% if recent_uploads %}
+<div class="card">
+  <div class="card-header">Recent GSTR-2B Uploads</div>
+  <div class="table-responsive">
+  <table class="table mb-0">
+    <thead><tr><th>Period</th><th>File</th><th>Status</th><th>ITC Total</th></tr></thead>
+    <tbody>
+      {% for u in recent_uploads %}
+      <tr>
+        <td>{{ u.Period }}</td><td>{{ u.FileName }}</td>
+        <td>{% if u.ParseStatus == 'Parsed' %}<span class="badge text-bg-success">Parsed</span>{% else %}<span class="badge text-bg-danger">Failed</span>{% endif %}</td>
+        <td>{{ (u.ITCIntegrated + u.ITCCentral + u.ITCState)|inr(2) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <div class="card-body py-2"><a href="{{ url_for('gst_gstr2b_list') }}" class="small">Manage GSTR-2B uploads →</a></div>
+</div>
+{% endif %}
+{% endblock %}

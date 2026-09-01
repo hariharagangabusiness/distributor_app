@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Import from Vendor File{% endblock %}
+{% block page_title %}Import from Vendor File{% endblock %}
+{% block content %}
+<div class="card"><div class="card-body">
+  <p class="text-muted">
+    Upload an "SO Details" Excel export from a supplier's own system and this will read it, let you match each
+    line to one of your Products, and create the Purchase(s) for you. Built against one sample vendor file — if a
+    different vendor's export looks different, this may not parse it correctly.
+  </p>
+  <form method="post" enctype="multipart/form-data">
+    <div class="row g-3">
+      <div class="col-md-5">
+        <label class="form-label">Supplier *</label>
+        <select required name="supplier_id" class="form-select">
+          <option value="">-- select --</option>
+          {% for s in suppliers %}<option value="{{ s.SupplierID }}">{{ s.SupplierName }}{% if s.GSTIN %} ({{ s.GSTIN }}){% endif %}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-md-5">
+        <label class="form-label">Vendor File (.xlsx) *</label>
+        <input required type="file" name="file" accept=".xlsx" class="form-control">
+      </div>
+      <div class="col-md-2 d-flex align-items-end">
+        <button type="submit" class="btn btn-primary w-100">Upload &amp; Review</button>
+      </div>
+    </div>
+  </form>
+</div></div>
+{% endblock %}

@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Adjust Stock{% endblock %}
+{% block page_title %}Adjust Stock — {{ product.ProductName }}{% endblock %}
+{% block content %}
+<div class="row g-3">
+  <div class="col-md-5">
+    <div class="card">
+      <div class="card-body">
+        <form method="post">
+          <div class="mb-3">
+            <label class="form-label">Direction</label>
+            <select name="direction" class="form-select">
+              <option value="in">Stock In (found extra / return from customer)</option>
+              <option value="out">Stock Out (damage / loss / return to supplier)</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Quantity ({{ product.Unit }})</label>
+            <input required type="number" step="0.01" name="qty" class="form-control">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Date</label>
+            <input type="date" name="adjust_date" class="form-control" value="{{ today }}">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Notes / Reason</label>
+            <textarea name="notes" class="form-control" rows="2"></textarea>
+          </div>
+          <button class="btn btn-brand" type="submit">Save Adjustment</button>
+          <a href="{{ url_for('inventory_list') }}" class="btn btn-outline-secondary">Back</a>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-7">
+    <div class="card">
+      <div class="card-header">Recent Movements</div>
+      <div class="table-responsive">
+      <table class="table mb-0">
+        <thead><tr><th>Date</th><th>Type</th><th>Change</th><th>Notes</th></tr></thead>
+        <tbody>
+        {% for h in history %}
+          <tr>
+            <td>{{ h.TransactionDate }}</td>
+            <td>{{ h.TransactionType }}</td>
+            <td class="{{ 'text-success' if h.QtyChange > 0 else 'text-danger' }}">{{ '%+.2f'|format(h.QtyChange) }}</td>
+            <td>{{ h.Notes or '' }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="4" class="text-center text-muted py-3">No movements yet.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

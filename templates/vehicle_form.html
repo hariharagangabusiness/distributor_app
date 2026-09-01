@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit' if vehicle else 'Add' }} Vehicle{% endblock %}
+{% block page_title %}{{ 'Edit Vehicle' if vehicle else 'Add Vehicle' }}{% endblock %}
+{% block content %}
+<div class="card" style="max-width:760px"><div class="card-body">
+<form method="post">
+  <div class="row g-3">
+    <div class="col-md-4"><label class="form-label">Registration Number *</label>
+      <input required name="registration_number" class="form-control" value="{{ vehicle.RegistrationNumber if vehicle else '' }}"></div>
+    <div class="col-md-4"><label class="form-label">Type</label>
+      <input name="vehicle_type" class="form-control" placeholder="Truck / Van / Tempo" value="{{ vehicle.VehicleType if vehicle else '' }}"></div>
+    <div class="col-md-4"><label class="form-label">Status</label>
+      <select name="status" class="form-select">
+        <option {% if vehicle and vehicle.Status=='Active' %}selected{% endif %}>Active</option>
+        <option {% if vehicle and vehicle.Status=='In Repair' %}selected{% endif %}>In Repair</option>
+        <option {% if vehicle and vehicle.Status=='Inactive' %}selected{% endif %}>Inactive</option>
+      </select></div>
+    <div class="col-md-4"><label class="form-label">Make</label>
+      <input name="make" class="form-control" value="{{ vehicle.Make if vehicle else '' }}"></div>
+    <div class="col-md-4"><label class="form-label">Model</label>
+      <input name="model" class="form-control" value="{{ vehicle.Model if vehicle else '' }}"></div>
+    <div class="col-md-4"><label class="form-label">Current Odometer (km)</label>
+      <input type="number" step="1" name="current_odometer" class="form-control" value="{{ vehicle.CurrentOdometer if vehicle else 0 }}"></div>
+    <div class="col-md-4"><label class="form-label">Purchase Date</label>
+      <input type="date" name="purchase_date" class="form-control" value="{{ vehicle.PurchaseDate if vehicle else '' }}"></div>
+    <div class="col-md-4"><label class="form-label">Insurance Expiry</label>
+      <input type="date" name="insurance_expiry" class="form-control" value="{{ vehicle.InsuranceExpiry if vehicle else '' }}"></div>
+    <div class="col-md-4"><label class="form-label">Permit Expiry</label>
+      <input type="date" name="permit_expiry" class="form-control" value="{{ vehicle.PermitExpiry if vehicle else '' }}"></div>
+    <div class="col-md-4"><label class="form-label">PUC Expiry</label>
+      <input type="date" name="puc_expiry" class="form-control" value="{{ vehicle.PUCExpiry if vehicle else '' }}"></div>
+    <div class="col-md-4"><label class="form-label">Fitness Expiry</label>
+      <input type="date" name="fitness_expiry" class="form-control" value="{{ vehicle.FitnessExpiry if vehicle else '' }}"></div>
+  </div>
+  {% include "_custom_fields_form.html" %}
+  <div class="mt-4 d-flex gap-2">
+    <button class="btn btn-brand" type="submit">Save Vehicle</button>
+    <a href="{{ url_for('vehicles_list') }}" class="btn btn-outline-secondary">Cancel</a>
+  </div>
+</form>
+</div></div>
+{% if vehicle %}{% include "_attachments.html" %}{% endif %}
+{% endblock %}

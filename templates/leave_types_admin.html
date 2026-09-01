@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Leave Types{% endblock %}
+{% block page_title %}Leave Types{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-end mb-3">
+  <a href="{{ url_for('attendance_month') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left"></i> Back to Attendance</a>
+</div>
+<div class="card mb-3">
+  <div class="card-header">Add a Leave Type</div>
+  <div class="card-body">
+    <form method="post" action="{{ url_for('leave_type_add') }}" class="row g-2 align-items-end">
+      <div class="col-md-4">
+        <label class="form-label">Name</label>
+        <input required name="leave_type_name" class="form-control" placeholder="e.g. Earned Leave">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Code</label>
+        <input required name="leave_code" class="form-control" placeholder="e.g. EL" maxlength="10">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Annual Quota (days/year)</label>
+        <input type="number" step="0.5" min="0" name="annual_quota" class="form-control" placeholder="0" value="0">
+      </div>
+      <div class="col-md-2">
+        <button class="btn btn-brand w-100" type="submit">Add</button>
+      </div>
+    </form>
+    <p class="text-muted small mt-2 mb-0">The annual quota is shared — every employee gets the same number of days per year for a leave type. Set or change it here (or per-row below); it applies to everyone at once.</p>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">Leave Types</div>
+  <div class="table-responsive">
+    <table class="table mb-0 align-middle">
+      <thead><tr><th>Name</th><th>Code</th><th>Annual Quota (days/year, shared)</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+        {% for lt in leave_types %}
+        <tr>
+          <td>{{ lt.LeaveTypeName }}</td>
+          <td>{{ lt.LeaveCode }}</td>
+          <td style="width:170px">
+            <form method="post" action="{{ url_for('leave_type_update', leave_type_id=lt.LeaveTypeID) }}" class="d-flex gap-1">
+              <input type="number" step="0.5" min="0" name="annual_quota" class="form-control form-control-sm" style="width:85px" value="{{ lt.AnnualQuota }}">
+              <button class="btn btn-sm btn-outline-secondary" type="submit" title="Save quota"><i class="bi bi-check-lg"></i></button>
+            </form>
+          </td>
+          <td>{% if lt.Active %}<span class="badge badge-ok">Active</span>{% else %}<span class="badge text-bg-secondary">Hidden</span>{% endif %}</td>
+          <td class="text-end">
+            <form method="post" action="{{ url_for('leave_type_toggle', leave_type_id=lt.LeaveTypeID) }}" class="d-inline">
+              <button class="btn btn-sm btn-outline-secondary" type="submit">{{ 'Hide' if lt.Active else 'Unhide' }}</button>
+            </form>
+            {% if current_user and current_user.Role == 'Admin' %}
+            <form method="post" action="{{ url_for('leave_type_delete', leave_type_id=lt.LeaveTypeID) }}" class="d-inline" onsubmit="return confirm('Delete this leave type? Any leave days already recorded against it will be removed too — this does not change LOP days already locked into a saved month.');">
+              <button class="btn btn-sm btn-outline-danger" type="submit">Delete</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="text-center text-muted py-4">No leave types yet — add Sick Leave, Casual Leave, etc. above.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+<p class="text-muted small mt-2">Hidden leave types stop appearing on the attendance entry screen, but their historical data is kept. Deleting is permanent. Changing a quota here only affects future attendance months — months already saved keep the Paid/Unpaid split that was locked in at the time.</p>
+{% endblock %}

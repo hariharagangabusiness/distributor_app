@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Customers{% endblock %}
+{% block page_title %}Customers{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-end gap-2 mb-3">
+  <a href="{{ url_for('customers_import_upload') }}" class="btn btn-outline-secondary"><i class="bi bi-upload"></i> Import from Excel</a>
+  <a href="{{ url_for('export_module', module='customers') }}" class="btn btn-outline-secondary"><i class="bi bi-file-earmark-excel"></i> Export to Excel</a>
+  <a href="{{ url_for('export_module_pdf', module='customers') }}" class="btn btn-outline-secondary"><i class="bi bi-file-earmark-pdf"></i> PDF</a>
+  <a href="{{ url_for('customer_form') }}" class="btn btn-brand"><i class="bi bi-plus-lg"></i> Add Customer</a>
+</div>
+<div class="d-flex justify-content-end mb-2">
+  <a href="{{ url_for('columns_customize', module='Customer') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-layout-three-columns"></i> Customize Columns</a>
+</div>
+<div class="card">
+  <div class="table-responsive">
+  <table class="table table-hover mb-0 align-middle" id="tbl-customer">
+    <thead><tr><th data-col="name">Name</th><th data-col="contact">Contact</th><th data-col="phone">Phone</th>
+      <th data-col="credit_limit">Credit Limit</th><th data-col="credit_days">Credit Days</th><th data-col="status">Status</th><th></th></tr></thead>
+    <tbody>
+      {% for c in customers %}
+      <tr>
+        <td data-col="name">{{ c.CustomerName }}</td><td data-col="contact">{{ c.ContactPerson or '-' }}</td><td data-col="phone">{{ c.Phone or '-' }}</td>
+        <td data-col="credit_limit">{{ (c.CreditLimit)|inr(0) }}</td><td data-col="credit_days">{{ c.CreditDays }} days</td>
+        <td data-col="status">{% if c.Active %}<span class="badge badge-ok">Active</span>{% else %}<span class="badge text-bg-secondary">Inactive</span>{% endif %}</td>
+        <td class="text-end"><a href="{{ url_for('customer_form', cid=c.CustomerID) }}" class="btn btn-sm btn-outline-secondary">Edit</a></td>
+      </tr>
+      {% else %}<tr><td colspan="7" class="text-center text-muted py-4">No customers yet.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+window.LIST_COLUMNS_TABLE_ID = 'tbl-customer';
+window.LIST_COLUMNS_PREFS = {{ columns|tojson }};
+</script>
+<script src="{{ url_for('static', filename='js/list-columns.js') }}"></script>
+{% endblock %}

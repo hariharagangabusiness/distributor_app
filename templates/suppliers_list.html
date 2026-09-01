@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Suppliers{% endblock %}
+{% block page_title %}Suppliers{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-end gap-2 mb-3">
+  <a href="{{ url_for('export_module', module='suppliers') }}" class="btn btn-outline-secondary"><i class="bi bi-file-earmark-excel"></i> Export to Excel</a>
+  <a href="{{ url_for('export_module_pdf', module='suppliers') }}" class="btn btn-outline-secondary"><i class="bi bi-file-earmark-pdf"></i> PDF</a>
+  <a href="{{ url_for('supplier_form') }}" class="btn btn-brand"><i class="bi bi-plus-lg"></i> Add Supplier</a>
+</div>
+<div class="d-flex justify-content-end mb-2">
+  <a href="{{ url_for('columns_customize', module='Supplier') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-layout-three-columns"></i> Customize Columns</a>
+</div>
+<div class="card">
+  <div class="table-responsive">
+  <table class="table table-hover mb-0 align-middle" id="tbl-supplier">
+    <thead><tr><th data-col="name">Name</th><th data-col="contact">Contact</th><th data-col="phone">Phone</th>
+      <th data-col="email">Email</th><th data-col="gstin">GSTIN</th><th data-col="status">Status</th><th></th></tr></thead>
+    <tbody>
+      {% for s in suppliers %}
+      <tr>
+        <td data-col="name">{{ s.SupplierName }}</td><td data-col="contact">{{ s.ContactPerson or '-' }}</td><td data-col="phone">{{ s.Phone or '-' }}</td>
+        <td data-col="email">{{ s.Email or '-' }}</td><td data-col="gstin">{{ s.GSTIN or '-' }}</td>
+        <td data-col="status">{% if s.Active %}<span class="badge badge-ok">Active</span>{% else %}<span class="badge text-bg-secondary">Inactive</span>{% endif %}</td>
+        <td class="text-end"><a href="{{ url_for('supplier_form', sid=s.SupplierID) }}" class="btn btn-sm btn-outline-secondary">Edit</a></td>
+      </tr>
+      {% else %}<tr><td colspan="7" class="text-center text-muted py-4">No suppliers yet.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+window.LIST_COLUMNS_TABLE_ID = 'tbl-supplier';
+window.LIST_COLUMNS_PREFS = {{ columns|tojson }};
+</script>
+<script src="{{ url_for('static', filename='js/list-columns.js') }}"></script>
+{% endblock %}

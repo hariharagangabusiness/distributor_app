@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Leave & Attendance{% endblock %}
+{% block page_title %}Leave & Attendance{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div class="btn-group">
+    <a class="btn btn-outline-secondary" href="{{ url_for('attendance_month', year=prev_year, month=prev_month) }}">&laquo; Prev</a>
+    <span class="btn btn-light disabled fw-bold">{{ month_name }} {{ year }}</span>
+    <a class="btn btn-outline-secondary" href="{{ url_for('attendance_month', year=next_year, month=next_month) }}">Next &raquo;</a>
+  </div>
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('leave_types_admin') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-sliders"></i> Leave Types</a>
+    <a href="{{ url_for('leave_balance', year=year) }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-bar-chart"></i> Leave Balances</a>
+  </div>
+</div>
+
+<p class="text-muted small">Enter each employee's attendance summary for the month ({{ days_in_month }} days). Leave days are automatically checked against that employee's remaining balance of the shared annual quota (set on the <a href="{{ url_for('leave_types_admin') }}">Leave Types</a> page, same for everyone) — any day not covered by Present, Weekly Off, or quota-covered Leave becomes a Loss-of-Pay (LOP) day, which is deducted proportionally when you generate that month's salary.</p>
+
+{% if not leave_types %}
+<div class="alert alert-warning">No leave types configured yet. <a href="{{ url_for('leave_types_admin') }}">Add Sick Leave, Casual Leave, etc. here</a> before recording leave days (Present/Weekly-Off/LOP tracking still works without any).</div>
+{% endif %}
+
+{% for row in rows %}
+<div class="card mb-3">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span>{{ row.employee.EmployeeName }} <span class="text-muted small">({{ row.employee.Designation or '-' }})</span></span>
+    <span>
+      {% if row.saved %}<span class="badge badge-ok">Saved</span>{% else %}<span class="badge text-bg-secondary">Not entered</span>{% endif %}
+      {% if row.lop_days %}<span class="badge badge-low ms-1">{{ row.lop_days|round(2) }} LOP day(s)</span>{% endif %}
+    </span>
+  </div>
+  <div class="card-body">
+    <form method="post" action="{{ url_for('attendance_save') }}">
+      <input type="hidden" name="employee_id" value="{{ row.employee.EmployeeID }}">
+      <input type="hidden" name="year" value="{{ year }}">
+      <input type="hidden" name="month" value="{{ month }}">
+      <div class="row g-3">
+        <div class="col-md-2">
+          <label class="form-label">Present Days</label>
+          <input type="number" step="0.5" min="0" class="form-control" name="present_days" value="{{ row.present_days }}">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Weekly Off / Holiday</label>
+          <input type="number" step="0.5" min="0" class="form-control" name="weekly_off_days" value="{{ row.weekly_off_days }}">
+        </div>
+        {% for lt in leave_types %}
+        {% set bal = row.balance.get(lt.LeaveTypeID) %}
+        <div class="col-md-2">
+          <label class="form-label">{{ lt.LeaveCode }} days
+            {% if bal %}<span class="text-muted" title="Quota {{ bal.quota }}, used {{ bal.used_before }} before this month">({{ bal.remaining_before|round(1) }} left)</span>{% endif %}
+          </label>
+          <input type="number" step="0.5" min="0" class="form-control" name="leave_{{ lt.LeaveTypeID }}" value="{{ row.leave_days.get(lt.LeaveTypeID, 0) }}">
+        </div>
+        {% endfor %}
+        <div class="col-md-3">
+          <label class="form-label">Notes</label>
+          <input type="text" class="form-control" name="notes" value="{{ row.notes }}">
+        </div>
+      </div>
+      <div class="mt-3">
+        <button type="submit" class="btn btn-sm btn-brand">Save Attendance</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% else %}
+<p class="text-muted">No active employees.</p>
+{% endfor %}
+{% endblock %}

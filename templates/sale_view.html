@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Sale {{ sale.InvoiceNumber }}{% endblock %}
+{% block page_title %}Sale — {{ sale.InvoiceNumber }}{% endblock %}
+{% block content %}
+{% if sale.IsUnassignedBucket %}
+<div class="alert alert-warning">This sale is billed to the system <strong>Unassigned</strong> customer (auto-created
+  from a reconciled Stock Issue). Use Reassign below to split it to the real customer(s).</div>
+{% endif %}
+<div class="d-flex justify-content-end gap-2 mb-3">
+  {% if sale.IsUnassignedBucket %}
+  <a href="{{ url_for('sale_reassign', sid=sale.SaleID) }}" class="btn btn-warning"><i class="bi bi-arrow-left-right"></i> Reassign</a>
+  {% endif %}
+  <a href="{{ url_for('sale_invoice', sid=sale.SaleID) }}" class="btn btn-brand" target="_blank"><i class="bi bi-receipt"></i> View / Print Invoice</a>
+  <a href="{{ url_for('sale_invoice_pdf', sid=sale.SaleID) }}" class="btn btn-outline-secondary" target="_blank"><i class="bi bi-file-earmark-pdf"></i> Download PDF</a>
+  {% if current_user.Role == 'Admin' %}
+  <a href="{{ url_for('sale_edit', sid=sale.SaleID) }}" class="btn btn-outline-secondary"><i class="bi bi-pencil"></i> Edit</a>
+  {% endif %}
+</div>
+<div class="card mb-3"><div class="card-body">
+  <div class="row">
+    <div class="col-md-4"><strong>Customer:</strong> {{ sale.CustomerName }}<br>{{ sale.Phone or '' }}<br>{{ sale.Address or '' }}</div>
+    <div class="col-md-4"><strong>Date:</strong> {{ sale.SaleDate }}<br><strong>Due Date:</strong> {{ sale.PaymentDueDate or '-' }}<br>
+      <strong>Place of Supply:</strong> {{ sale.PlaceOfSupplyState or '-' }} ({{ sale.PlaceOfSupplyStateCode or '-' }})</div>
+    <div class="col-md-4"><strong>Status:</strong> {{ sale.Status }}<br><strong>Payment:</strong> {{ sale.PaymentStatus }} (Received {{ (sale.AmountReceived)|inr(2) }})<br>
+      <strong>Tax Type:</strong> {{ 'IGST' if sale.IsInterState else 'CGST + SGST' }}</div>
+  </div>
+</div></div>
+<div class="card">
+  <div class="table-responsive">
+  <table class="table mb-0">
+    <thead><tr><th>Product</th><th>HSN</th><th>Qty</th><th>Rate</th><th>Taxable</th>
+      {% if sale.IsInterState %}<th>IGST</th>{% else %}<th>CGST</th><th>SGST</th>{% endif %}
+      <th>Line Total</th></tr></thead>
+    <tbody>
+      {% for l in lines %}
+      <tr>
+        <td>{{ l.ProductName }}</td><td>{{ l.HSNCode or '-' }}</td><td>{{ l.Qty }} {{ l.Unit }}</td>
+        <td>{{ (l.UnitPrice)|inr(2) }}</td><td>{{ (l.TaxableValue)|inr(2) }}</td>
+        {% if sale.IsInterState %}
+        <td>{{ (l.IGSTAmount)|inr(2) }} ({{ l.IGSTRate }}%)</td>
+        {% else %}
+        <td>{{ (l.CGSTAmount)|inr(2) }} ({{ l.CGSTRate }}%)</td>
+        <td>{{ (l.SGSTAmount)|inr(2) }} ({{ l.SGSTRate }}%)</td>
+        {% endif %}
+        <td>{{ (l.TaxableValue + l.CGSTAmount + l.SGSTAmount + l.IGSTAmount)|inr(2) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr><th colspan="{{ 5 if sale.IsInterState else 6 }}" class="text-end">Taxable Amount</th><th>{{ (sale.TaxableAmount)|inr(2) }}</th></tr>
+      {% if sale.IsInterState %}
+      <tr><th colspan="5" class="text-end">IGST</th><th>{{ (sale.IGSTAmount)|inr(2) }}</th></tr>
+      {% else %}
+      <tr><th colspan="6" class="text-end">CGST</th><th>{{ (sale.CGSTAmount)|inr(2) }}</th></tr>
+      <tr><th colspan="6" class="text-end">SGST</th><th>{{ (sale.SGSTAmount)|inr(2) }}</th></tr>
+      {% endif %}
+      <tr><th colspan="{{ 5 if sale.IsInterState else 6 }}" class="text-end">Round Off</th><th>{{ (sale.RoundOff)|inr(2) }}</th></tr>
+      <tr><th colspan="{{ 5 if sale.IsInterState else 6 }}" class="text-end">Grand Total</th><th>{{ (sale.TotalAmount)|inr(2) }}</th></tr>
+    </tfoot>
+  </table>
+  </div>
+</div>
+{% include "_custom_fields_display.html" %}
+<a href="{{ url_for('sales_list') }}" class="btn btn-outline-secondary mt-3">Back to Sales</a>
+{% endblock %}

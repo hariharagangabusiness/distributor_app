@@ -1,0 +1,287 @@
+:root {
+  --brand: #1f5c4d;
+  --brand-dark: #163f35;
+  --bg: #f5f7f8;
+  --surface: #ffffff;
+  --border: #e5e9e8;
+  --text-muted: #6b7a76;
+  --shadow: 0 1px 3px rgba(0,0,0,.06);
+}
+
+[data-bs-theme="dark"] {
+  --brand: #3aa383;
+  --brand-dark: #1f5c4d;
+  --bg: #14181a;
+  --surface: #1c2224;
+  --border: #2b3336;
+  --text-muted: #99a8a3;
+  --shadow: 0 1px 3px rgba(0,0,0,.4);
+}
+
+body {
+  background: var(--bg);
+  font-family: "Inter", "Segoe UI", Roboto, Arial, sans-serif;
+  transition: background-color .15s ease, color .15s ease;
+}
+
+.sidebar {
+  width: 250px;
+  min-height: 100vh;
+  background: var(--brand-dark);
+  color: #e9f1ee;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+.sidebar-brand {
+  font-size: 1.15rem;
+  font-weight: 600;
+  padding: 1.1rem 1.2rem;
+  border-bottom: 1px solid rgba(255,255,255,.1);
+  color: #fff;
+  display: flex;
+  align-items: center;
+}
+.sidebar-logo {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  margin-right: .6rem;
+  flex-shrink: 0;
+}
+.sidebar .nav-section {
+  text-transform: uppercase;
+  font-size: .7rem;
+  letter-spacing: .06em;
+  color: #9db8ae;
+  padding: .9rem 1.2rem .25rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  user-select: none;
+}
+.sidebar .nav-section:hover { color: #d7e6e0; }
+.sidebar .nav-section .nav-section-chevron {
+  transition: transform .15s ease;
+  font-size: .65rem;
+}
+.sidebar .nav-section.collapsed .nav-section-chevron { transform: rotate(-90deg); }
+.sidebar .nav-item.nav-collapsible { overflow: hidden; }
+.sidebar .nav-link {
+  color: #d7e6e0;
+  padding: .5rem 1.2rem;
+  border-left: 3px solid transparent;
+}
+.sidebar .nav-link:hover { background: rgba(255,255,255,.06); color: #fff; }
+.sidebar .nav-link.active {
+  background: rgba(255,255,255,.1);
+  color: #fff;
+  border-left-color: #7fd8b8;
+  font-weight: 600;
+}
+.sidebar .bi { margin-right: .5rem; width: 1.1rem; display: inline-block; text-align: center; }
+
+.content { flex: 1; min-width: 0; position: relative; }
+.page-watermark {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 250px;
+  background-repeat: no-repeat;
+  background-position: center 45%;
+  background-size: min(46vw, 480px);
+  opacity: .05;
+  pointer-events: none;
+  z-index: 0;
+}
+[data-bs-theme="dark"] .page-watermark { opacity: .07; }
+.page-body { position: relative; z-index: 1; }
+
+/* Per-tab accent color — every section of the app gets its own color so pages
+   are easy to tell apart at a glance: colored left border + tinted background
+   on the page's cards, matching color on the page title. */
+.content[data-section="dashboard"]  { --page-accent: #1f5c4d; }
+.content[data-section="reports"]    { --page-accent: #6d5b97; }
+.content[data-section="inventory"]  { --page-accent: #27ae60; }
+.content[data-section="purchasing"] { --page-accent: #eb5757; }
+.content[data-section="sales"]      { --page-accent: #2f80ed; }
+.content[data-section="finance"]    { --page-accent: #f2994a; }
+.content[data-section="fleet"]      { --page-accent: #d35400; }
+.content[data-section="payroll"]    { --page-accent: #c9971e; }
+.content[data-section="setup"]      { --page-accent: #607d8b; }
+
+.topbar h5 { color: var(--page-accent, inherit); }
+.page-body .card:not(.report-card) {
+  border-left: 4px solid var(--page-accent, var(--brand));
+  position: relative;
+  overflow: hidden;
+}
+.page-body .card:not(.report-card) > .card-header,
+.page-body .card:not(.report-card) > .card-body > .card-title {
+  color: var(--page-accent, inherit);
+}
+.page-body .card:not(.report-card)::after {
+  content: "";
+  position: absolute;
+  top: 0; right: 0; bottom: 0; left: 0;
+  background: var(--page-accent, transparent);
+  opacity: .035;
+  pointer-events: none;
+}
+[data-bs-theme="dark"] .page-body .card:not(.report-card)::after { opacity: .08; }
+.topbar {
+  background: var(--surface);
+  padding: .8rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.page-body { padding: 1.5rem; }
+
+.stat-card {
+  background: var(--surface);
+  border-radius: 10px;
+  padding: 1rem 1.2rem;
+  box-shadow: var(--shadow);
+  height: 100%;
+}
+.stat-card .stat-value { font-size: 1.5rem; font-weight: 700; color: var(--brand-dark); }
+.stat-card .stat-label { color: var(--text-muted); font-size: .82rem; text-transform: uppercase; letter-spacing: .04em; }
+
+[data-bs-theme="dark"] .stat-card .stat-value { color: #7fd8b8; }
+
+/* Dashboard stat blocks — same scheme as the Reports-tab blocks: colored left
+   border, matching value color, faint color tint across the card. */
+.stat-card[class*="sc-"] {
+  border-left: 4px solid var(--sc-color, var(--brand));
+  position: relative;
+  overflow: hidden;
+}
+.stat-card[class*="sc-"] .stat-value { color: var(--sc-color, var(--brand-dark)); }
+.stat-card[class*="sc-"]::after {
+  content: "";
+  position: absolute;
+  top: 0; right: 0; bottom: 0; left: 0;
+  background: var(--sc-color, transparent);
+  opacity: .05;
+  pointer-events: none;
+}
+[data-bs-theme="dark"] .stat-card[class*="sc-"] .stat-value { color: var(--sc-color, #7fd8b8); }
+[data-bs-theme="dark"] .stat-card[class*="sc-"]::after { opacity: .1; }
+.sc-sales        { --sc-color: #2f80ed; }
+.sc-purchases    { --sc-color: #eb5757; }
+.sc-expenses     { --sc-color: #f2994a; }
+.sc-receivable   { --sc-color: #c0392b; }
+.sc-payable      { --sc-color: #8e44ad; }
+.sc-vansales     { --sc-color: #17a2b8; }
+.sc-schemeclaims { --sc-color: #bb6bd9; }
+
+.card { border: none; box-shadow: var(--shadow); border-radius: 10px; }
+.card-header { background: var(--surface); font-weight: 600; border-bottom: 1px solid var(--border); }
+
+.table thead th { font-size: .78rem; text-transform: uppercase; color: var(--text-muted); letter-spacing: .03em; border-bottom-width: 1px; }
+.badge-low { background: #f8d7da; color: #842029; }
+.badge-over { background: #fff3cd; color: #664d03; }
+.badge-ok { background: #d1e7dd; color: #0f5132; }
+
+.btn-brand { background: var(--brand); border-color: var(--brand); color: #fff; }
+.btn-brand:hover { background: var(--brand-dark); border-color: var(--brand-dark); color: #fff; }
+
+.alert-tile {
+  border-radius: 8px;
+  padding: .6rem .9rem;
+  margin-bottom: .5rem;
+  font-size: .88rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* Landing / login pages (no sidebar) */
+.auth-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(160deg, var(--brand-dark) 0%, var(--brand) 100%);
+  padding: 1.5rem;
+}
+.auth-card {
+  background: var(--surface);
+  border-radius: 14px;
+  box-shadow: 0 10px 40px rgba(0,0,0,.25);
+  padding: 2.2rem;
+  width: 100%;
+  max-width: 400px;
+}
+.auth-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .5rem;
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--brand-dark);
+  margin-bottom: .3rem;
+  text-align: center;
+}
+.auth-logo { width: 64px; height: 64px; border-radius: 50%; }
+.auth-logo-full {
+  width: 100%;
+  max-width: 280px;
+  height: auto;
+  border-radius: 12px;
+  box-shadow: 0 6px 20px rgba(0,0,0,.18);
+}
+[data-bs-theme="dark"] .auth-brand { color: #7fd8b8; }
+.landing-hero {
+  text-align: center;
+  color: #fff;
+  max-width: 520px;
+}
+.landing-logo { width: 96px; height: 96px; border-radius: 50%; }
+.landing-logo-full {
+  width: 100%;
+  max-width: 360px;
+  height: auto;
+  border-radius: 16px;
+  box-shadow: 0 10px 32px rgba(0,0,0,.3);
+  margin-bottom: .4rem;
+}
+.landing-hero h1 { font-weight: 700; margin: .8rem 0 .1rem; }
+.landing-subtitle { opacity: .85; font-size: 1.05rem; margin-bottom: .6rem; }
+.landing-hero p { opacity: .9; margin-bottom: 1.6rem; }
+/* Reports hub — each block tinted a different color so tabs are easy to tell apart at a glance */
+.report-card { border-left: 4px solid var(--rc-color, var(--brand)); position: relative; overflow: hidden; }
+.report-card .card-title { color: var(--rc-color, inherit); }
+.report-card .card-title i { color: var(--rc-color, inherit); }
+.report-card::after {
+  content: "";
+  position: absolute;
+  top: 0; right: 0; bottom: 0; left: 0;
+  background: var(--rc-color, transparent);
+  opacity: .04;
+  pointer-events: none;
+}
+[data-bs-theme="dark"] .report-card::after { opacity: .09; }
+.rc-sales        { --rc-color: #2f80ed; }
+.rc-purchases    { --rc-color: #eb5757; }
+.rc-products     { --rc-color: #27ae60; }
+.rc-expenses     { --rc-color: #f2994a; }
+.rc-targets      { --rc-color: #9b51e0; }
+.rc-stockissues  { --rc-color: #17a2b8; }
+.rc-salary       { --rc-color: #d4a017; }
+.rc-schemeclaims { --rc-color: #bb6bd9; }
+.rc-customers    { --rc-color: #219653; }
+.rc-fleet        { --rc-color: #d35400; }
+.rc-masters      { --rc-color: #607d8b; }
+
+.theme-toggle-floating {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+}

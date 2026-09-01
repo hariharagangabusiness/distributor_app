@@ -1,0 +1,206 @@
+{% extends "base.html" %}
+{% block title %}Reports{% endblock %}
+{% block page_title %}Reports{% endblock %}
+{% block content %}
+<p class="text-muted">A quick breakdown for each tab, with Export to Excel / PDF for that tab's full data. For
+  deeper reports, see Stock Issue Schemes &amp; Dues{% if is_admin %} and Profit &amp; Loss{% endif %} in the menu.</p>
+
+<div class="row g-3">
+
+  <div class="col-md-6 col-lg-4">
+    <div class="card h-100 report-card rc-sales"><div class="card-body">
+      <h6 class="card-title"><i class="bi bi-cart-check"></i> Sales — {{ month_name }} {{ year }}</h6>
+      <div class="fs-4 fw-bold">{{ (sales_month.t)|inr(2) }}</div>
+      <div class="text-muted small mb-2">{{ sales_month.n }} sale(s) this month</div>
+      {% if top_customers %}
+      <div class="small text-muted mb-1">Top customers (all time):</div>
+      <ul class="small mb-2 ps-3">
+        {% for c in top_customers %}<li>{{ c.CustomerName }} — {{ (c.total)|inr(2) }}</li>{% endfor %}
+      </ul>
+      {% endif %}
+      {% if sales_trend %}
+      <div class="small text-muted mb-1">Last {{ sales_trend|length }} month(s):</div>
+      <ul class="small mb-2 ps-3">
+        {% for t in sales_trend %}<li>{{ t.ym }} — {{ (t.total)|inr(2) }}</li>{% endfor %}
+      </ul>
+      {% endif %}
+      <div class="d-flex gap-2 mt-2">
+        <a href="{{ url_for('export_module', module='sales') }}" class="btn btn-sm btn-outline-secondary">Excel</a>
+        <a href="{{ url_for('export_module_pdf', module='sales') }}" class="btn btn-sm btn-outline-secondary">PDF</a>
+        <a href="{{ url_for('sales_list') }}" class="btn btn-sm btn-outline-secondary ms-auto">Open Sales →</a>
+      </div>
+    </div></div>
+  </div>
+
+  {% if is_admin %}
+  <div class="col-md-6 col-lg-4">
+    <div class="card h-100 report-card rc-purchases"><div class="card-body">
+      <h6 class="card-title"><i class="bi bi-cart-plus"></i> Purchases — {{ month_name }} {{ year }}</h6>
+      <div class="fs-4 fw-bold">{{ (purchases_month.t)|inr(2) }}</div>
+      <div class="text-muted small mb-2">{{ purchases_month.n }} purchase(s) this month</div>
+      {% if top_suppliers %}
+      <div class="small text-muted mb-1">Top suppliers (all time):</div>
+      <ul class="small mb-2 ps-3">
+        {% for s in top_suppliers %}<li>{{ s.SupplierName }} — {{ (s.total)|inr(2) }}</li>{% endfor %}
+      </ul>
+      {% endif %}
+      <div class="d-flex gap-2 mt-2">
+        <a href="{{ url_for('export_module', module='purchases') }}" class="btn btn-sm btn-outline-secondary">Excel</a>
+        <a href="{{ url_for('export_module_pdf', module='purchases') }}" class="btn btn-sm btn-outline-secondary">PDF</a>
+        <a href="{{ url_for('purchases_list') }}" class="btn btn-sm btn-outline-secondary ms-auto">Open Purchases →</a>
+      </div>
+    </div></div>
+  </div>
+  {% endif %}
+
+  <div class="col-md-6 col-lg-4">
+    <div class="card h-100 report-card rc-products"><div class="card-body">
+      <h6 class="card-title"><i class="bi bi-box-seam"></i> Products &amp; Stock</h6>
+      <div class="fs-4 fw-bold">{{ (stock_summary.value)|inr(2) }}</div>
+      <div class="text-muted small mb-2">Current stock value ({{ stock_summary.n }} active product(s))</div>
+      <ul class="small mb-2 ps-3">
+        <li>{{ low_stock_count }} at/below Min Stock</li>
+        <li>{{ over_stock_count }} at/above Max Stock</li>
+        <li>{{ scheme_product_count }} with an active Scheme %</li>
+      </ul>
+      <div class="small text-muted mb-1">Total Qty Stock: <strong>{{ total_qty_stock|inrn(1) }}</strong> — by category:</div>
+      <ul class="small mb-2 ps-3">
+        {% for c in category_stock %}
+        <li>{{ c.category }}: {{ c.qty|inrn(1) }}</li>
+        {% else %}
+        <li class="text-muted">No active products yet</li>
+        {% endfor %}
+      </ul>
+      <div class="d-flex gap-2 mt-2">
+        <a href="{{ url_for('export_module', module='products') }}" class="btn btn-sm btn-outline-secondary">Excel</a>
+        <a href="{{ url_for('export_module_pdf', module='products') }}" class="btn btn-sm btn-outline-secondary">PDF</a>
+        <a href="{{ url_for('inventory_list') }}" class="btn btn-sm btn-outline-secondary ms-auto">Open Products →</a>
+      </div>
+    </div></div>
+  </div>
+
+  <div class="col-md-6 col-lg-4">
+    <div class="card h-100 report-card rc-expenses"><div class="card-body">
+      <h6 class="card-title"><i class="bi bi-cash-stack"></i> Operating Expenses — {{ month_name }} {{ year }}</h6>
+      <div class="fs-4 fw-bold">{{ (expenses_month_total)|inr(2) }}</div>
+      {% if expenses_by_category %}
+      <div class="small text-muted mb-1">By category:</div>
+      <ul class="small mb-2 ps-3">
+        {% for c in expenses_by_category %}<li>{{ c.Category }} — {{ (c.total)|inr(2) }}</li>{% endfor %}
+      </ul>
+      {% endif %}
+      <div class="d-flex gap-2 mt-2">
+        <a href="{{ url_for('export_module', module='expenses') }}" class="btn btn-sm btn-outline-secondary">Excel</a>
+        <a href="{{ url_for('export_module_pdf', module='expenses') }}" class="btn btn-sm btn-outline-secondary">PDF</a>
+        <a href="{{ url_for('expenses_list') }}" class="btn btn-sm btn-outline-secondary ms-auto">Open Expenses →</a>
+      </div>
+    </div></div>
+  </div>
+
+  <div class="col-md-6 col-lg-4">
+    <div class="card h-100 report-card rc-targets"><div class="card-body">
+      <h6 class="card-title"><i class="bi bi-bullseye"></i> Sales Targets — {{ month_name }} {{ year }}</h6>
+      {% if target_summary %}
+      <div class="fs-4 fw-bold">{{ target_summary.qty_pct if target_summary.qty_pct is not none else '-' }}% <span class="fs-6 text-muted">of Qty pace</span></div>
+      <ul class="small mb-2 ps-3">
+        <li>Qty Sold: {{ target_summary.qty_actual|inrn(2) }} / {{ target_summary.qty_prorated|inrn(2) }} pace</li>
+        <li>Sales Value (Expected): {{ (target_summary.expected_actual)|inr(2) }} / {{ (target_summary.value_prorated)|inr(2) }} pace</li>
+        <li>Discount: {{ (target_summary.discount_actual)|inr(2) }} / {{ (target_summary.discount_cap)|inr(2) }} cap</li>
+        <li>Incentive earned: {{ (target_summary.incentive_mtd)|inr(2) }}</li>
+      </ul>
+      {% else %}
+      <p class="text-muted small mb-2">No targets set for this month yet.</p>
+      {% endif %}
+      <div class="d-flex gap-2 mt-2">
+        <a href="{{ url_for('targets_view') }}" class="btn btn-sm btn-outline-secondary ms-auto">Open Targets →</a>
+      </div>
+    </div></div>
+  </div>
+
+  <div class="col-md-6 col-lg-4">
+    <div class="card h-100 report-card rc-stockissues"><div class="card-body">
+      <h6 class="card-title"><i class="bi bi-truck"></i> Stock Issues (Van/Route) — {{ month_name }} {{ year }}</h6>
+      <div class="fs-4 fw-bold">{{ (stock_issues_month.collected)|inr(2) }} <span class="fs-6 text-muted">collected</span></div>
+      <ul class="small mb-2 ps-3">
+        <li>{{ (stock_issues_month.expected)|inr(2) }} expected</li>
+        <li>{{ (stock_issues_month.scheme)|inr(2) }} scheme amount</li>
+        <li>{{ (stock_issues_month.due)|inr(2) }} still due</li>
+      </ul>
+      <div class="d-flex gap-2 mt-2">
+        <a href="{{ url_for('export_module', module='stock_issues') }}" class="btn btn-sm btn-outline-secondary">Excel</a>
+        <a href="{{ url_for('export_module_pdf', module='stock_issues') }}" class="btn btn-sm btn-outline-secondary">PDF</a>
+        <a href="{{ url_for('stock_issues_report') }}" class="btn btn-sm btn-outline-secondary ms-auto">Open Report →</a>
+      </div>
+    </div></div>
+  </div>
+
+  {% if is_admin %}
+  <div class="col-md-6 col-lg-4">
+    <div class="card h-100 report-card rc-salary"><div class="card-body">
+      <h6 class="card-title"><i class="bi bi-people"></i> Salary — {{ month_name }} {{ year }}</h6>
+      <div class="fs-4 fw-bold">{{ (salary_summary.total)|inr(2) }}</div>
+      <div class="text-muted small mb-2">{{ salary_summary.paid }} paid, {{ salary_summary.pending }} pending</div>
+      <div class="d-flex gap-2 mt-2">
+        <a href="{{ url_for('export_module', module='salary') }}" class="btn btn-sm btn-outline-secondary">Excel</a>
+        <a href="{{ url_for('export_module_pdf', module='salary') }}" class="btn btn-sm btn-outline-secondary">PDF</a>
+        <a href="{{ url_for('salary_month') }}" class="btn btn-sm btn-outline-secondary ms-auto">Open Salary →</a>
+      </div>
+    </div></div>
+  </div>
+
+  <div class="col-md-6 col-lg-4">
+    <div class="card h-100 report-card rc-schemeclaims"><div class="card-body">
+      <h6 class="card-title"><i class="bi bi-award"></i> Scheme Claims</h6>
+      <div class="fs-4 fw-bold">{{ (scheme_claims_summary.pending)|inr(2) }} <span class="fs-6 text-muted">pending</span></div>
+      <div class="text-muted small mb-2">{{ (scheme_claims_summary.received)|inr(2) }} received/completed</div>
+      <div class="d-flex gap-2 mt-2">
+        <a href="{{ url_for('export_module', module='scheme_claims') }}" class="btn btn-sm btn-outline-secondary">Excel</a>
+        <a href="{{ url_for('export_module_pdf', module='scheme_claims') }}" class="btn btn-sm btn-outline-secondary">PDF</a>
+        <a href="{{ url_for('scheme_claims_list') }}" class="btn btn-sm btn-outline-secondary ms-auto">Open →</a>
+      </div>
+    </div></div>
+  </div>
+  {% endif %}
+
+  <div class="col-md-6 col-lg-4">
+    <div class="card h-100 report-card rc-customers"><div class="card-body">
+      <h6 class="card-title"><i class="bi bi-people-fill"></i> Customers</h6>
+      <div class="fs-4 fw-bold">{{ active_customers }}</div>
+      <div class="text-muted small mb-2">active customer(s)</div>
+      <div class="d-flex gap-2 mt-2">
+        <a href="{{ url_for('export_module', module='customers') }}" class="btn btn-sm btn-outline-secondary">Excel</a>
+        <a href="{{ url_for('export_module_pdf', module='customers') }}" class="btn btn-sm btn-outline-secondary">PDF</a>
+        <a href="{{ url_for('customers_list') }}" class="btn btn-sm btn-outline-secondary ms-auto">Open Customers →</a>
+      </div>
+    </div></div>
+  </div>
+
+  <div class="col-md-6 col-lg-4">
+    <div class="card h-100 report-card rc-fleet"><div class="card-body">
+      <h6 class="card-title"><i class="bi bi-truck-front"></i> Fleet</h6>
+      <div class="fs-4 fw-bold">{{ fleet_due }}</div>
+      <div class="text-muted small mb-2">maintenance/document item(s) due or expiring soon</div>
+      <div class="d-flex gap-2 mt-2">
+        <a href="{{ url_for('export_module', module='vehicles') }}" class="btn btn-sm btn-outline-secondary">Vehicles Excel</a>
+        <a href="{{ url_for('export_module', module='maintenance') }}" class="btn btn-sm btn-outline-secondary">Maint. Excel</a>
+        <a href="{{ url_for('vehicles_list') }}" class="btn btn-sm btn-outline-secondary ms-auto">Open Fleet →</a>
+      </div>
+    </div></div>
+  </div>
+
+  {% if is_admin %}
+  <div class="col-md-6 col-lg-4">
+    <div class="card h-100 report-card rc-masters"><div class="card-body">
+      <h6 class="card-title"><i class="bi bi-truck"></i> Suppliers &amp; Employees</h6>
+      <div class="text-muted small mb-2">Master-data exports</div>
+      <div class="d-flex flex-wrap gap-2 mt-2">
+        <a href="{{ url_for('export_module', module='suppliers') }}" class="btn btn-sm btn-outline-secondary">Suppliers Excel</a>
+        <a href="{{ url_for('export_module', module='employees') }}" class="btn btn-sm btn-outline-secondary">Employees Excel</a>
+        <a href="{{ url_for('export_module', module='advances') }}" class="btn btn-sm btn-outline-secondary">Advances Excel</a>
+      </div>
+    </div></div>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Scheme Claims{% endblock %}
+{% block page_title %}Scheme Claims{% endblock %}
+{% block content %}
+<p class="text-muted">Distributor-level scheme claims that aren't tied to any single product or Stock Issue — e.g.
+  an annual volume rebate, or a company-wide promo claim covering multiple products/months. (Discounts and free
+  units given at Stock Issue reconciliation are tracked separately — see Reports &gt; Stock Issue Schemes & Dues.)</p>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-3">
+    <div class="card"><div class="card-body">
+      <div class="text-muted small">Pending / Claimed (not yet received)</div>
+      <div class="fs-4 fw-bold">{{ (totals.pending)|inr(2) }}</div>
+    </div></div>
+  </div>
+  <div class="col-md-3">
+    <div class="card"><div class="card-body">
+      <div class="text-muted small">Received / Completed</div>
+      <div class="fs-4 fw-bold">{{ (totals.received)|inr(2) }}</div>
+    </div></div>
+  </div>
+</div>
+
+<div class="d-flex justify-content-between mb-3">
+  <form class="d-flex gap-2" method="get">
+    <select name="status" class="form-select" style="width:200px" onchange="this.form.submit()">
+      <option value="" {% if status_filter=='' %}selected{% endif %}>All statuses</option>
+      <option value="Pending" {% if status_filter=='Pending' %}selected{% endif %}>Pending</option>
+      <option value="Claimed" {% if status_filter=='Claimed' %}selected{% endif %}>Claimed</option>
+      <option value="Received" {% if status_filter=='Received' %}selected{% endif %}>Received</option>
+      <option value="Completed" {% if status_filter=='Completed' %}selected{% endif %}>Completed</option>
+    </select>
+  </form>
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('export_module', module='scheme_claims') }}" class="btn btn-outline-secondary"><i class="bi bi-file-earmark-excel"></i> Export to Excel</a>
+  <a href="{{ url_for('export_module_pdf', module='scheme_claims') }}" class="btn btn-outline-secondary"><i class="bi bi-file-earmark-pdf"></i> PDF</a>
+    <a href="{{ url_for('scheme_claim_form') }}" class="btn btn-brand"><i class="bi bi-plus-lg"></i> Add Claim</a>
+  </div>
+</div>
+
+<div class="card">
+  <div class="table-responsive">
+  <table class="table table-hover mb-0 align-middle">
+    <thead><tr><th>Scheme</th><th>Date</th><th>Applicable Products</th><th>Amount</th><th>Status</th><th>Received</th><th></th></tr></thead>
+    <tbody>
+      {% for c in claims %}
+      <tr>
+        <td>{{ c.SchemeName }}{% if c.Description %}<br><span class="text-muted small">{{ c.Description }}</span>{% endif %}</td>
+        <td>{{ c.ClaimDate }}</td>
+        <td>{{ c.ApplicableProducts or '-' }}</td>
+        <td>{{ (c.ClaimAmount)|inr(2) }}</td>
+        <td>
+          {% if c.Status=='Pending' %}<span class="badge badge-low">Pending</span>
+          {% elif c.Status=='Claimed' %}<span class="badge badge-over">Claimed</span>
+          {% elif c.Status=='Received' %}<span class="badge badge-ok">Received</span>
+          {% else %}<span class="badge badge-ok">Completed</span>{% endif %}
+        </td>
+        <td>{% if c.ReceivedAmount is not none %}{{ (c.ReceivedAmount)|inr(2) }}{% else %}-{% endif %}</td>
+        <td class="text-end">
+          <a href="{{ url_for('scheme_claim_form', claim_id=c.ClaimID) }}" class="btn btn-sm btn-outline-secondary">Edit</a>
+          {% if c.Status=='Pending' %}
+          <form method="post" action="{{ url_for('scheme_claim_mark', claim_id=c.ClaimID) }}" class="d-inline">
+            <input type="hidden" name="status" value="Claimed">
+            <button class="btn btn-sm btn-outline-secondary" type="submit">Mark Claimed</button>
+          </form>
+          {% endif %}
+          {% if c.Status in ('Pending', 'Claimed') %}
+          <button class="btn btn-sm btn-brand" type="button" data-bs-toggle="collapse" data-bs-target="#recv-{{ c.ClaimID }}">Mark Received</button>
+          {% endif %}
+          {% if c.Status=='Received' %}
+          <form method="post" action="{{ url_for('scheme_claim_mark', claim_id=c.ClaimID) }}" class="d-inline">
+            <input type="hidden" name="status" value="Completed">
+            <button class="btn btn-sm btn-outline-secondary" type="submit">Mark Completed</button>
+          </form>
+          {% endif %}
+          <form method="post" action="{{ url_for('scheme_claim_delete', claim_id=c.ClaimID) }}" onsubmit="return confirm('Delete this scheme claim?');" class="d-inline">
+            <button class="btn btn-sm btn-outline-danger" type="submit"><i class="bi bi-trash"></i></button>
+          </form>
+        </td>
+      </tr>
+      {% if c.Status in ('Pending', 'Claimed') %}
+      <tr class="collapse" id="recv-{{ c.ClaimID }}">
+        <td colspan="7">
+          <form method="post" action="{{ url_for('scheme_claim_mark', claim_id=c.ClaimID) }}" class="d-flex gap-2 align-items-end">
+            <input type="hidden" name="status" value="Received">
+            <div><label class="form-label small mb-0">Amount actually received</label>
+              <input type="number" step="0.01" name="received_amount" class="form-control form-control-sm" value="{{ c.ClaimAmount }}" style="width:140px"></div>
+            <button class="btn btn-sm btn-brand" type="submit">Confirm Received</button>
+          </form>
+        </td>
+      </tr>
+      {% endif %}
+      {% else %}<tr><td colspan="7" class="text-center text-muted py-4">No scheme claims recorded yet.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endblock %}

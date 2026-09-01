@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}GSTR-3B — {{ month_name }} {{ year }}{% endblock %}
+{% block page_title %}GSTR-3B — {{ month_name }} {{ year }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div class="btn-group">
+    <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('gst_gstr3b', year=prev_year, month=prev_month) }}">&larr; Prev</a>
+    <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('gst_gstr3b', year=next_year, month=next_month) }}">Next &rarr;</a>
+  </div>
+  <a href="{{ url_for('gst_dashboard') }}" class="small">&larr; Back to GST Filing</a>
+</div>
+
+<div class="alert alert-info small">
+  Working-paper summary for {{ month_name }} {{ year }}, in the shape of GSTR-3B Table 3.1 (outward liability),
+  Table 4 (ITC), and net payable. Not a filing — confirm final figures on the GST portal before you file.
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-header">Table 3.1 — Outward Tax Liability <span class="text-muted small">(from Sales)</span></div>
+      <div class="table-responsive"><table class="table mb-0">
+        <tr><td>Taxable Value</td><td class="text-end">{{ (summary.outward.taxable)|inr(2) }}</td></tr>
+        <tr><td>CGST</td><td class="text-end">{{ (summary.outward.cgst)|inr(2) }}</td></tr>
+        <tr><td>SGST</td><td class="text-end">{{ (summary.outward.sgst)|inr(2) }}</td></tr>
+        <tr><td>IGST</td><td class="text-end">{{ (summary.outward.igst)|inr(2) }}</td></tr>
+        <tr><th>Total Tax</th><th class="text-end">{{ (summary.outward.total_tax)|inr(2) }}</th></tr>
+      </table></div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-header">Table 4 — Input Tax Credit (ITC)
+        {% if summary.using_2b %}<span class="badge text-bg-success ms-1">Using uploaded GSTR-2B</span>{% else %}<span class="badge text-bg-warning ms-1">Using purchase records — no GSTR-2B uploaded yet</span>{% endif %}
+      </div>
+      <div class="table-responsive"><table class="table mb-0">
+        <thead><tr><th></th><th>CGST</th><th>SGST</th><th>IGST</th><th>Total</th></tr></thead>
+        <tbody>
+          <tr class="{{ 'fw-bold' if summary.using_2b else '' }}">
+            <td>As per our purchase records</td>
+            <td>{{ (summary.itc_purchase.cgst)|inr(2) }}</td>
+            <td>{{ (summary.itc_purchase.sgst)|inr(2) }}</td>
+            <td>{{ (summary.itc_purchase.igst)|inr(2) }}</td>
+            <td>{{ (summary.itc_purchase.total)|inr(2) }}</td>
+          </tr>
+          {% if summary.itc_2b %}
+          <tr class="fw-bold">
+            <td>As per uploaded GSTR-2B</td>
+            <td>{{ (summary.itc_2b.cgst)|inr(2) }}</td>
+            <td>{{ (summary.itc_2b.sgst)|inr(2) }}</td>
+            <td>{{ (summary.itc_2b.igst)|inr(2) }}</td>
+            <td>{{ (summary.itc_2b.total)|inr(2) }}</td>
+          </tr>
+          {% endif %}
+        </tbody>
+      </table></div>
+      <div class="card-body py-2 small text-muted">
+        Current GST law limits ITC claims to what appears in GSTR-2B — treat that row as authoritative once
+        it's uploaded; the purchase-records row is a cross-check.
+        <a href="{{ url_for('gst_gstr2b_list') }}">{{ 'View GSTR-2B uploads' if summary.itc_2b else 'Upload this month\'s GSTR-2B →' }}</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">Net Tax Payable <span class="text-muted small fw-normal">(outward tax − ITC {{ 'per uploaded GSTR-2B' if summary.using_2b else 'per purchase records' }})</span></div>
+  <div class="table-responsive"><table class="table mb-0">
+    <tr><td>CGST</td><td class="text-end">{{ (summary.net_payable.cgst)|inr(2) }}</td></tr>
+    <tr><td>SGST</td><td class="text-end">{{ (summary.net_payable.sgst)|inr(2) }}</td></tr>
+    <tr><td>IGST</td><td class="text-end">{{ (summary.net_payable.igst)|inr(2) }}</td></tr>
+    <tr><th>Total Payable</th><th class="text-end">{{ (summary.net_payable.total)|inr(2) }}</th></tr>
+  </table></div>
+  <div class="card-body py-2 small text-muted">
+    Simplified: each tax head's ITC is offset only against the same head (CGST ITC against CGST payable, and so
+    on) and never shown as negative here. The actual GST set-off rules let IGST credit offset CGST/SGST payable
+    too, in a specific order — the GST portal computes the real cross-utilised figure when you file.
+  </div>
+</div>
+{% endblock %}
