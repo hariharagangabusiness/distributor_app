@@ -54,25 +54,17 @@
   <div class="divider"></div>
   <table class="items">
     <thead>
-      <tr><th>Item</th><th class="num">Qty</th><th class="num">Amt</th></tr>
+      <tr><th>SKU</th><th class="num">Qty</th><th class="num">Price</th><th class="num">Amt</th></tr>
     </thead>
     <tbody>
       {% for l in lines %}
       {% set net_rate = ((l.Qty * l.UnitPrice - (l.DiscountAmount or 0)) / l.Qty) if l.Qty else l.UnitPrice %}
       <tr>
-        <td>{{ l.ProductName }}{% if l.SKU %}<br><span class="small">[{{ l.SKU }}]</span>{% endif %}</td>
+        <td>{{ l.SKU or l.ProductName }}</td>
         <td class="num">{{ l.Qty|round(2) }}</td>
+        <td class="num">{{ (net_rate)|inrn(2) }}</td>
         <td class="num">{{ (l.TaxableValue)|inrn(2) }}</td>
       </tr>
-      {% if l.DiscountAmount %}
-      <tr>
-        <td colspan="3" class="small">@ {{ (net_rate)|inrn(2) }} (Rate {{ (l.UnitPrice)|inrn(2) }} - disc {{ (l.DiscountAmount)|inrn(2) }})</td>
-      </tr>
-      {% else %}
-      <tr>
-        <td colspan="3" class="small">@ {{ (l.UnitPrice)|inrn(2) }} / {{ l.Unit }}</td>
-      </tr>
-      {% endif %}
       {% endfor %}
     </tbody>
   </table>
@@ -89,13 +81,17 @@
     <tr><td>Round Off</td><td class="num">{{ (sale.RoundOff)|inrn(2) }}</td></tr>
     {% endif %}
     <tr class="grand"><td>TOTAL</td><td class="num">{{ (sale.TotalAmount)|inrn(2) }}</td></tr>
+    {% if sale.PaymentStatus == 'Paid' %}
     <tr><td>Amount Paid</td><td class="num">{{ (sale.AmountReceived)|inrn(2) }}</td></tr>
-    {% if sale.CashAmount or sale.BankAmount %}
+    {% elif sale.PaymentStatus == 'Partial' %}
+    <tr><td>Amount Paid</td><td class="num">{{ (sale.AmountReceived)|inrn(2) }}</td></tr>
+    <tr class="grand"><td>Balance Due</td><td class="num">{{ (balance_due or 0)|inrn(2) }}</td></tr>
+    {% else %}
+    <tr class="grand"><td>Amount Due</td><td class="num">{{ (balance_due or sale.TotalAmount)|inrn(2) }}</td></tr>
+    {% endif %}
+    {% if sale.AmountReceived and (sale.CashAmount or sale.BankAmount) %}
     <tr><td class="small">&nbsp;&nbsp;Cash</td><td class="num small">{{ (sale.CashAmount or 0)|inrn(2) }}</td></tr>
     <tr><td class="small">&nbsp;&nbsp;Bank/UPI</td><td class="num small">{{ (sale.BankAmount or 0)|inrn(2) }}</td></tr>
-    {% endif %}
-    {% if balance_due and balance_due > 0 %}
-    <tr class="grand"><td>Balance Due</td><td class="num">{{ (balance_due)|inrn(2) }}</td></tr>
     {% endif %}
   </table>
   <div class="divider"></div>
