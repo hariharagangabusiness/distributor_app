@@ -28,8 +28,8 @@
       <div class="form-text">Leave blank to auto-number as {{ company.InvoicePrefix or 'INV' }}/FY/0001.</div>
       {% endif %}
     </div>
-    <div class="col-md-3"><label class="form-label">Customer *</label>
-      <select required name="customer_id" id="customer_id" class="form-select">
+    <div class="col-md-3"><label class="form-label">Customer</label>
+      <select name="customer_id" id="customer_id" class="form-select">
         <option value="">-- new customer (type name below) --</option>
         {% for c in customers %}
         <option value="{{ c.CustomerID }}" data-state="{{ c.StateCode or '' }}" data-name="{{ c.CustomerName }}"
