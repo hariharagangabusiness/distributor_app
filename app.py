@@ -2014,9 +2014,13 @@ def create_sale(customer_id, sale_date, status, payment_status, payment_due_date
     so a later edit of this same Sale can precisely reverse and redo it.
 
     `lines` is a list of (product_id, qty, unit_price) OR
-    (product_id, qty, unit_price, discount_amount) tuples — the 4-tuple form
-    applies a flat Rs discount to that line's taxable value (Qty x UnitPrice
-    - discount, floored at 0) before GST is calculated on it.
+    (product_id, qty, unit_price, discount_per_unit) tuples — the 4-tuple
+    form's discount is a PER-UNIT Rs amount, multiplied by Qty to get the
+    line's total discount (Qty x UnitPrice - Qty x discount_per_unit,
+    floored at 0) before GST is calculated on it. The total (not the
+    per-unit rate) is what's stored in SalesLines.DiscountAmount, since
+    every report/aggregate elsewhere (Live Sales Monitor, Targets, Stock
+    Issue schemes, etc.) sums that column expecting a per-line total.
 
     `cash_amount`/`bank_amount` record how AmountReceived was actually
     collected (physical cash vs. bank/UPI/card). Both default to None, in
@@ -2042,7 +2046,8 @@ def create_sale(customer_id, sale_date, status, payment_status, payment_due_date
     line_data = []
     for line in lines:
         prod_id, qty, price = line[0], line[1], line[2]
-        discount = line[3] if len(line) > 3 else 0.0
+        discount_per_unit = line[3] if len(line) > 3 else 0.0
+        discount = round(discount_per_unit * qty, 2)  # per-line total, for storage/aggregation
         prod = db.query("SELECT HSNCode, GSTRate FROM Products WHERE ProductID=?", (prod_id,), one=True)
         hsn = (prod["HSNCode"] or "") if prod else ""
         gst_rate = (prod["GSTRate"] or 0) if prod else 0

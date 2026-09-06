@@ -122,10 +122,10 @@
       <input name="notes" class="form-control" value="{{ sale.Notes if sale else '' }}"></div>
   </div>
 
-  <h6>Line Items <span class="text-muted fw-normal">(rate is the taxable value per unit, excl. GST)</span></h6>
+  <h6>Line Items <span class="text-muted fw-normal">(rate is the taxable value per unit, excl. GST; Discount ₹ is per unit — multiplied by Qty to get the line's total discount)</span></h6>
   <div class="table-responsive">
   <table class="table" id="lines-table">
-    <thead><tr><th style="width:26%">Product (available stock)</th><th>HSN</th><th>GST%</th><th>Qty</th><th>Rate</th><th>Discount ₹</th><th>Taxable</th><th>Tax</th><th>Line Total</th><th></th></tr></thead>
+    <thead><tr><th style="width:26%">Product (available stock)</th><th>HSN</th><th>GST%</th><th>Qty</th><th>Rate</th><th>Discount ₹/unit</th><th>Taxable</th><th>Tax</th><th>Line Total</th><th></th></tr></thead>
     <tbody id="lines-body"></tbody>
   </table>
   </div>
@@ -188,7 +188,10 @@ const companyStateCode = "{{ company.StateCode or '' }}";
 const existingLines = [
   {% if existing_lines %}
   {% for l in existing_lines %}
-  {product_id: {{ l.ProductID }}, qty: {{ l.Qty }}, unit_price: {{ l.UnitPrice }}, discount_amount: {{ l.DiscountAmount or 0 }}},
+  {# DiscountAmount is stored as the line's TOTAL discount (Qty x per-unit discount); the
+     Discount ₹ field is per-unit, so divide back out when pre-filling an edit. #}
+  {product_id: {{ l.ProductID }}, qty: {{ l.Qty }}, unit_price: {{ l.UnitPrice }},
+   discount_amount: {{ ((l.DiscountAmount or 0) / l.Qty) if l.Qty else 0 }}},
   {% endfor %}
   {% endif %}
 ];
@@ -294,7 +297,8 @@ function recalc() {
   body.querySelectorAll('tr').forEach(row => {
     const qty = parseFloat(row.querySelector('.qty-input').value) || 0;
     const price = parseFloat(row.querySelector('.price-input').value) || 0;
-    const discount = parseFloat(row.querySelector('.discount-input').value) || 0;
+    const discountPerUnit = parseFloat(row.querySelector('.discount-input').value) || 0;
+    const discount = discountPerUnit * qty;  // Discount ₹ is per-unit; total discount = qty x that
     const gstRate = parseFloat(row.dataset.gst || 0);
     const taxable = Math.max(qty * price - discount, 0);
     let cgst = 0, sgst = 0, igst = 0;
