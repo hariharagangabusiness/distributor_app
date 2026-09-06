@@ -35,7 +35,7 @@
       <li class="nav-item"><a class="nav-link {% if request.path=='/dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}"><i class="bi bi-speedometer2"></i> Dashboard
         {% if alert_counts.total %}<span class="badge text-bg-danger ms-1">{{ alert_counts.total }}</span>{% endif %}
       </a></li>
-      <li class="nav-item"><a class="nav-link {% if request.path.startswith('/reports') and not request.path.startswith('/reports/stock-issues') and not request.path.startswith('/reports/pnl') %}active{% endif %}" href="{{ url_for('reports_hub') }}"><i class="bi bi-bar-chart-line"></i> Reports</a></li>
+      <li class="nav-item"><a class="nav-link {% if request.path.startswith('/reports') and not request.path.startswith('/reports/stock-issues') and not request.path.startswith('/reports/pnl') and not request.path.startswith('/reports/sales-live') %}active{% endif %}" href="{{ url_for('reports_hub') }}"><i class="bi bi-bar-chart-line"></i> Reports</a></li>
 
       {% if can_access('inventory') %}
       <li class="nav-section" data-group="inventory">Inventory <i class="bi bi-chevron-down nav-section-chevron"></i></li>
@@ -54,13 +54,16 @@
       {% endif %}
       {% endif %}
 
-      {% if can_access('customers') or can_access('sales') or can_access('stock_issues') or can_access('stock_issues_report') or can_access('targets') %}
+      {% if can_access('customers') or can_access('sales') or can_access('sales_live') or can_access('stock_issues') or can_access('stock_issues_report') or can_access('targets') %}
       <li class="nav-section" data-group="sales">Sales <i class="bi bi-chevron-down nav-section-chevron"></i></li>
       {% if can_access('customers') %}
       <li class="nav-item nav-collapsible" data-group="sales"><a class="nav-link {% if request.path.startswith('/customers') %}active{% endif %}" href="{{ url_for('customers_list') }}"><i class="bi bi-people"></i> Customers</a></li>
       {% endif %}
       {% if can_access('sales') %}
       <li class="nav-item nav-collapsible" data-group="sales"><a class="nav-link {% if request.path.startswith('/sales') %}active{% endif %}" href="{{ url_for('sales_list') }}"><i class="bi bi-cart-check"></i> Sales</a></li>
+      {% endif %}
+      {% if can_access('sales_live') %}
+      <li class="nav-item nav-collapsible" data-group="sales"><a class="nav-link {% if request.path.startswith('/reports/sales-live') %}active{% endif %}" href="{{ url_for('sales_live_report') }}"><i class="bi bi-broadcast"></i> Live Sales Monitor</a></li>
       {% endif %}
       {% if can_access('stock_issues') %}
       <li class="nav-item nav-collapsible" data-group="sales"><a class="nav-link {% if request.path.startswith('/stock-issues') %}active{% endif %}" href="{{ url_for('stock_issues_list') }}"><i class="bi bi-truck"></i> Stock Issues</a></li>

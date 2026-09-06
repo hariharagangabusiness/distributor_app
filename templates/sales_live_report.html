@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+{% block title %}Live Sales Monitor{% endblock %}
+{% block page_title %}Live Sales Monitor — {{ date_str }}{% endblock %}
+{% block content %}
+<p class="text-muted">Everything happening today for each salesperson in one place: stock issued/sold/returned,
+  direct Sales-tab entries with their Cash/Bank split, and a live Expected-vs-Collected tally — pulled together
+  from Stock Issues and Sales as they're entered. This page auto-refreshes every 60 seconds while it's open.</p>
+
+<div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+  <form method="get" class="d-flex align-items-center gap-2">
+    <label class="form-label mb-0">Date</label>
+    <input type="date" name="date" class="form-control form-control-sm" style="width:160px" value="{{ date_str }}" max="{{ today }}" onchange="this.form.submit()">
+  </form>
+  {% if date_str != today %}
+  <a href="{{ url_for('sales_live_report') }}" class="btn btn-sm btn-outline-secondary">Back to Today</a>
+  {% else %}
+  <span class="badge text-bg-success"><i class="bi bi-broadcast"></i> Live — Today</span>
+  {% endif %}
+  <span class="text-muted small ms-auto" id="last-refreshed"></span>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-6 col-md-3 col-lg-2">
+    <div class="card h-100"><div class="card-body text-center">
+      <div class="text-muted small">Sales Today</div>
+      <div class="fs-5 fw-bold">{{ (totals.sales_total)|inr(2) }}</div>
+      <div class="text-muted small">{{ totals.sales_count }} invoice(s)</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md-3 col-lg-2">
+    <div class="card h-100"><div class="card-body text-center">
+      <div class="text-muted small">Collected (Cash+Bank)</div>
+      <div class="fs-5 fw-bold">{{ (totals.collected)|inr(2) }}</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md-3 col-lg-2">
+    <div class="card h-100"><div class="card-body text-center">
+      <div class="text-muted small">Expected (stock sold)</div>
+      <div class="fs-5 fw-bold">{{ (totals.expected)|inr(2) }}</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md-3 col-lg-2">
+    <div class="card h-100"><div class="card-body text-center">
+      <div class="text-muted small">Discount Given</div>
+      <div class="fs-5 fw-bold">{{ (totals.discount)|inr(2) }}</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md-3 col-lg-2">
+    <div class="card h-100 {% if totals.pending_review_count %}border-warning{% endif %}"><div class="card-body text-center">
+      <div class="text-muted small">Pending Review</div>
+      <div class="fs-5 fw-bold {% if totals.pending_review_count %}text-warning{% endif %}">{{ totals.pending_review_count }}</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md-3 col-lg-2">
+    <div class="card h-100"><div class="card-body text-center">
+      <div class="text-muted small">No Activity Yet</div>
+      <div class="fs-5 fw-bold">{{ totals.no_activity_count }}</div>
+    </div></div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="table-responsive">
+  <table class="table table-hover mb-0 align-middle">
+    <thead>
+      <tr>
+        <th>Salesperson</th>
+        <th>Status</th>
+        <th>Qty Issued</th>
+        <th>Qty Sold</th>
+        <th>Qty Returned</th>
+        <th>Qty Free</th>
+        <th>Unaccounted</th>
+        <th>Sales</th>
+        <th>Cash ₹</th>
+        <th>Bank ₹</th>
+        <th>Discount ₹</th>
+        <th>Expected ₹</th>
+        <th>Collected ₹</th>
+        <th>Discrepancy ₹</th>
+        <th>Month Pace</th>
+        <th>Top Products Today</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr class="{% if r.issue_badge == 'No activity' %}text-muted{% endif %}">
+        <td class="fw-bold">{{ r.employee.EmployeeName }}</td>
+        <td>
+          <span class="badge
+            {% if r.issue_badge == 'Reconciled' %}text-bg-success
+            {% elif r.issue_badge == 'Pending Review' %}text-bg-danger
+            {% elif r.issue_badge == 'Issued' %}text-bg-warning
+            {% elif r.issue_badge == 'Sales only (no Stock Issue)' %}text-bg-info
+            {% else %}text-bg-secondary{% endif %}">{{ r.issue_badge }}</span>
+        </td>
+        <td>{{ r.qty_issued|inrn(1) }}</td>
+        <td>{{ r.qty_sold|inrn(1) }}</td>
+        <td>{{ r.qty_returned|inrn(1) }}</td>
+        <td>{{ r.qty_free|inrn(1) }}</td>
+        <td class="{% if r.unaccounted != 0 %}text-danger fw-bold{% endif %}">{{ r.unaccounted|inrn(1) }}</td>
+        <td>{{ r.sales_count }}</td>
+        <td>{{ (r.sales_cash)|inr(2) }}</td>
+        <td>{{ (r.sales_bank)|inr(2) }}</td>
+        <td>{{ (r.discount)|inr(2) }}</td>
+        <td>{{ (r.expected_live)|inr(2) }}</td>
+        <td>{{ (r.collected_live)|inr(2) }}</td>
+        <td class="{% if r.discrepancy_live < 0 %}text-danger fw-bold{% elif r.discrepancy_live > 0 %}text-success{% endif %}">{{ (r.discrepancy_live)|inr(2) }}</td>
+        <td>
+          {% if r.target_progress %}
+          <span class="badge {% if (r.target_progress.qty_pct_mtd or 0) >= 100 %}text-bg-success{% elif (r.target_progress.qty_pct_mtd or 0) >= 75 %}text-bg-warning{% else %}text-bg-danger{% endif %}"
+                title="Qty Sold MTD {{ r.target_progress.mtd.qty_sold|round(2) }} of {{ r.target_progress.prorated_qty|round(2) }} pace">
+            {{ r.target_progress.qty_pct_mtd if r.target_progress.qty_pct_mtd is not none else '-' }}%
+          </span>
+          {% else %}<span class="text-muted small">no target</span>{% endif %}
+        </td>
+        <td class="small text-muted">
+          {% for tp in r.top_products %}{{ tp.ProductName }} ({{ tp.qty|round(1) }}){% if not loop.last %}, {% endif %}{% endfor %}
+        </td>
+        <td class="text-end">
+          {% if r.issue_ids %}
+          <a href="{{ url_for('stock_issue_view', issue_id=r.issue_ids[0]) }}" class="btn btn-sm btn-outline-secondary">Issue</a>
+          {% endif %}
+          <a href="{{ url_for('sales_list', employee_id=r.employee.EmployeeID, date=date_str) }}" class="btn btn-sm btn-outline-secondary">Sales</a>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="17" class="text-center text-muted py-4">No active salespeople set up yet.</td></tr>
+      {% endfor %}
+    </tbody>
+    {% if rows %}
+    <tfoot>
+      <tr class="table-light fw-bold">
+        <td colspan="2">Total</td>
+        <td>{{ totals.qty_issued|inrn(1) }}</td>
+        <td>{{ totals.qty_sold|inrn(1) }}</td>
+        <td></td><td></td>
+        <td class="{% if totals.unaccounted != 0 %}text-danger{% endif %}">{{ totals.unaccounted|inrn(1) }}</td>
+        <td>{{ totals.sales_count }}</td>
+        <td></td><td></td>
+        <td>{{ (totals.discount)|inr(2) }}</td>
+        <td>{{ (totals.expected)|inr(2) }}</td>
+        <td>{{ (totals.collected)|inr(2) }}</td>
+        <td class="{% if (totals.collected - totals.expected) < 0 %}text-danger{% endif %}">{{ (totals.collected - totals.expected)|inr(2) }}</td>
+        <td colspan="3"></td>
+      </tr>
+    </tfoot>
+    {% endif %}
+  </table>
+  </div>
+</div>
+
+{% if other_sales and other_sales.n %}
+<div class="alert alert-secondary mt-3">
+  <strong>{{ other_sales.n }} sale(s)</strong> recorded today with no salesperson attached (plain counter sales,
+  or the auto-created "Unassigned" sale from a Stock Issue reconciliation) — total {{ (other_sales.total)|inr(2) }},
+  Cash {{ (other_sales.cash)|inr(2) }}, Bank {{ (other_sales.bank)|inr(2) }}. Included in the "Sales Today" /
+  "Collected" totals above but not tied to any one salesperson row.
+  <a href="{{ url_for('sales_list', filter='unassigned') }}" class="ms-1">View Unassigned sales →</a>
+</div>
+{% endif %}
+
+{% endblock %}
+{% block scripts %}
+<script>
+document.getElementById('last-refreshed').textContent = 'Last loaded: ' + new Date().toLocaleTimeString();
+{% if date_str == today %}
+// Only auto-refresh while viewing today - a past date is a static snapshot.
+setTimeout(() => window.location.reload(), 60000);
+{% endif %}
+</script>
+{% endblock %}

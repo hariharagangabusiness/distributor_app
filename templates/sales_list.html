@@ -8,7 +8,15 @@
   <a href="{{ url_for('sales_list') }}" class="btn btn-sm btn-outline-secondary">Show all sales</a>
 </div>
 {% endif %}
+{% if employee_id or date_filter %}
+<div class="alert alert-info d-flex justify-content-between align-items-center">
+  <span>Filtered{% if date_filter %} to <strong>{{ date_filter }}</strong>{% endif %}{% if employee_id %} for the
+    salesperson selected on the Live Sales Monitor{% endif %}.</span>
+  <a href="{{ url_for('sales_list') }}" class="btn btn-sm btn-outline-secondary">Clear filter</a>
+</div>
+{% endif %}
 <div class="d-flex justify-content-end gap-2 mb-3">
+  <a href="{{ url_for('sales_live_report') }}" class="btn btn-outline-secondary"><i class="bi bi-broadcast"></i> Live Sales Monitor</a>
   <a href="{{ url_for('sales_daywise_report') }}" class="btn btn-outline-secondary"><i class="bi bi-calendar3"></i> Day-wise Report</a>
   <a href="{{ url_for('sales_import_upload') }}" class="btn btn-outline-secondary"><i class="bi bi-upload"></i> Import from Excel</a>
   <a href="{{ url_for('export_module', module='sales') }}" class="btn btn-outline-secondary"><i class="bi bi-file-earmark-excel"></i> Export to Excel</a>

@@ -207,6 +207,7 @@ ACCESS_TABS = [
     ("purchases", "Purchases", "Purchasing"),
     ("customers", "Customers", "Sales"),
     ("sales", "Sales", "Sales"),
+    ("sales_live", "Live Sales Monitor", "Sales"),
     ("stock_issues", "Stock Issues", "Sales"),
     ("stock_issues_report", "Stock Issue Schemes & Dues", "Sales"),
     ("targets", "Targets", "Sales"),
@@ -249,6 +250,7 @@ TAB_PATH_RULES = [
     ("/settings", "settings"),
     ("/dashboard/customize", "dashboard_customize"),
     ("/reports/stock-issues", "stock_issues_report"),
+    ("/reports/sales-live", "sales_live"),
     ("/reports/pnl", "pnl"),
     ("/inventory", "inventory"),
     ("/suppliers", "suppliers"),
@@ -1873,7 +1875,16 @@ def sales_list():
     filt = request.args.get("filter", "")
     if filt == "unassigned":
         sales = [s for s in sales if s["IsUnassignedBucket"]]
-    return render_template("sales_list.html", sales=sales, columns=get_effective_columns("Sale"), filt=filt)
+    # Optional quick filters (linked from the Live Sales Monitor report) - narrow to one
+    # salesperson and/or one date without needing a dedicated search form here.
+    employee_id = request.args.get("employee_id", type=int)
+    date_filter = request.args.get("date", "")
+    if employee_id:
+        sales = [s for s in sales if s["EmployeeID"] == employee_id]
+    if date_filter:
+        sales = [s for s in sales if s["SaleDate"] == date_filter]
+    return render_template("sales_list.html", sales=sales, columns=get_effective_columns("Sale"), filt=filt,
+                            employee_id=employee_id, date_filter=date_filter)
 
 
 @app.route("/sales/reports/day-wise")
@@ -3184,6 +3195,132 @@ def stock_issues_report():
     return render_template("stock_issues_report.html", date_from=date_from, date_to=date_to,
                             issues=issues, totals=totals, due_issues=due_issues,
                             claim_pending=claim_pending, free_lines=free_lines, daywise=daywise)
+
+
+# ---------------------------------------------------------------------
+# Real-time Sales Monitoring — one row per salesperson (Employee) for a
+# single day (defaults to today), pulling together everything scattered
+# across Stock Issues + Sales for that person on that day into one live
+# view: stock issued/sold/returned/free/unaccounted, direct Sales-tab
+# entries (count/total/cash/bank/discount), reconciliation cash/bank (if
+# already reconciled that day), a combined Expected-vs-Collected
+# discrepancy, and month-target pace. Auto-refreshes client-side so an
+# Admin/Manager can leave it open during the day.
+# ---------------------------------------------------------------------
+
+@app.route("/reports/sales-live")
+def sales_live_report():
+    date_str = request.args.get("date") or today_str()
+    y, m = int(date_str[:4]), int(date_str[5:7])
+
+    employees = db.query("SELECT * FROM Employees WHERE Status='Active' ORDER BY EmployeeName")
+
+    issues_by_emp = {}
+    for i in db.query("SELECT * FROM StockIssues WHERE IssueDate=?", (date_str,)):
+        issues_by_emp.setdefault(i["EmployeeID"], []).append(i)
+
+    line_agg_rows = db.query("""SELECT si.EmployeeID,
+                              COALESCE(SUM(sil.QtyIssued), 0) AS qty_issued,
+                              COALESCE(SUM(sil.QtySold), 0) AS qty_sold,
+                              COALESCE(SUM(sil.QtyReturned), 0) AS qty_returned,
+                              COALESCE(SUM(sil.QtyFree), 0) AS qty_free,
+                              COALESCE(SUM(sil.QtyIssued - COALESCE(sil.QtySold,0) - COALESCE(sil.QtyReturned,0)
+                                        - COALESCE(sil.QtyFree,0)), 0) AS unaccounted,
+                              COALESCE(SUM(sil.QtySold * sil.UnitPrice - COALESCE(sil.DiscountAmount,0)), 0) AS expected_live
+                              FROM StockIssueLines sil JOIN StockIssues si ON si.IssueID = sil.IssueID
+                              WHERE si.IssueDate=? GROUP BY si.EmployeeID""", (date_str,))
+    lines_by_emp = {r["EmployeeID"]: r for r in line_agg_rows}
+
+    sales_agg_rows = db.query("""SELECT EmployeeID, COUNT(*) n, COALESCE(SUM(TotalAmount),0) total,
+                               COALESCE(SUM(CashAmount),0) cash, COALESCE(SUM(BankAmount),0) bank
+                               FROM Sales WHERE SaleDate=? AND Status<>'Cancelled' AND EmployeeID IS NOT NULL
+                               GROUP BY EmployeeID""", (date_str,))
+    sales_by_emp = {r["EmployeeID"]: r for r in sales_agg_rows}
+
+    discount_agg_rows = db.query("""SELECT s.EmployeeID, COALESCE(SUM(sl.DiscountAmount),0) discount
+                                  FROM Sales s JOIN SalesLines sl ON sl.SaleID = s.SaleID
+                                  WHERE s.SaleDate=? AND s.Status<>'Cancelled' AND s.EmployeeID IS NOT NULL
+                                  GROUP BY s.EmployeeID""", (date_str,))
+    discount_by_emp = {r["EmployeeID"]: r["discount"] for r in discount_agg_rows}
+
+    top_products_rows = db.query("""SELECT s.EmployeeID, p.ProductName, SUM(sl.Qty) qty
+                                  FROM Sales s JOIN SalesLines sl ON sl.SaleID = s.SaleID
+                                  JOIN Products p ON p.ProductID = sl.ProductID
+                                  WHERE s.SaleDate=? AND s.Status<>'Cancelled' AND s.EmployeeID IS NOT NULL
+                                  GROUP BY s.EmployeeID, p.ProductID ORDER BY s.EmployeeID, qty DESC""", (date_str,))
+    top_products_by_emp = {}
+    for r in top_products_rows:
+        top_products_by_emp.setdefault(r["EmployeeID"], []).append(r)
+
+    rows = []
+    for e in employees:
+        emp_issues = issues_by_emp.get(e["EmployeeID"], [])
+        la = lines_by_emp.get(e["EmployeeID"])
+        sa = sales_by_emp.get(e["EmployeeID"])
+        recon_cash = sum((i["CashAmount"] or 0) for i in emp_issues if i["Status"] == "Reconciled")
+        recon_bank = sum((i["BankAmount"] or 0) for i in emp_issues if i["Status"] == "Reconciled")
+        sales_cash = sa["cash"] if sa else 0
+        sales_bank = sa["bank"] if sa else 0
+        expected_live = round(la["expected_live"], 2) if la else 0
+        collected_live = round(sales_cash + sales_bank + recon_cash + recon_bank, 2)
+        if not emp_issues and not sa:
+            issue_badge = "No activity"
+        elif any(i["ReviewStatus"] == "Pending" for i in emp_issues):
+            issue_badge = "Pending Review"
+        elif any(i["Status"] == "Reconciled" for i in emp_issues):
+            issue_badge = "Reconciled"
+        elif emp_issues:
+            issue_badge = "Issued"
+        else:
+            issue_badge = "Sales only (no Stock Issue)"
+        rows.append({
+            "employee": e,
+            "issue_badge": issue_badge,
+            "issue_ids": [i["IssueID"] for i in emp_issues],
+            "qty_issued": round(la["qty_issued"], 2) if la else 0,
+            "qty_sold": round(la["qty_sold"], 2) if la else 0,
+            "qty_returned": round(la["qty_returned"], 2) if la else 0,
+            "qty_free": round(la["qty_free"], 2) if la else 0,
+            "unaccounted": round(la["unaccounted"], 2) if la else 0,
+            "sales_count": sa["n"] if sa else 0,
+            "sales_total": round(sa["total"], 2) if sa else 0,
+            "sales_cash": round(sales_cash, 2),
+            "sales_bank": round(sales_bank, 2),
+            "discount": round(discount_by_emp.get(e["EmployeeID"], 0), 2),
+            "recon_cash": round(recon_cash, 2),
+            "recon_bank": round(recon_bank, 2),
+            "expected_live": expected_live,
+            "collected_live": collected_live,
+            "discrepancy_live": round(collected_live - expected_live, 2),
+            "top_products": top_products_by_emp.get(e["EmployeeID"], [])[:3],
+            "target_progress": get_employee_month_target_progress(e["EmployeeID"], y, m),
+        })
+    # Salespeople with today's activity float to the top; fully idle ones sink to the bottom.
+    rows.sort(key=lambda r: (r["issue_badge"] == "No activity", r["employee"]["EmployeeName"]))
+
+    # Sales entered today with no salesperson at all (plain counter sales, or the auto-created
+    # "Unassigned" sale from a reconciliation) - shown separately so the day's grand total here
+    # still reconciles with the plain Sales list/Day-wise Report for the same date.
+    other_sales = db.query("""SELECT COUNT(*) n, COALESCE(SUM(TotalAmount),0) total,
+                            COALESCE(SUM(CashAmount),0) cash, COALESCE(SUM(BankAmount),0) bank
+                            FROM Sales WHERE SaleDate=? AND Status<>'Cancelled' AND EmployeeID IS NULL""",
+                            (date_str,), one=True)
+
+    totals = {
+        "qty_issued": sum(r["qty_issued"] for r in rows),
+        "qty_sold": sum(r["qty_sold"] for r in rows),
+        "unaccounted": sum(r["unaccounted"] for r in rows),
+        "sales_count": sum(r["sales_count"] for r in rows) + (other_sales["n"] or 0),
+        "sales_total": round(sum(r["sales_total"] for r in rows) + (other_sales["total"] or 0), 2),
+        "collected": round(sum(r["collected_live"] for r in rows) + (other_sales["cash"] or 0) + (other_sales["bank"] or 0), 2),
+        "expected": round(sum(r["expected_live"] for r in rows), 2),
+        "discount": round(sum(r["discount"] for r in rows), 2),
+        "pending_review_count": sum(1 for r in rows if r["issue_badge"] == "Pending Review"),
+        "no_activity_count": sum(1 for r in rows if r["issue_badge"] == "No activity"),
+    }
+
+    return render_template("sales_live_report.html", date_str=date_str, today=today_str(),
+                            rows=rows, other_sales=other_sales, totals=totals)
 
 
 # ---------------------------------------------------------------------
