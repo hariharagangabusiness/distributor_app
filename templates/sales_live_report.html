@@ -153,10 +153,11 @@
 
 {% if other_sales and other_sales.n %}
 <div class="alert alert-secondary mt-3">
-  <strong>{{ other_sales.n }} sale(s)</strong> recorded today with no salesperson attached (plain counter sales,
-  or the auto-created "Unassigned" sale from a Stock Issue reconciliation) — total {{ (other_sales.total)|inr(2) }},
-  Cash {{ (other_sales.cash)|inr(2) }}, Bank {{ (other_sales.bank)|inr(2) }}. Included in the "Sales Today" /
-  "Collected" totals above but not tied to any one salesperson row.
+  <strong>{{ other_sales.n }} sale(s)</strong> recorded today with no salesperson attached — total
+  {{ (other_sales.total)|inr(2) }} (included in "Sales Today" above). Of that, plain counter sales not tied to
+  any Stock Issue collected {{ (other_sales.cash)|inr(2) }} cash / {{ (other_sales.bank)|inr(2) }} bank (included
+  in "Collected" above); a sale auto-created from a Stock Issue reconciliation has its Cash/Bank already counted
+  on that salesperson's own row above, so it isn't added again here.
   <a href="{{ url_for('sales_list', filter='unassigned') }}" class="ms-1">View Unassigned sales →</a>
 </div>
 {% endif %}

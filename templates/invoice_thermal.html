@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Receipt {{ sale.InvoiceNumber }}</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #ccc; }
+  body { font-family: 'Courier New', Courier, monospace; font-size: 11px; color: #000; }
+  .receipt { width: 58mm; margin: 10px auto; background: #fff; padding: 6px 4px; }
+  .center { text-align: center; }
+  .bold { font-weight: bold; }
+  .company-name { font-size: 14px; font-weight: bold; }
+  .divider { border-top: 1px dashed #000; margin: 4px 0; }
+  table { width: 100%; border-collapse: collapse; }
+  .items th, .items td { text-align: left; padding: 1px 0; font-size: 10px; vertical-align: top; }
+  .items th.num, .items td.num { text-align: right; }
+  .totals td { padding: 1px 0; font-size: 11px; }
+  .totals td.num { text-align: right; }
+  .totals tr.grand td { font-weight: bold; font-size: 12px; border-top: 1px dashed #000; padding-top: 3px; }
+  .small { font-size: 9px; color: #333; }
+  .footer { text-align: center; margin-top: 6px; font-size: 10px; }
+  .no-print { text-align: center; margin: 10px auto; width: 58mm; }
+  .no-print button, .no-print a { display: block; width: 100%; margin: 4px 0; padding: 8px; font-size: 13px; cursor: pointer; }
+  @media print {
+    html, body { background: #fff; }
+    .no-print { display: none; }
+    .receipt { margin: 0; width: 58mm; }
+    @page { size: 58mm auto; margin: 0; }
+  }
+</style>
+</head>
+<body>
+<div class="no-print">
+  <button onclick="window.print()">🖨 Print 58mm Receipt</button>
+  <a href="{{ url_for('sale_invoice', sid=sale.SaleID) }}">Switch to full Tax Invoice (A4)</a>
+  <a href="{{ url_for('sale_view', sid=sale.SaleID) }}">Back to Sale</a>
+</div>
+
+<div class="receipt">
+  <div class="center company-name">{{ company.CompanyName or 'Your Company Name' }}</div>
+  <div class="center small">
+    {{ company.Address or '' }}{% if company.City %}, {{ company.City }}{% endif %}<br>
+    {% if company.Phone %}Ph: {{ company.Phone }}{% endif %}
+    {% if company.GSTIN %}<br>GSTIN: {{ company.GSTIN }}{% endif %}
+  </div>
+  <div class="divider"></div>
+  <div>
+    Invoice #: {{ sale.InvoiceNumber }}<br>
+    Date: {{ sale.SaleDate }}<br>
+    Customer: {{ sale.CustomerName }}{% if sale.Phone %} ({{ sale.Phone }}){% endif %}<br>
+    {% if sale.EmployeeName %}Salesperson: {{ sale.EmployeeName }}<br>{% endif %}
+  </div>
+  <div class="divider"></div>
+  <table class="items">
+    <thead>
+      <tr><th>Item</th><th class="num">Qty</th><th class="num">Amt</th></tr>
+    </thead>
+    <tbody>
+      {% for l in lines %}
+      {% set net_rate = ((l.Qty * l.UnitPrice - (l.DiscountAmount or 0)) / l.Qty) if l.Qty else l.UnitPrice %}
+      <tr>
+        <td>{{ l.ProductName }}{% if l.SKU %}<br><span class="small">[{{ l.SKU }}]</span>{% endif %}</td>
+        <td class="num">{{ l.Qty|round(2) }}</td>
+        <td class="num">{{ (l.TaxableValue)|inrn(2) }}</td>
+      </tr>
+      {% if l.DiscountAmount %}
+      <tr>
+        <td colspan="3" class="small">@ {{ (net_rate)|inrn(2) }} (Rate {{ (l.UnitPrice)|inrn(2) }} - disc {{ (l.DiscountAmount)|inrn(2) }})</td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="3" class="small">@ {{ (l.UnitPrice)|inrn(2) }} / {{ l.Unit }}</td>
+      </tr>
+      {% endif %}
+      {% endfor %}
+    </tbody>
+  </table>
+  <div class="divider"></div>
+  <table class="totals">
+    <tr><td>Taxable Amount</td><td class="num">{{ (sale.TaxableAmount)|inrn(2) }}</td></tr>
+    {% if sale.IsInterState %}
+    <tr><td>IGST</td><td class="num">{{ (sale.IGSTAmount)|inrn(2) }}</td></tr>
+    {% else %}
+    <tr><td>CGST</td><td class="num">{{ (sale.CGSTAmount)|inrn(2) }}</td></tr>
+    <tr><td>SGST</td><td class="num">{{ (sale.SGSTAmount)|inrn(2) }}</td></tr>
+    {% endif %}
+    {% if sale.RoundOff %}
+    <tr><td>Round Off</td><td class="num">{{ (sale.RoundOff)|inrn(2) }}</td></tr>
+    {% endif %}
+    <tr class="grand"><td>TOTAL</td><td class="num">{{ (sale.TotalAmount)|inrn(2) }}</td></tr>
+    <tr><td>Amount Paid</td><td class="num">{{ (sale.AmountReceived)|inrn(2) }}</td></tr>
+    {% if sale.CashAmount or sale.BankAmount %}
+    <tr><td class="small">&nbsp;&nbsp;Cash</td><td class="num small">{{ (sale.CashAmount or 0)|inrn(2) }}</td></tr>
+    <tr><td class="small">&nbsp;&nbsp;Bank/UPI</td><td class="num small">{{ (sale.BankAmount or 0)|inrn(2) }}</td></tr>
+    {% endif %}
+    {% if balance_due and balance_due > 0 %}
+    <tr class="grand"><td>Balance Due</td><td class="num">{{ (balance_due)|inrn(2) }}</td></tr>
+    {% endif %}
+  </table>
+  <div class="divider"></div>
+  <div class="footer">Thank you for your purchase!</div>
+</div>
+{% if auto_print %}
+<script>
+  window.addEventListener('load', function() {
+    setTimeout(function() { window.print(); }, 300);
+  });
+</script>
+{% endif %}
+</body>
+</html>

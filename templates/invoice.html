@@ -40,6 +40,8 @@
   <button onclick="window.print()">🖨 Print / Save as PDF</button>
   <a href="{{ url_for('sale_invoice_pdf', sid=sale.SaleID) }}">Download PDF directly</a>
   &nbsp;|&nbsp;
+  <a href="{{ url_for('sale_invoice_thermal', sid=sale.SaleID) }}">🧾 Print 58mm Thermal Receipt</a>
+  &nbsp;|&nbsp;
   <a href="{{ url_for('sale_view', sid=sale.SaleID) }}">Back to Sale</a>
 </div>
 

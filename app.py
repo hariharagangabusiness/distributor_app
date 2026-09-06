@@ -2640,6 +2640,29 @@ def sale_invoice(sid):
                             balance_due=balance_due, auto_print=auto_print)
 
 
+@app.route("/sales/<int:sid>/invoice/thermal")
+def sale_invoice_thermal(sid):
+    """A compact receipt formatted for a 58mm thermal roll printer (like a
+    till/POS receipt) - an alternative to the full A4 Tax Invoice for
+    counter/van sales where a small paper receipt is handed over on the
+    spot. Shows each line's SKU, Qty, and net Rate (after any per-line
+    discount), with GST summarized as a single block at the bottom rather
+    than a per-line column (there isn't room for one on 58mm paper)."""
+    sale = db.query("""SELECT s.*, c.CustomerName, c.Phone, c.Address, c.Zone, e.EmployeeName FROM Sales s
+                     JOIN Customers c ON c.CustomerID=s.CustomerID
+                     LEFT JOIN Employees e ON e.EmployeeID=s.EmployeeID WHERE s.SaleID=?""", (sid,), one=True)
+    if not sale:
+        flash("Sale not found.", "error")
+        return redirect(url_for("sales_list"))
+    lines = db.query("""SELECT sl.*, pr.ProductName, pr.Unit, pr.SKU FROM SalesLines sl
+                      JOIN Products pr ON pr.ProductID=sl.ProductID WHERE sl.SaleID=?""", (sid,))
+    company = get_company_settings()
+    balance_due = sale_balance_due(sale)
+    auto_print = request.args.get("auto_print") == "1"
+    return render_template("invoice_thermal.html", sale=sale, lines=lines, company=company,
+                            balance_due=balance_due, auto_print=auto_print)
+
+
 @app.route("/sales/<int:sid>/invoice.pdf")
 def sale_invoice_pdf(sid):
     from invoice_pdf import build_invoice_pdf
@@ -3298,13 +3321,23 @@ def sales_live_report():
     # Salespeople with today's activity float to the top; fully idle ones sink to the bottom.
     rows.sort(key=lambda r: (r["issue_badge"] == "No activity", r["employee"]["EmployeeName"]))
 
-    # Sales entered today with no salesperson at all (plain counter sales, or the auto-created
-    # "Unassigned" sale from a reconciliation) - shown separately so the day's grand total here
-    # still reconciles with the plain Sales list/Day-wise Report for the same date.
-    other_sales = db.query("""SELECT COUNT(*) n, COALESCE(SUM(TotalAmount),0) total,
-                            COALESCE(SUM(CashAmount),0) cash, COALESCE(SUM(BankAmount),0) bank
+    # Sales entered today with no salesperson at all: plain counter sales, and/or the
+    # auto-created "Unassigned" sale from a reconciliation. That auto-created sale's
+    # Cash/Bank is the SAME money already counted above as recon_cash/recon_bank on its
+    # salesperson's row (StockIssues.CashAmount/BankAmount and the Sale it creates are
+    # two records of one reconciliation) - so it must be excluded here, or counting both
+    # doubles the day's "Collected" total. Sale value/count still include it (it's real,
+    # already-invoiced business), just not its cash/bank a second time.
+    other_sales = db.query("""SELECT COUNT(*) n, COALESCE(SUM(TotalAmount),0) total
                             FROM Sales WHERE SaleDate=? AND Status<>'Cancelled' AND EmployeeID IS NULL""",
                             (date_str,), one=True)
+    other_sales_unlinked_money = db.query("""SELECT COALESCE(SUM(CashAmount),0) cash, COALESCE(SUM(BankAmount),0) bank
+                                           FROM Sales WHERE SaleDate=? AND Status<>'Cancelled' AND EmployeeID IS NULL
+                                           AND SaleID NOT IN (SELECT SaleID FROM StockIssues WHERE SaleID IS NOT NULL)""",
+                                           (date_str,), one=True)
+    other_sales = dict(other_sales)
+    other_sales["cash"] = other_sales_unlinked_money["cash"]
+    other_sales["bank"] = other_sales_unlinked_money["bank"]
 
     totals = {
         "qty_issued": sum(r["qty_issued"] for r in rows),
