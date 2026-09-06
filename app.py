@@ -387,8 +387,11 @@ def change_password():
 @app.route("/users")
 @admin_required
 def users_list():
-    users = db.query("SELECT * FROM Users ORDER BY Active DESC, Username")
-    return render_template("users_list.html", users=users, all_roles=ALL_ROLES)
+    users = db.query("""SELECT u.*, e.EmployeeName FROM Users u
+                      LEFT JOIN Employees e ON e.EmployeeID = u.EmployeeID
+                      ORDER BY u.Active DESC, u.Username""")
+    employees = db.query("SELECT * FROM Employees WHERE Status='Active' ORDER BY EmployeeName")
+    return render_template("users_list.html", users=users, all_roles=ALL_ROLES, employees=employees)
 
 
 @app.route("/users/new", methods=["GET", "POST"])
@@ -400,6 +403,7 @@ def user_add():
         role = request.form.get("role") if request.form.get("role") in ALL_ROLES else "Staff"
         password = request.form.get("password") or ""
         confirm = request.form.get("confirm_password") or ""
+        employee_id = int(request.form["employee_id"]) if request.form.get("employee_id") else None
         if not username:
             flash("Username is required.", "error")
         elif len(password) < 6:
@@ -409,14 +413,35 @@ def user_add():
         else:
             try:
                 db.execute(
-                    "INSERT INTO Users (Username, PasswordHash, FullName, Role, Active) VALUES (?,?,?,?,1)",
-                    (username, generate_password_hash(password), full_name or username, role),
+                    "INSERT INTO Users (Username, PasswordHash, FullName, Role, Active, EmployeeID) VALUES (?,?,?,?,1,?)",
+                    (username, generate_password_hash(password), full_name or username, role, employee_id),
                 )
                 flash(f"Login created for {username}.", "success")
                 return redirect(url_for("users_list"))
             except Exception:
                 flash(f"Could not create login — the username '{username}' may already be taken.", "error")
-    return render_template("user_form.html", all_roles=ALL_ROLES)
+    employees = db.query("SELECT * FROM Employees WHERE Status='Active' ORDER BY EmployeeName")
+    return render_template("user_form.html", all_roles=ALL_ROLES, employees=employees)
+
+
+@app.route("/users/<int:uid>/employee", methods=["POST"])
+@admin_required
+def user_employee_update(uid):
+    """Links (or unlinks) this login to an Employee record, so a Staff/
+    Supervisor's own Sales-tab entries can auto-pick and lock the
+    Salesperson field to themselves instead of picking from a dropdown."""
+    user = db.query("SELECT * FROM Users WHERE UserID=?", (uid,), one=True)
+    if not user:
+        flash("User not found.", "error")
+        return redirect(url_for("users_list"))
+    employee_id = int(request.form["employee_id"]) if request.form.get("employee_id") else None
+    db.execute("UPDATE Users SET EmployeeID=? WHERE UserID=?", (employee_id, uid))
+    if employee_id:
+        emp = db.query("SELECT EmployeeName FROM Employees WHERE EmployeeID=?", (employee_id,), one=True)
+        flash(f"{user['Username']} linked to salesperson {emp['EmployeeName'] if emp else ''}.", "success")
+    else:
+        flash(f"{user['Username']} unlinked from any salesperson.", "success")
+    return redirect(url_for("users_list"))
 
 
 @app.route("/users/<int:uid>/role", methods=["POST"])
@@ -1901,6 +1926,35 @@ def find_open_stock_issue(employee_id, sale_date):
                      ORDER BY IssueID DESC LIMIT 1""", (employee_id, sale_date), one=True)
 
 
+def auto_create_stock_issue_for_sale(employee_id, sale_date, line_data):
+    """Backfills a Stock Issue for a salesperson's Sale when they had none
+    open yet for that date — reuses stock_issue_post_line() (the same
+    helper "Issue Stock"/"Add More Products" use) so the Issue transaction
+    posting and StockIssueLines bookkeeping stay identical to a manually
+    created issue. Flagged ReviewStatus='Pending' so a Manager/Admin has to
+    look it over before it can be reconciled — the sale itself has already
+    gone through by the time this runs, so this never blocks the sale."""
+    issue_id = db.execute("""INSERT INTO StockIssues (EmployeeID, IssueDate, Status, ReviewStatus, Notes)
+                VALUES (?,?,?,?,?)""",
+               (employee_id, sale_date, "Issued", "Pending",
+                "Auto-created from a Sales-tab entry — pending Manager/Admin review"))
+    for prod_id, qty, price, *_rest in line_data:
+        stock_issue_post_line(issue_id, prod_id, qty, price, sale_date,
+                               "Auto-issued to cover a Sales-tab entry (pending review)")
+    return issue_id
+
+
+def expand_pending_stock_issue_for_product(issue, product_id, qty, price, sale_date):
+    """A 'Pending' (auto-created) Stock Issue can be silently topped up with
+    a product it doesn't yet have a line for, if a later Sale that same day
+    sells something new — it's still awaiting its first human review, so
+    there's no manually-entered state to clobber. A genuine 'Reviewed'
+    issue (manually created, or already approved) is never touched this
+    way — this function is only called for ReviewStatus=='Pending' ones."""
+    stock_issue_post_line(issue["IssueID"], product_id, qty, price, sale_date,
+                           "Auto-issued to cover a Sales-tab entry (pending review)")
+
+
 def reverse_sale_stock_issue_links(sale_id):
     """Undoes whatever a prior save of this Sale credited against any Stock
     Issue lines' Qty Sold (via SaleStockIssueLinks), and removes those link
@@ -1917,7 +1971,8 @@ def reverse_sale_stock_issue_links(sale_id):
 
 def create_sale(customer_id, sale_date, status, payment_status, payment_due_date, amount_received, notes,
                  place_of_supply_code, lines, reverse_charge=False, invoice_no=None, sale_id=None,
-                 post_inventory=True, employee_id=None):
+                 post_inventory=True, employee_id=None, cash_amount=None, bank_amount=None,
+                 auto_create_issue=False):
     """Creates a Sale + SalesLines with the GST breakup, or (when `sale_id`
     is passed) EDITS an existing one in place: its old SalesLines and the
     InventoryTransaction rows it originally created are removed first, then
@@ -1950,7 +2005,21 @@ def create_sale(customer_id, sale_date, status, payment_status, payment_due_date
     `lines` is a list of (product_id, qty, unit_price) OR
     (product_id, qty, unit_price, discount_amount) tuples — the 4-tuple form
     applies a flat Rs discount to that line's taxable value (Qty x UnitPrice
-    - discount, floored at 0) before GST is calculated on it."""
+    - discount, floored at 0) before GST is calculated on it.
+
+    `cash_amount`/`bank_amount` record how AmountReceived was actually
+    collected (physical cash vs. bank/UPI/card). Both default to None, in
+    which case the whole of `amount_received` is recorded as cash — kept
+    backward compatible for callers (bulk import, the auto-created
+    reconciliation Sale) that don't split payment mode.
+
+    `auto_create_issue=True` additionally means: if `employee_id` has no
+    open Stock Issue for `sale_date` yet, create one automatically (via
+    auto_create_stock_issue_for_sale()) from this sale's own lines, flagged
+    'Pending Review', so the sale can still credit against it instead of
+    deducting warehouse stock a second time. Only sale_form()'s direct
+    salesperson-locked entry point passes this — every other caller leaves
+    it False so it never surprises a manual/imported/reconciliation sale."""
     company = get_company_settings()
     place_of_supply_name = STATE_NAME_BY_CODE.get(place_of_supply_code, "")
     is_interstate = 1 if (company["StateCode"] and place_of_supply_code != company["StateCode"]) else 0
@@ -1979,25 +2048,31 @@ def create_sale(customer_id, sale_date, status, payment_status, payment_due_date
     grand_total = round(raw_total)
     round_off = round(grand_total - raw_total, 2)
 
+    if cash_amount is None and bank_amount is None:
+        cash_amount, bank_amount = amount_received, 0.0
+    cash_amount = round(cash_amount or 0, 2)
+    bank_amount = round(bank_amount or 0, 2)
+
     if sale_id is None:
         sale_id = db.execute("""INSERT INTO Sales (InvoiceNumber, CustomerID, SaleDate, Status, PaymentStatus,
                     PaymentDueDate, TotalAmount, AmountReceived, Notes, PlaceOfSupplyState, PlaceOfSupplyStateCode,
-                    IsInterState, TaxableAmount, CGSTAmount, SGSTAmount, IGSTAmount, RoundOff, ReverseCharge, EmployeeID)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    IsInterState, TaxableAmount, CGSTAmount, SGSTAmount, IGSTAmount, RoundOff, ReverseCharge, EmployeeID,
+                    CashAmount, BankAmount)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (invoice_no, customer_id, sale_date, status, payment_status,
                      payment_due_date or None, grand_total, amount_received, notes,
                      place_of_supply_name, place_of_supply_code, is_interstate,
                      round(taxable_total, 2), round(cgst_total, 2), round(sgst_total, 2), round(igst_total, 2),
-                     round_off, 1 if reverse_charge else 0, employee_id))
+                     round_off, 1 if reverse_charge else 0, employee_id, cash_amount, bank_amount))
     else:
         db.execute("""UPDATE Sales SET CustomerID=?, SaleDate=?, Status=?, PaymentStatus=?, PaymentDueDate=?,
                     TotalAmount=?, AmountReceived=?, Notes=?, PlaceOfSupplyState=?, PlaceOfSupplyStateCode=?,
                     IsInterState=?, TaxableAmount=?, CGSTAmount=?, SGSTAmount=?, IGSTAmount=?, RoundOff=?,
-                    ReverseCharge=?, EmployeeID=? WHERE SaleID=?""",
+                    ReverseCharge=?, EmployeeID=?, CashAmount=?, BankAmount=? WHERE SaleID=?""",
                    (customer_id, sale_date, status, payment_status, payment_due_date or None,
                     grand_total, amount_received, notes, place_of_supply_name, place_of_supply_code, is_interstate,
                     round(taxable_total, 2), round(cgst_total, 2), round(sgst_total, 2), round(igst_total, 2),
-                    round_off, 1 if reverse_charge else 0, employee_id, sale_id))
+                    round_off, 1 if reverse_charge else 0, employee_id, cash_amount, bank_amount, sale_id))
         db.execute("DELETE FROM SalesLines WHERE SaleID=?", (sale_id,))
         db.execute("DELETE FROM InventoryTransactions WHERE RefType='Sale' AND RefID=?", (sale_id,))
         # Undo whatever this Sale previously credited toward any Stock Issue's Qty Sold,
@@ -2006,6 +2081,18 @@ def create_sale(customer_id, sale_date, status, payment_status, payment_due_date
         reverse_sale_stock_issue_links(sale_id)
 
     open_issue = find_open_stock_issue(employee_id, sale_date) if (status == "Completed" and post_inventory) else None
+    if open_issue is None and employee_id and auto_create_issue and status == "Completed" and post_inventory and line_data:
+        issue_id = auto_create_stock_issue_for_sale(employee_id, sale_date, line_data)
+        open_issue = db.query("SELECT * FROM StockIssues WHERE IssueID=?", (issue_id,), one=True)
+    elif open_issue is not None and open_issue["ReviewStatus"] == "Pending" and employee_id and status == "Completed" and post_inventory:
+        # A Pending (auto-created, not-yet-reviewed) issue can be silently topped up with a
+        # product it doesn't already have a line for, since a human hasn't looked at it yet.
+        existing_product_ids = {r["ProductID"] for r in db.query(
+            "SELECT ProductID FROM StockIssueLines WHERE IssueID=?", (open_issue["IssueID"],))}
+        for prod_id, qty, price, *_rest in line_data:
+            if prod_id not in existing_product_ids:
+                expand_pending_stock_issue_for_product(open_issue, prod_id, qty, price, sale_date)
+                existing_product_ids.add(prod_id)
 
     for prod_id, qty, price, discount, taxable_value, hsn, gst_rate, gst in line_data:
         db.execute("""INSERT INTO SalesLines (SaleID, ProductID, Qty, UnitPrice, DiscountAmount, LineTotal, HSNCode,
@@ -2086,6 +2173,18 @@ def resolve_sale_customer(f):
                        VALUES (?,?,?,?,1)""", (name, address, phone, zone))
 
 
+def locked_salesperson_employee_id():
+    """If the signed-in user is a Staff/Supervisor linked to an Employee
+    record, their Salesperson field on the Sales form is auto-picked and
+    LOCKED to themselves (returns that EmployeeID). Manager/Admin (and any
+    Staff/Supervisor not yet linked to an Employee) keep the normal manual
+    dropdown (returns None)."""
+    user = get_current_user()
+    if user and user["Role"] in ("Staff", "Supervisor") and user["EmployeeID"]:
+        return user["EmployeeID"]
+    return None
+
+
 @app.route("/sales/new", methods=["GET", "POST"])
 def sale_form():
     company = get_company_settings()
@@ -2102,14 +2201,17 @@ def sale_form():
             lines = [(int(p), parse_form_number(q, "Qty"), parse_form_number(pr, "Rate"),
                       parse_form_number(d, "Discount ₹"))
                      for p, q, pr, d in zip(product_ids, qtys, prices, discounts) if p and q]
-            amount_received = parse_form_number(f.get("amount_received"), "Amount Received")
+            cash_amount = parse_form_number(f.get("cash_amount") or "0", "Cash Amount")
+            bank_amount = parse_form_number(f.get("bank_amount") or "0", "Bank Amount")
+            amount_received = round(cash_amount + bank_amount, 2)
             customer_id = resolve_sale_customer(f)
         except ValueError as e:
             flash(str(e), "error")
             return redirect(url_for("sale_form"))
 
         place_of_supply_code = f.get("place_of_supply_code", "") or company["StateCode"]
-        employee_id = int(f["employee_id"]) if f.get("employee_id") else None
+        locked_employee_id = locked_salesperson_employee_id()
+        employee_id = locked_employee_id or (int(f["employee_id"]) if f.get("employee_id") else None)
 
         sale_id = create_sale(
             customer_id=customer_id, sale_date=f["sale_date"], status=f["status"],
@@ -2117,7 +2219,8 @@ def sale_form():
             amount_received=amount_received, notes=f.get("notes", ""),
             place_of_supply_code=place_of_supply_code, lines=lines,
             reverse_charge=bool(f.get("reverse_charge")), invoice_no=f.get("invoice_number") or None,
-            employee_id=employee_id)
+            employee_id=employee_id, cash_amount=cash_amount, bank_amount=bank_amount,
+            auto_create_issue=bool(locked_employee_id))
         save_custom_fields("Sale", sale_id, f)
         flash(sale_stock_issue_credit_message(sale_id), "success")
         return redirect(url_for("sale_invoice", sid=sale_id, auto_print=1))
@@ -2125,11 +2228,19 @@ def sale_form():
     products = get_products_with_stock()
     employees = db.query("SELECT * FROM Employees WHERE Status='Active' ORDER BY EmployeeName")
     custom_fields = get_custom_field_defs("Sale")
+    locked_employee_id = locked_salesperson_employee_id()
+    locked_employee = None
+    if locked_employee_id:
+        locked_employee = db.query("SELECT * FROM Employees WHERE EmployeeID=?", (locked_employee_id,), one=True)
+    current_user_row = get_current_user()
+    show_salesperson_warning = bool(current_user_row and current_user_row["Role"] in ("Staff", "Supervisor")
+                                     and not locked_employee_id)
     return render_template("sale_form.html", customers=customers, products=products, employees=employees,
                             today=today_str(), states=INDIAN_STATES, company=company, suggested_invoice=None,
                             custom_fields=custom_fields, custom_values={},
                             cf_record_id=None, custom_attachments={}, sale=None, existing_lines=None,
-                            current_customer=None)
+                            current_customer=None, locked_employee=locked_employee,
+                            show_salesperson_warning=show_salesperson_warning)
 
 
 @app.route("/sales/<int:sid>/edit", methods=["GET", "POST"])
@@ -2156,7 +2267,9 @@ def sale_edit(sid):
             lines = [(int(p), parse_form_number(q, "Qty"), parse_form_number(pr, "Rate"),
                       parse_form_number(d, "Discount ₹"))
                      for p, q, pr, d in zip(product_ids, qtys, prices, discounts) if p and q]
-            amount_received = parse_form_number(f.get("amount_received"), "Amount Received")
+            cash_amount = parse_form_number(f.get("cash_amount") or "0", "Cash Amount")
+            bank_amount = parse_form_number(f.get("bank_amount") or "0", "Bank Amount")
+            amount_received = round(cash_amount + bank_amount, 2)
             customer_id = resolve_sale_customer(f)
         except ValueError as e:
             flash(str(e), "error")
@@ -2171,7 +2284,7 @@ def sale_edit(sid):
             amount_received=amount_received, notes=f.get("notes", ""),
             place_of_supply_code=place_of_supply_code, lines=lines,
             reverse_charge=bool(f.get("reverse_charge")), invoice_no=existing["InvoiceNumber"], sale_id=sid,
-            employee_id=employee_id)
+            employee_id=employee_id, cash_amount=cash_amount, bank_amount=bank_amount)
         save_custom_fields("Sale", sid, f)
         credit_note = sale_stock_issue_credit_message(sid, plain=True)
         flash(f"Sale {existing['InvoiceNumber']} updated." + (f" {credit_note}" if credit_note else ""), "success")
@@ -2188,7 +2301,8 @@ def sale_edit(sid):
                             today=existing["SaleDate"], states=INDIAN_STATES, company=company, suggested_invoice=None,
                             custom_fields=custom_fields, custom_values=custom_values, cf_record_id=sid,
                             custom_attachments={}, sale=existing, existing_lines=existing_lines,
-                            current_customer=current_customer)
+                            current_customer=current_customer, locked_employee=None,
+                            show_salesperson_warning=False)
 
 
 # ---------------------------------------------------------------------
@@ -2697,9 +2811,46 @@ def stock_issue_view(issue_id):
     }
     y, m = int(issue["IssueDate"][:4]), int(issue["IssueDate"][5:7])
     target_progress = get_employee_month_target_progress(issue["EmployeeID"], y, m)
+    # Full-view reconciliation data: every Sale credited against this issue (from the Sales
+    # tab), with its Cash/Bank/Discount breakdown, so an Admin/Manager can tally cash+bank
+    # collected against expected stock value in one place without hopping between screens.
+    credited_sales_full = db.query("""
+        SELECT s.SaleID, s.InvoiceNumber, s.CashAmount, s.BankAmount, s.AmountReceived,
+               COALESCE(SUM(sl.DiscountAmount), 0) AS Discount, COALESCE(SUM(sl.TaxableValue
+                 + sl.CGSTAmount + sl.SGSTAmount + sl.IGSTAmount), 0) AS LineTotal
+        FROM (SELECT DISTINCT SaleID FROM SaleStockIssueLinks ssl
+              JOIN StockIssueLines sil ON sil.LineID = ssl.StockIssueLineID WHERE sil.IssueID=?) x
+        JOIN Sales s ON s.SaleID = x.SaleID
+        LEFT JOIN SalesLines sl ON sl.SaleID = s.SaleID
+        GROUP BY s.SaleID
+    """, (issue_id,))
+    sales_cash_total = round(sum(cs["CashAmount"] or 0 for cs in credited_sales_full), 2)
+    sales_bank_total = round(sum(cs["BankAmount"] or 0 for cs in credited_sales_full), 2)
+    sales_discount_total = round(sum(cs["Discount"] or 0 for cs in credited_sales_full), 2)
     return render_template("stock_issue_view.html", issue=issue, lines=lines, today=today_str(),
                             money_locked=stock_issue_money_locked(issue), line_totals=line_totals,
-                            target_progress=target_progress)
+                            target_progress=target_progress, credited_sales_full=credited_sales_full,
+                            sales_cash_total=sales_cash_total, sales_bank_total=sales_bank_total,
+                            sales_discount_total=sales_discount_total)
+
+
+@app.route("/stock-issues/<int:issue_id>/approve", methods=["POST"])
+def stock_issue_approve(issue_id):
+    """Manager/Admin-only: approves a Stock Issue that was auto-created behind
+    a salesperson's Sales-tab entry (ReviewStatus='Pending'), so it can then
+    be reconciled. Does not change anything about the issue's lines/stock —
+    it's purely a human sign-off that the auto-created figures look right."""
+    user = get_current_user()
+    if not user or user["Role"] not in ("Manager", "Admin"):
+        flash("Only Manager/Admin accounts can approve a pending Stock Issue.", "error")
+        return redirect(url_for("stock_issue_view", issue_id=issue_id))
+    issue = db.query("SELECT * FROM StockIssues WHERE IssueID=?", (issue_id,), one=True)
+    if not issue:
+        flash("Stock issue not found.", "error")
+        return redirect(url_for("stock_issues_list"))
+    db.execute("UPDATE StockIssues SET ReviewStatus='Reviewed' WHERE IssueID=?", (issue_id,))
+    flash("Stock Issue approved — it can now be reconciled.", "success")
+    return redirect(url_for("stock_issue_view", issue_id=issue_id))
 
 
 def stock_issue_money_locked(issue):
@@ -2720,6 +2871,10 @@ def stock_issue_reconcile(issue_id):
     if not issue:
         flash("Stock issue not found.", "error")
         return redirect(url_for("stock_issues_list"))
+    if issue["ReviewStatus"] == "Pending":
+        flash("This Stock Issue was auto-created from a Sales-tab entry and is awaiting Manager/Admin review — "
+              "approve it first before reconciling.", "error")
+        return redirect(url_for("stock_issue_view", issue_id=issue_id))
     is_reedit = issue["Status"] == "Reconciled"
     money_locked = False
     if is_reedit:

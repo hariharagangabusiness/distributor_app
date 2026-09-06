@@ -17,7 +17,8 @@
       <tr>
         <td>{{ i.IssueDate }}</td>
         <td>{{ i.EmployeeName }}</td>
-        <td><span class="badge {% if i.Status == 'Reconciled' %}text-bg-success{% else %}text-bg-warning{% endif %}">{{ i.Status }}</span></td>
+        <td><span class="badge {% if i.Status == 'Reconciled' %}text-bg-success{% else %}text-bg-warning{% endif %}">{{ i.Status }}</span>
+          {% if i.ReviewStatus == 'Pending' %}<span class="badge text-bg-danger" title="Auto-created — needs Manager/Admin approval before it can be reconciled">Pending Review</span>{% endif %}</td>
         <td>
           {% if i.TargetProgress %}
           <span class="badge {% if (i.TargetProgress.qty_pct_mtd or 0) >= 100 %}text-bg-success{% elif (i.TargetProgress.qty_pct_mtd or 0) >= 75 %}text-bg-warning{% else %}text-bg-danger{% endif %}"
@@ -39,7 +40,7 @@
         <td class="{% if i.UnaccountedTotal != 0 %}text-danger fw-bold{% endif %}">{{ i.UnaccountedTotal|inrn(2) }}</td>
         <td>
           <a href="{{ url_for('stock_issue_view', issue_id=i.IssueID) }}" class="btn btn-sm btn-outline-secondary">View</a>
-          {% if i.Status != 'Reconciled' %}
+          {% if i.Status != 'Reconciled' and i.ReviewStatus != 'Pending' %}
           <a href="{{ url_for('stock_issue_reconcile', issue_id=i.IssueID) }}" class="btn btn-sm btn-brand">Reconcile</a>
           {% endif %}
         </td>

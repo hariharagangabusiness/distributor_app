@@ -230,6 +230,9 @@ CREATE TABLE IF NOT EXISTS Sales (
     EmployeeID              INTEGER,  -- optional: the salesperson this sale is against, when it's
                                        -- being sold from stock already issued to them that day (see
                                        -- SaleStockIssueLinks) rather than a plain counter/warehouse sale
+    CashAmount              REAL NOT NULL DEFAULT 0,  -- portion of AmountReceived collected as cash
+    BankAmount              REAL NOT NULL DEFAULT 0,  -- portion of AmountReceived collected via bank/UPI/card
+                                                       -- (CashAmount + BankAmount should equal AmountReceived)
     FOREIGN KEY (CustomerID) REFERENCES Customers(CustomerID),
     FOREIGN KEY (EmployeeID) REFERENCES Employees(EmployeeID)
 );
@@ -595,6 +598,9 @@ CREATE TABLE IF NOT EXISTS StockIssues (
                                -- reconciled, and can become NULL again if that Sale is later fully split
                                -- across other customers via Reassign)
     CreatedAt       TEXT NOT NULL DEFAULT (datetime('now')),
+    ReviewStatus    TEXT NOT NULL DEFAULT 'Reviewed', -- 'Reviewed' (normal) / 'Pending' (auto-created behind a
+                                                       -- salesperson's Sales-tab entry; must be approved by a
+                                                       -- Manager/Admin before this issue can be reconciled)
     FOREIGN KEY (EmployeeID) REFERENCES Employees(EmployeeID),
     FOREIGN KEY (SaleID) REFERENCES Sales(SaleID)
 );
@@ -656,7 +662,10 @@ CREATE TABLE IF NOT EXISTS Users (
     Role            TEXT NOT NULL DEFAULT 'Staff',   -- 'Staff', 'Supervisor', 'Manager', or 'Admin'
     Active          INTEGER NOT NULL DEFAULT 1,
     CreatedAt       TEXT NOT NULL DEFAULT (datetime('now')),
-    LastLoginAt     TEXT
+    LastLoginAt     TEXT,
+    EmployeeID      INTEGER,   -- links this login to an Employee record so the Sales form can
+                               -- auto-pick/lock the Salesperson to whoever is logged in
+    FOREIGN KEY (EmployeeID) REFERENCES Employees(EmployeeID)
 );
 
 -- Access Control: which sidebar tabs each non-Admin role can see/use.

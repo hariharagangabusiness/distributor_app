@@ -69,26 +69,28 @@
              value="{{ current_customer.Zone if current_customer else '' }}"></div>
   </div>
 
+  {% if show_salesperson_warning %}
+  <div class="alert alert-warning">Your login isn't linked to a salesperson/Employee record yet, so this sale
+    won't auto-credit against a Stock Issue. Ask an Admin to link your account from Manage Users, or pick a
+    Salesperson manually below.</div>
+  {% endif %}
   <div class="row g-3 mb-3">
     <div class="col-md-2"><label class="form-label">Payment Due Date</label>
       <input type="date" name="payment_due_date" class="form-control" value="{{ sale.PaymentDueDate if sale else '' }}"></div>
-    <div class="col-md-3"><label class="form-label">Payment Status</label>
+    <div class="col-md-2"><label class="form-label">Payment Status</label>
       <select name="payment_status" class="form-select">
         <option {% if sale and sale.PaymentStatus == 'Unpaid' %}selected{% endif %}>Unpaid</option>
         <option {% if sale and sale.PaymentStatus == 'Partial' %}selected{% endif %}>Partial</option>
         <option {% if sale and sale.PaymentStatus == 'Paid' %}selected{% endif %}>Paid</option>
       </select></div>
-    <div class="col-md-3"><label class="form-label">Amount Received</label>
-      <input type="number" step="0.01" name="amount_received" class="form-control" value="{{ sale.AmountReceived if sale else 0 }}"></div>
-    <div class="col-md-3"><label class="form-label">Salesperson (optional)</label>
-      <select name="employee_id" class="form-select">
-        <option value="">-- none (regular sale) --</option>
-        {% for e in employees %}
-        <option value="{{ e.EmployeeID }}" {% if sale and sale.EmployeeID == e.EmployeeID %}selected{% endif %}>{{ e.EmployeeName }}</option>
-        {% endfor %}
-      </select>
-      <div class="form-text">If this sale is being fulfilled from stock already issued to a salesperson today, select them here — it'll be credited toward that day's Stock Issue automatically instead of double-deducting stock.</div>
-    </div>
+    <div class="col-md-2"><label class="form-label">Cash ₹</label>
+      <input type="number" step="0.01" name="cash_amount" id="cash_amount" class="form-control"
+             value="{{ sale.CashAmount if sale else 0 }}"></div>
+    <div class="col-md-2"><label class="form-label">Bank/UPI ₹</label>
+      <input type="number" step="0.01" name="bank_amount" id="bank_amount" class="form-control"
+             value="{{ sale.BankAmount if sale else 0 }}"></div>
+    <div class="col-md-2"><label class="form-label">Amount Received (total)</label>
+      <input type="number" step="0.01" name="amount_received" id="amount_received" class="form-control" value="{{ sale.AmountReceived if sale else 0 }}" disabled></div>
     <div class="col-md-2 d-flex align-items-end">
       <div class="form-check">
         <input type="checkbox" class="form-check-input" name="reverse_charge" id="reverse_charge"
@@ -96,6 +98,25 @@
         <label class="form-check-label" for="reverse_charge">Reverse Charge</label>
         <div class="form-text">When checked, GST still shows on the invoice, but Balance Due only counts the product value — the customer pays GST directly to the Government.</div>
       </div>
+    </div>
+  </div>
+  <div class="row g-3 mb-3">
+    <div class="col-md-6">
+      <label class="form-label">Salesperson {% if not locked_employee %}(optional){% endif %}</label>
+      {% if locked_employee %}
+      <input class="form-control" value="{{ locked_employee.EmployeeName }}" disabled>
+      <input type="hidden" name="employee_id" value="{{ locked_employee.EmployeeID }}">
+      <div class="form-text">Auto-picked from your login. If you don't yet have an open Stock Issue for today, one
+        will be created automatically and flagged for a Manager/Admin to review.</div>
+      {% else %}
+      <select name="employee_id" class="form-select">
+        <option value="">-- none (regular sale) --</option>
+        {% for e in employees %}
+        <option value="{{ e.EmployeeID }}" {% if sale and sale.EmployeeID == e.EmployeeID %}selected{% endif %}>{{ e.EmployeeName }}</option>
+        {% endfor %}
+      </select>
+      <div class="form-text">If this sale is being fulfilled from stock already issued to a salesperson today, select them here — it'll be credited toward that day's Stock Issue automatically instead of double-deducting stock.</div>
+      {% endif %}
     </div>
     <div class="col-md-6"><label class="form-label">Notes</label>
       <input name="notes" class="form-control" value="{{ sale.Notes if sale else '' }}"></div>
@@ -171,8 +192,19 @@ const existingLines = [
   {% endfor %}
   {% endif %}
 ];
-const amountReceivedInput = document.querySelector('input[name="amount_received"]');
+const amountReceivedInput = document.getElementById('amount_received');
+const cashAmountInput = document.getElementById('cash_amount');
+const bankAmountInput = document.getElementById('bank_amount');
 const reverseChargeInput = document.getElementById('reverse_charge');
+
+function syncAmountReceived() {
+  const cash = parseFloat(cashAmountInput && cashAmountInput.value) || 0;
+  const bank = parseFloat(bankAmountInput && bankAmountInput.value) || 0;
+  if (amountReceivedInput) amountReceivedInput.value = (cash + bank).toFixed(2);
+  recalc();
+}
+if (cashAmountInput) cashAmountInput.addEventListener('input', syncAmountReceived);
+if (bankAmountInput) bankAmountInput.addEventListener('input', syncAmountReceived);
 const customerNameInput = document.getElementById('customer_name');
 const customerAddressInput = document.getElementById('customer_address');
 const customerPhoneInput = document.getElementById('customer_phone');
@@ -307,6 +339,6 @@ if (existingLines.length) {
 } else {
   addLine();
 }
-recalc();
+syncAmountReceived();
 </script>
 {% endblock %}

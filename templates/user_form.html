@@ -15,6 +15,15 @@
       </select></div>
     <div class="col-12"><label class="form-label">Full Name</label>
       <input name="full_name" class="form-control"></div>
+    <div class="col-12"><label class="form-label">Linked Salesperson (optional)</label>
+      <select name="employee_id" class="form-select">
+        <option value="">-- none --</option>
+        {% for e in employees %}
+        <option value="{{ e.EmployeeID }}">{{ e.EmployeeName }}</option>
+        {% endfor %}
+      </select>
+      <div class="form-text">If this login is a Staff/Supervisor who sells from a Stock Issue, link it to their
+        Employee record so the Sales form auto-picks (and locks) the Salesperson field to them.</div></div>
     <div class="col-md-6"><label class="form-label">Password *</label>
       <input required type="password" name="password" class="form-control" autocomplete="new-password" minlength="6"></div>
     <div class="col-md-6"><label class="form-label">Confirm Password *</label>

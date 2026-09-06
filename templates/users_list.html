@@ -10,7 +10,7 @@
   <div class="card-header">Login Accounts</div>
   <div class="table-responsive">
     <table class="table mb-0 align-middle">
-      <thead><tr><th>Username</th><th>Full Name</th><th>Role</th><th>Status</th><th>Last Login</th><th></th></tr></thead>
+      <thead><tr><th>Username</th><th>Full Name</th><th>Role</th><th>Salesperson Link</th><th>Status</th><th>Last Login</th><th></th></tr></thead>
       <tbody>
         {% for u in users %}
         <tr>
@@ -23,6 +23,16 @@
                       {% if current_user and u.UserID == current_user.UserID %}title="Change your own role carefully — you'll lose Admin access to this page if you're no longer Admin"{% endif %}>
                 {% for role in all_roles %}
                 <option value="{{ role }}" {% if role == u.Role %}selected{% endif %}>{{ role }}</option>
+                {% endfor %}
+              </select>
+            </form>
+          </td>
+          <td>
+            <form method="post" action="{{ url_for('user_employee_update', uid=u.UserID) }}" class="d-inline">
+              <select name="employee_id" class="form-select form-select-sm d-inline-block" style="width:auto" onchange="this.form.submit()">
+                <option value="">-- none --</option>
+                {% for e in employees %}
+                <option value="{{ e.EmployeeID }}" {% if u.EmployeeID == e.EmployeeID %}selected{% endif %}>{{ e.EmployeeName }}</option>
                 {% endfor %}
               </select>
             </form>
@@ -41,7 +51,7 @@
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="6" class="text-center text-muted py-4">No users yet.</td></tr>
+        <tr><td colspan="7" class="text-center text-muted py-4">No users yet.</td></tr>
         {% endfor %}
       </tbody>
     </table>

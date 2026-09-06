@@ -2,10 +2,21 @@
 {% block title %}Stock Issue{% endblock %}
 {% block page_title %}Stock Issue — {{ issue.EmployeeName }}, {{ issue.IssueDate }}{% endblock %}
 {% block content %}
+{% if issue.ReviewStatus == 'Pending' %}
+<div class="alert alert-warning d-flex justify-content-between align-items-center">
+  <span><i class="bi bi-hourglass-split"></i> This Stock Issue was <strong>auto-created</strong> from a Sales-tab
+    entry and is <strong>pending Manager/Admin review</strong> — it can't be reconciled until approved.</span>
+  {% if current_user and current_user.Role in ('Manager', 'Admin') %}
+  <form method="post" action="{{ url_for('stock_issue_approve', issue_id=issue.IssueID) }}" class="ms-2">
+    <button type="submit" class="btn btn-sm btn-warning"><i class="bi bi-check-lg"></i> Approve</button>
+  </form>
+  {% endif %}
+</div>
+{% endif %}
 <div class="d-flex justify-content-end gap-2 mb-3">
   {% if issue.Status != 'Reconciled' %}
   <a href="{{ url_for('stock_issue_add_lines', issue_id=issue.IssueID) }}" class="btn btn-outline-brand"><i class="bi bi-plus-lg"></i> Add More Products</a>
-  <a href="{{ url_for('stock_issue_reconcile', issue_id=issue.IssueID) }}" class="btn btn-brand"><i class="bi bi-check2-circle"></i> Reconcile</a>
+  <a href="{{ url_for('stock_issue_reconcile', issue_id=issue.IssueID) }}" class="btn btn-brand {% if issue.ReviewStatus == 'Pending' %}disabled{% endif %}"><i class="bi bi-check2-circle"></i> Reconcile</a>
   {% elif current_user and current_user.Role == 'Admin' %}
   <a href="{{ url_for('stock_issue_reconcile', issue_id=issue.IssueID) }}" class="btn btn-outline-secondary"><i class="bi bi-pencil"></i> Edit Reconciliation</a>
   {% endif %}
@@ -133,4 +144,48 @@
   </table>
   </div>
 </div>
+
+{% if credited_sales_full %}
+<div class="card mt-3">
+  <div class="card-header"><i class="bi bi-cash-stack"></i> Sales recorded directly on the Sales tab for this issue —
+    full tally view</div>
+  <div class="table-responsive">
+  <table class="table mb-0">
+    <thead><tr><th>Invoice</th><th>Cash ₹</th><th>Bank/UPI ₹</th><th>Discount ₹</th><th>Total ₹</th><th></th></tr></thead>
+    <tbody>
+      {% for cs in credited_sales_full %}
+      <tr>
+        <td><a href="{{ url_for('sale_view', sid=cs.SaleID) }}">{{ cs.InvoiceNumber }}</a></td>
+        <td>{{ (cs.CashAmount or 0)|inr(2) }}</td>
+        <td>{{ (cs.BankAmount or 0)|inr(2) }}</td>
+        <td>{{ (cs.Discount or 0)|inr(2) }}</td>
+        <td>{{ (cs.LineTotal or 0)|inr(2) }}</td>
+        <td><a href="{{ url_for('sale_view', sid=cs.SaleID) }}" class="btn btn-sm btn-outline-secondary">View</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr class="table-light fw-bold">
+        <td>Total</td>
+        <td>{{ (sales_cash_total)|inr(2) }}</td>
+        <td>{{ (sales_bank_total)|inr(2) }}</td>
+        <td>{{ (sales_discount_total)|inr(2) }}</td>
+        <td></td><td></td>
+      </tr>
+    </tfoot>
+  </table>
+  </div>
+  {% if issue.Status == 'Reconciled' %}
+  <div class="card-body border-top">
+    <div class="row text-center">
+      <div class="col-md-3"><div class="text-muted small">Expected (stock value)</div><div class="fw-bold">{{ (issue.ExpectedAmount)|inr(2) }}</div></div>
+      <div class="col-md-3"><div class="text-muted small">Cash + Bank collected</div><div class="fw-bold">{{ (issue.CashCollected)|inr(2) }}</div></div>
+      <div class="col-md-3"><div class="text-muted small">Sales-tab Cash+Bank (above)</div><div class="fw-bold">{{ (sales_cash_total + sales_bank_total)|inr(2) }}</div></div>
+      <div class="col-md-3"><div class="text-muted small">Discrepancy</div>
+        <div class="fw-bold {% if issue.Discrepancy and issue.Discrepancy < 0 %}text-danger{% endif %}">{{ (issue.Discrepancy)|inr(2) }}</div></div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
 {% endblock %}
