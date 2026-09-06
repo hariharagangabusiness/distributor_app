@@ -15,6 +15,8 @@
       <input name="phone" class="form-control" value="{{ customer.Phone if customer else '' }}"></div>
     <div class="col-md-6"><label class="form-label">Email</label>
       <input name="email" class="form-control" value="{{ customer.Email if customer else '' }}"></div>
+    <div class="col-md-6"><label class="form-label">Zone</label>
+      <input name="zone" class="form-control" placeholder="e.g. North Zone" value="{{ customer.Zone if customer else '' }}"></div>
     <div class="col-md-6"><label class="form-label">State (for GST place of supply) *</label>
       <select required name="state_code" class="form-select">
         <option value="">-- select --</option>

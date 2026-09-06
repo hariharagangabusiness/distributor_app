@@ -9,6 +9,7 @@
 </div>
 {% endif %}
 <div class="d-flex justify-content-end gap-2 mb-3">
+  <a href="{{ url_for('sales_daywise_report') }}" class="btn btn-outline-secondary"><i class="bi bi-calendar3"></i> Day-wise Report</a>
   <a href="{{ url_for('sales_import_upload') }}" class="btn btn-outline-secondary"><i class="bi bi-upload"></i> Import from Excel</a>
   <a href="{{ url_for('export_module', module='sales') }}" class="btn btn-outline-secondary"><i class="bi bi-file-earmark-excel"></i> Export to Excel</a>
   <a href="{{ url_for('export_module_pdf', module='sales') }}" class="btn btn-outline-secondary"><i class="bi bi-file-earmark-pdf"></i> PDF</a>
@@ -22,7 +23,7 @@
   <table class="table table-hover mb-0 align-middle" id="tbl-sale">
     <thead><tr><th data-col="invoice_number">Invoice #</th><th data-col="customer">Customer</th><th data-col="date">Date</th>
       <th data-col="status">Status</th><th data-col="payment">Payment</th><th data-col="due_date">Due Date</th>
-      <th data-col="total">Total</th><th></th></tr></thead>
+      <th data-col="total">Total</th><th data-col="balance">Balance</th><th></th></tr></thead>
     <tbody>
       {% for s in sales %}
       <tr>
@@ -34,12 +35,13 @@
             {% else %}<span class="badge badge-low">Unpaid</span>{% endif %}</td>
         <td data-col="due_date">{{ s.PaymentDueDate or '-' }}</td>
         <td data-col="total">{{ (s.TotalAmount)|inr(2) }}</td>
+        <td data-col="balance" class="{% if (s.TotalAmount - s.AmountReceived) > 0 %}text-danger fw-bold{% endif %}">{{ (s.TotalAmount - s.AmountReceived)|inr(2) }}</td>
         <td class="text-end">
           <a href="{{ url_for('sale_view', sid=s.SaleID) }}" class="btn btn-sm btn-outline-secondary">View</a>
           {% if s.IsUnassignedBucket %}<a href="{{ url_for('sale_reassign', sid=s.SaleID) }}" class="btn btn-sm btn-warning">Reassign</a>{% endif %}
         </td>
       </tr>
-      {% else %}<tr><td colspan="8" class="text-center text-muted py-4">No sales recorded yet.</td></tr>{% endfor %}
+      {% else %}<tr><td colspan="9" class="text-center text-muted py-4">No sales recorded yet.</td></tr>{% endfor %}
     </tbody>
   </table>
   </div>

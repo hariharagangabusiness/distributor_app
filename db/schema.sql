@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS Customers (
     Phone           TEXT,
     Email           TEXT,
     Address         TEXT,
+    Zone            TEXT,     -- free-text sales territory/route grouping, e.g. "North Zone"
     GSTIN           TEXT,
     State           TEXT,
     StateCode       TEXT,     -- 2-digit GST state code, e.g. '27' for Maharashtra
@@ -235,6 +236,7 @@ CREATE TABLE IF NOT EXISTS SalesLines (
     ProductID       INTEGER NOT NULL,
     Qty             REAL NOT NULL,
     UnitPrice       REAL NOT NULL,
+    DiscountAmount  REAL NOT NULL DEFAULT 0,  -- flat Rs discount off this line's (Qty x UnitPrice), before GST
     LineTotal       REAL NOT NULL,
     -- GST invoice fields (snapshot at time of sale, product master may change later)
     HSNCode         TEXT,

@@ -73,7 +73,7 @@ def build_invoice_pdf(sale, lines, company, amount_words):
         _p("Bill To:", LABEL),
         _p(sale["CustomerName"], HEADER_BOLD),
         _p(sale["Address"] or "", NORMAL),
-        _p(f"Phone: {sale['Phone'] or '-'}", NORMAL),
+        _p(f"Phone: {sale['Phone'] or '-'}" + (f"   Zone: {sale['Zone']}" if sale["Zone"] else ""), NORMAL),
         _p(f"GSTIN: {sale['CustomerGSTIN'] or 'Unregistered'}", NORMAL),
         _p(f"State: {sale['CustomerState'] or '-'} ({sale['CustomerStateCode'] or '-'})", NORMAL),
     ]
@@ -90,23 +90,24 @@ def build_invoice_pdf(sale, lines, company, amount_words):
     # --- Line items -------------------------------------------------------------------------
     is_inter = sale["IsInterState"]
     if is_inter:
-        head = ["#", "Description", "HSN/SAC", "Qty", "Unit", "Rate", "Taxable Val", "IGST %", "IGST Amt", "Total"]
-        col_widths = [7, 36, 19, 12, 12, 16, 20, 15, 16, 21]
+        head = ["#", "Description", "HSN/SAC", "Qty", "Unit", "Rate", "Disc.", "Taxable Val", "IGST %", "IGST Amt", "Total"]
+        col_widths = [7, 32, 17, 11, 10, 14, 12, 18, 13, 14, 19]
     else:
-        head = ["#", "Description", "HSN/SAC", "Qty", "Unit", "Rate", "Taxable Val", "CGST%", "CGST", "SGST%", "SGST", "Total"]
-        col_widths = [7, 32, 19, 11, 10, 14, 18, 12, 13, 12, 13, 19]
+        head = ["#", "Description", "HSN/SAC", "Qty", "Unit", "Rate", "Disc.", "Taxable Val", "CGST%", "CGST", "SGST%", "SGST", "Total"]
+        col_widths = [7, 28, 16, 10, 9, 13, 11, 16, 11, 12, 11, 12, 18]
     col_widths = [w * mm for w in col_widths]
 
     data = [[_p(h, ParagraphStyle("th", parent=NORMAL, fontName="Helvetica-Bold", fontSize=7.5)) for h in head]]
     for i, l in enumerate(lines, start=1):
         line_total = l["TaxableValue"] + l["CGSTAmount"] + l["SGSTAmount"] + l["IGSTAmount"]
+        discount_amt = l["DiscountAmount"] or 0
         if is_inter:
             row = [str(i), l["ProductName"], l["HSNCode"] or "-", f"{l['Qty']:g}", l["Unit"],
-                   f"{l['UnitPrice']:.2f}", f"{l['TaxableValue']:.2f}",
+                   f"{l['UnitPrice']:.2f}", f"{discount_amt:.2f}", f"{l['TaxableValue']:.2f}",
                    f"{l['IGSTRate']:g}%", f"{l['IGSTAmount']:.2f}", f"{line_total:.2f}"]
         else:
             row = [str(i), l["ProductName"], l["HSNCode"] or "-", f"{l['Qty']:g}", l["Unit"],
-                   f"{l['UnitPrice']:.2f}", f"{l['TaxableValue']:.2f}",
+                   f"{l['UnitPrice']:.2f}", f"{discount_amt:.2f}", f"{l['TaxableValue']:.2f}",
                    f"{l['CGSTRate']:g}%", f"{l['CGSTAmount']:.2f}", f"{l['SGSTRate']:g}%",
                    f"{l['SGSTAmount']:.2f}", f"{line_total:.2f}"]
         data.append([_p(c, ParagraphStyle("td", parent=NORMAL, fontSize=7.5)) for c in row])
@@ -132,6 +133,10 @@ def build_invoice_pdf(sale, lines, company, amount_words):
         totals_rows.append(["SGST", f"Rs. {sale['SGSTAmount']:.2f}"])
     totals_rows.append(["Round Off", f"Rs. {sale['RoundOff']:.2f}"])
     totals_rows.append(["Total Invoice Value", f"Rs. {sale['TotalAmount']:.2f}"])
+    totals_rows.append(["Amount Received", f"Rs. {(sale['AmountReceived'] or 0):.2f}"])
+    balance_due = (sale["TotalAmount"] or 0) - (sale["AmountReceived"] or 0)
+    if balance_due > 0:
+        totals_rows.append(["Balance Due", f"Rs. {balance_due:.2f}"])
 
     totals_data = [[_p(a, NORMAL), _p(b, RIGHT)] for a, b in totals_rows]
     totals_tbl = Table(totals_data, colWidths=[40 * mm, 40 * mm], hAlign="RIGHT")

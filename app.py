@@ -1009,13 +1009,14 @@ MODULE_COLUMNS = {
                 ("incentive", "Incentive"), ("supplier", "Supplier"), ("status", "Status")],
     "Supplier": [("name", "Name"), ("contact", "Contact"), ("phone", "Phone"),
                  ("email", "Email"), ("gstin", "GSTIN"), ("status", "Status")],
-    "Customer": [("name", "Name"), ("contact", "Contact"), ("phone", "Phone"),
+    "Customer": [("name", "Name"), ("contact", "Contact"), ("phone", "Phone"), ("zone", "Zone"),
                  ("credit_limit", "Credit Limit"), ("credit_days", "Credit Days"), ("status", "Status")],
     "Purchase": [("po_number", "PO #"), ("supplier", "Supplier"), ("date", "Date"),
                  ("invoice_number", "Invoice #"), ("status", "Status"), ("payment", "Payment"),
                  ("total", "Total")],
     "Sale": [("invoice_number", "Invoice #"), ("customer", "Customer"), ("date", "Date"),
-             ("status", "Status"), ("payment", "Payment"), ("due_date", "Due Date"), ("total", "Total")],
+             ("status", "Status"), ("payment", "Payment"), ("due_date", "Due Date"), ("total", "Total"),
+             ("balance", "Balance")],
     "Expense": [("date", "Date"), ("category", "Category"), ("vehicle", "Vehicle"),
                 ("paid_to", "Paid To"), ("mode", "Mode"), ("amount", "Amount")],
     "Vehicle": [("reg_number", "Reg. No"), ("type", "Type"), ("make_model", "Make/Model"),
@@ -1296,17 +1297,17 @@ def customer_form(cid=None):
         f = request.form
         state_code = f.get("state_code", "")
         state_name = STATE_NAME_BY_CODE.get(state_code, "")
-        args = (f["customer_name"], f["contact_person"], f["phone"], f["email"], f["address"], f["gstin"],
-                state_name, state_code,
+        args = (f["customer_name"], f["contact_person"], f["phone"], f["email"], f["address"], f.get("zone", ""),
+                f["gstin"], state_name, state_code,
                 float(f["credit_limit"] or 0), int(f["credit_days"] or 0), 1 if f.get("active") else 0)
         if cid:
-            db.execute("""UPDATE Customers SET CustomerName=?, ContactPerson=?, Phone=?, Email=?, Address=?,
+            db.execute("""UPDATE Customers SET CustomerName=?, ContactPerson=?, Phone=?, Email=?, Address=?, Zone=?,
                         GSTIN=?, State=?, StateCode=?, CreditLimit=?, CreditDays=?, Active=? WHERE CustomerID=?""",
                        args + (cid,))
             save_custom_fields("Customer", cid, f)
         else:
-            new_id = db.execute("""INSERT INTO Customers (CustomerName, ContactPerson, Phone, Email, Address, GSTIN,
-                        State, StateCode, CreditLimit, CreditDays, Active) VALUES (?,?,?,?,?,?,?,?,?,?,?)""", args)
+            new_id = db.execute("""INSERT INTO Customers (CustomerName, ContactPerson, Phone, Email, Address, Zone,
+                        GSTIN, State, StateCode, CreditLimit, CreditDays, Active) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""", args)
             save_custom_fields("Customer", new_id, f)
         flash("Customer saved.", "success")
         return redirect(url_for("customers_list"))
@@ -1798,6 +1799,35 @@ def sales_list():
     return render_template("sales_list.html", sales=sales, columns=get_effective_columns("Sale"), filt=filt)
 
 
+@app.route("/sales/reports/day-wise")
+def sales_daywise_report():
+    today = date.today()
+    default_from = today.replace(day=1).isoformat()
+    default_to = today.isoformat()
+    date_from = request.args.get("from") or default_from
+    date_to = request.args.get("to") or default_to
+
+    rows = db.query("""SELECT SaleDate AS d, COUNT(*) AS invoice_count,
+                     COALESCE(SUM(TotalAmount), 0) AS total,
+                     COALESCE(SUM(AmountReceived), 0) AS received
+                     FROM Sales WHERE Status<>'Cancelled' AND SaleDate BETWEEN ? AND ?
+                     GROUP BY SaleDate ORDER BY SaleDate DESC""", (date_from, date_to))
+    daywise = []
+    grand_total = grand_received = 0.0
+    for r in rows:
+        balance = round((r["total"] or 0) - (r["received"] or 0), 2)
+        daywise.append({"date": r["d"], "invoice_count": r["invoice_count"],
+                         "total": round(r["total"], 2), "received": round(r["received"], 2),
+                         "balance": balance})
+        grand_total += r["total"] or 0
+        grand_received += r["received"] or 0
+    totals = {"total": round(grand_total, 2), "received": round(grand_received, 2),
+              "balance": round(grand_total - grand_received, 2),
+              "invoice_count": sum(d["invoice_count"] for d in daywise)}
+    return render_template("sales_daywise_report.html", daywise=daywise, totals=totals,
+                            date_from=date_from, date_to=date_to)
+
+
 def create_sale(customer_id, sale_date, status, payment_status, payment_due_date, amount_received, notes,
                  place_of_supply_code, lines, reverse_charge=False, invoice_no=None, sale_id=None,
                  post_inventory=True):
@@ -1814,7 +1844,12 @@ def create_sale(customer_id, sale_date, status, payment_status, payment_due_date
     InventoryTransactions — used when the stock effect is already fully
     accounted for elsewhere (e.g. a Sale auto-created from a reconciled
     Stock Issue, whose Issue/Return-In/Free-Scheme transactions already
-    cover the sold units; a second deduction here would double-count it)."""
+    cover the sold units; a second deduction here would double-count it).
+
+    `lines` is a list of (product_id, qty, unit_price) OR
+    (product_id, qty, unit_price, discount_amount) tuples — the 4-tuple form
+    applies a flat Rs discount to that line's taxable value (Qty x UnitPrice
+    - discount, floored at 0) before GST is calculated on it."""
     company = get_company_settings()
     place_of_supply_name = STATE_NAME_BY_CODE.get(place_of_supply_code, "")
     is_interstate = 1 if (company["StateCode"] and place_of_supply_code != company["StateCode"]) else 0
@@ -1822,19 +1857,22 @@ def create_sale(customer_id, sale_date, status, payment_status, payment_due_date
     if invoice_no is None:
         invoice_no = next_invoice_number()
 
-    taxable_total = cgst_total = sgst_total = igst_total = 0.0
+    taxable_total = cgst_total = sgst_total = igst_total = discount_total = 0.0
     line_data = []
-    for prod_id, qty, price in lines:
+    for line in lines:
+        prod_id, qty, price = line[0], line[1], line[2]
+        discount = line[3] if len(line) > 3 else 0.0
         prod = db.query("SELECT HSNCode, GSTRate FROM Products WHERE ProductID=?", (prod_id,), one=True)
         hsn = (prod["HSNCode"] or "") if prod else ""
         gst_rate = (prod["GSTRate"] or 0) if prod else 0
-        taxable_value = round(qty * price, 2)
+        taxable_value = round(max(qty * price - discount, 0), 2)
         gst = compute_line_gst(taxable_value, gst_rate, is_interstate)
         taxable_total += taxable_value
         cgst_total += gst["cgst_amt"]
         sgst_total += gst["sgst_amt"]
         igst_total += gst["igst_amt"]
-        line_data.append((prod_id, qty, price, taxable_value, hsn, gst_rate, gst))
+        discount_total += discount
+        line_data.append((prod_id, qty, price, discount, taxable_value, hsn, gst_rate, gst))
 
     raw_total = taxable_total + cgst_total + sgst_total + igst_total
     grand_total = round(raw_total)
@@ -1862,11 +1900,11 @@ def create_sale(customer_id, sale_date, status, payment_status, payment_due_date
         db.execute("DELETE FROM SalesLines WHERE SaleID=?", (sale_id,))
         db.execute("DELETE FROM InventoryTransactions WHERE RefType='Sale' AND RefID=?", (sale_id,))
 
-    for prod_id, qty, price, taxable_value, hsn, gst_rate, gst in line_data:
-        db.execute("""INSERT INTO SalesLines (SaleID, ProductID, Qty, UnitPrice, LineTotal, HSNCode, GSTRate,
-                    TaxableValue, CGSTRate, CGSTAmount, SGSTRate, SGSTAmount, IGSTRate, IGSTAmount)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                   (sale_id, prod_id, qty, price, taxable_value, hsn, gst_rate, taxable_value,
+    for prod_id, qty, price, discount, taxable_value, hsn, gst_rate, gst in line_data:
+        db.execute("""INSERT INTO SalesLines (SaleID, ProductID, Qty, UnitPrice, DiscountAmount, LineTotal, HSNCode,
+                    GSTRate, TaxableValue, CGSTRate, CGSTAmount, SGSTRate, SGSTAmount, IGSTRate, IGSTAmount)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                   (sale_id, prod_id, qty, price, discount, taxable_value, hsn, gst_rate, taxable_value,
                     gst["cgst_rate"], gst["cgst_amt"], gst["sgst_rate"], gst["sgst_amt"],
                     gst["igst_rate"], gst["igst_amt"]))
         if status == "Completed" and post_inventory:
@@ -1886,6 +1924,33 @@ def get_unassigned_customer_id():
                        VALUES ('Unassigned (Van/Route Sales)', 1, 1)""")
 
 
+def resolve_sale_customer(f):
+    """Handles the Sales form's editable Customer section: Name/Address/
+    Phone/Zone are shown as plain text inputs pre-filled from whichever
+    customer is picked in the dropdown, and are editable right there rather
+    than requiring a trip to the Customers tab. If an existing customer_id
+    was posted, this updates that customer's Name/Address/Phone/Zone in
+    place from whatever the form now says (so a correction made while
+    entering a sale sticks for next time too). If no customer_id was
+    posted but a name was typed, a brand new Customer is created on the fly.
+    Returns the CustomerID to use for this sale."""
+    customer_id = f.get("customer_id") or ""
+    name = (f.get("customer_name") or "").strip()
+    address = (f.get("customer_address") or "").strip()
+    phone = (f.get("customer_phone") or "").strip()
+    zone = (f.get("customer_zone") or "").strip()
+    if customer_id:
+        cid = int(customer_id)
+        if name:
+            db.execute("UPDATE Customers SET CustomerName=?, Address=?, Phone=?, Zone=? WHERE CustomerID=?",
+                       (name, address, phone, zone, cid))
+        return cid
+    if not name:
+        raise ValueError("Customer name is required.")
+    return db.execute("""INSERT INTO Customers (CustomerName, Address, Phone, Zone, Active)
+                       VALUES (?,?,?,?,1)""", (name, address, phone, zone))
+
+
 @app.route("/sales/new", methods=["GET", "POST"])
 def sale_form():
     company = get_company_settings()
@@ -1894,25 +1959,36 @@ def sale_form():
         product_ids = request.form.getlist("product_id[]")
         qtys = request.form.getlist("qty[]")
         prices = request.form.getlist("unit_price[]")
-        lines = [(int(p), float(q), float(pr)) for p, q, pr in zip(product_ids, qtys, prices) if p and q]
+        discounts = request.form.getlist("discount_amount[]")
+        if len(discounts) < len(product_ids):
+            discounts = discounts + ["0"] * (len(product_ids) - len(discounts))
+        lines = [(int(p), float(q), float(pr), float(d or 0))
+                 for p, q, pr, d in zip(product_ids, qtys, prices, discounts) if p and q]
         place_of_supply_code = f.get("place_of_supply_code", "") or company["StateCode"]
 
+        try:
+            customer_id = resolve_sale_customer(f)
+        except ValueError as e:
+            flash(str(e), "error")
+            return redirect(url_for("sale_form"))
+
         sale_id = create_sale(
-            customer_id=int(f["customer_id"]), sale_date=f["sale_date"], status=f["status"],
+            customer_id=customer_id, sale_date=f["sale_date"], status=f["status"],
             payment_status=f["payment_status"], payment_due_date=f.get("payment_due_date"),
             amount_received=float(f["amount_received"] or 0), notes=f.get("notes", ""),
             place_of_supply_code=place_of_supply_code, lines=lines,
             reverse_charge=bool(f.get("reverse_charge")), invoice_no=f.get("invoice_number") or None)
         save_custom_fields("Sale", sale_id, f)
         flash(f"Sale recorded.", "success")
-        return redirect(url_for("sale_view", sid=sale_id))
+        return redirect(url_for("sale_invoice", sid=sale_id, auto_print=1))
     customers = db.query("SELECT * FROM Customers WHERE Active=1 ORDER BY CustomerName")
     products = get_products_with_stock()
     custom_fields = get_custom_field_defs("Sale")
     return render_template("sale_form.html", customers=customers, products=products, today=today_str(),
                             states=INDIAN_STATES, company=company, suggested_invoice=None,
                             custom_fields=custom_fields, custom_values={},
-                            cf_record_id=None, custom_attachments={}, sale=None, existing_lines=None)
+                            cf_record_id=None, custom_attachments={}, sale=None, existing_lines=None,
+                            current_customer=None)
 
 
 @app.route("/sales/<int:sid>/edit", methods=["GET", "POST"])
@@ -1931,11 +2007,21 @@ def sale_edit(sid):
         product_ids = request.form.getlist("product_id[]")
         qtys = request.form.getlist("qty[]")
         prices = request.form.getlist("unit_price[]")
-        lines = [(int(p), float(q), float(pr)) for p, q, pr in zip(product_ids, qtys, prices) if p and q]
+        discounts = request.form.getlist("discount_amount[]")
+        if len(discounts) < len(product_ids):
+            discounts = discounts + ["0"] * (len(product_ids) - len(discounts))
+        lines = [(int(p), float(q), float(pr), float(d or 0))
+                 for p, q, pr, d in zip(product_ids, qtys, prices, discounts) if p and q]
         place_of_supply_code = f.get("place_of_supply_code", "") or company["StateCode"]
 
+        try:
+            customer_id = resolve_sale_customer(f)
+        except ValueError as e:
+            flash(str(e), "error")
+            return redirect(url_for("sale_edit", sid=sid))
+
         create_sale(
-            customer_id=int(f["customer_id"]), sale_date=f["sale_date"], status=f["status"],
+            customer_id=customer_id, sale_date=f["sale_date"], status=f["status"],
             payment_status=f["payment_status"], payment_due_date=f.get("payment_due_date"),
             amount_received=float(f["amount_received"] or 0), notes=f.get("notes", ""),
             place_of_supply_code=place_of_supply_code, lines=lines,
@@ -1949,10 +2035,12 @@ def sale_edit(sid):
     existing_lines = db.query("SELECT * FROM SalesLines WHERE SaleID=?", (sid,))
     custom_fields = get_custom_field_defs("Sale")
     custom_values = get_custom_values("Sale", sid)
+    current_customer = db.query("SELECT * FROM Customers WHERE CustomerID=?", (existing["CustomerID"],), one=True)
     return render_template("sale_form.html", customers=customers, products=products, today=existing["SaleDate"],
                             states=INDIAN_STATES, company=company, suggested_invoice=None,
                             custom_fields=custom_fields, custom_values=custom_values, cf_record_id=sid,
-                            custom_attachments={}, sale=existing, existing_lines=existing_lines)
+                            custom_attachments={}, sale=existing, existing_lines=existing_lines,
+                            current_customer=current_customer)
 
 
 # ---------------------------------------------------------------------
@@ -2118,13 +2206,14 @@ def sales_import_confirm():
 
 @app.route("/sales/<int:sid>")
 def sale_view(sid):
-    sale = db.query("""SELECT s.*, c.CustomerName, c.Phone, c.Address, c.IsUnassignedBucket FROM Sales s
+    sale = db.query("""SELECT s.*, c.CustomerName, c.Phone, c.Address, c.Zone, c.IsUnassignedBucket FROM Sales s
                      JOIN Customers c ON c.CustomerID=s.CustomerID WHERE s.SaleID=?""", (sid,), one=True)
     lines = db.query("""SELECT sl.*, pr.ProductName, pr.Unit FROM SalesLines sl
                       JOIN Products pr ON pr.ProductID=sl.ProductID WHERE sl.SaleID=?""", (sid,))
     custom_fields = get_custom_field_defs("Sale")
     custom_values = get_custom_values("Sale", sid)
-    return render_template("sale_view.html", sale=sale, lines=lines,
+    balance_due = round((sale["TotalAmount"] or 0) - (sale["AmountReceived"] or 0), 2)
+    return render_template("sale_view.html", sale=sale, lines=lines, balance_due=balance_due,
                             custom_fields=custom_fields, custom_values=custom_values,
                             cf_record_id=sid, custom_attachments=get_custom_attachments("Sale", sid))
 
@@ -2254,7 +2343,7 @@ def sale_reassign(sid):
 
 @app.route("/sales/<int:sid>/invoice")
 def sale_invoice(sid):
-    sale = db.query("""SELECT s.*, c.CustomerName, c.Phone, c.Address, c.GSTIN AS CustomerGSTIN,
+    sale = db.query("""SELECT s.*, c.CustomerName, c.Phone, c.Address, c.Zone, c.GSTIN AS CustomerGSTIN,
                      c.State AS CustomerState, c.StateCode AS CustomerStateCode FROM Sales s
                      JOIN Customers c ON c.CustomerID=s.CustomerID WHERE s.SaleID=?""", (sid,), one=True)
     if not sale:
@@ -2264,13 +2353,16 @@ def sale_invoice(sid):
                       JOIN Products pr ON pr.ProductID=sl.ProductID WHERE sl.SaleID=?""", (sid,))
     company = get_company_settings()
     words = amount_in_words(sale["TotalAmount"])
-    return render_template("invoice.html", sale=sale, lines=lines, company=company, amount_words=words)
+    balance_due = round((sale["TotalAmount"] or 0) - (sale["AmountReceived"] or 0), 2)
+    auto_print = request.args.get("auto_print") == "1"
+    return render_template("invoice.html", sale=sale, lines=lines, company=company, amount_words=words,
+                            balance_due=balance_due, auto_print=auto_print)
 
 
 @app.route("/sales/<int:sid>/invoice.pdf")
 def sale_invoice_pdf(sid):
     from invoice_pdf import build_invoice_pdf
-    sale = db.query("""SELECT s.*, c.CustomerName, c.Phone, c.Address, c.GSTIN AS CustomerGSTIN,
+    sale = db.query("""SELECT s.*, c.CustomerName, c.Phone, c.Address, c.Zone, c.GSTIN AS CustomerGSTIN,
                      c.State AS CustomerState, c.StateCode AS CustomerStateCode FROM Sales s
                      JOIN Customers c ON c.CustomerID=s.CustomerID WHERE s.SaleID=?""", (sid,), one=True)
     if not sale:

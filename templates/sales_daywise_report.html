@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Day-wise Sales Report{% endblock %}
+{% block page_title %}Day-wise Sales Report{% endblock %}
+{% block content %}
+<div class="card mb-3"><div class="card-body">
+  <form method="get" class="row g-3 align-items-end">
+    <div class="col-md-3"><label class="form-label">From</label>
+      <input type="date" name="from" class="form-control" value="{{ date_from }}"></div>
+    <div class="col-md-3"><label class="form-label">To</label>
+      <input type="date" name="to" class="form-control" value="{{ date_to }}"></div>
+    <div class="col-md-2"><button type="submit" class="btn btn-brand">Update</button></div>
+    <div class="col-md-4 text-md-end">
+      <a href="{{ url_for('sales_list') }}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left"></i> Back to Sales</a>
+    </div>
+  </form>
+</div></div>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-3 col-6"><div class="stat-card"><div class="stat-value">{{ totals.invoice_count }}</div><div class="stat-label">Invoices</div></div></div>
+  <div class="col-md-3 col-6"><div class="stat-card"><div class="stat-value">{{ (totals.total)|inr(0) }}</div><div class="stat-label">Total Sales</div></div></div>
+  <div class="col-md-3 col-6"><div class="stat-card"><div class="stat-value">{{ (totals.received)|inr(0) }}</div><div class="stat-label">Received</div></div></div>
+  <div class="col-md-3 col-6"><div class="stat-card"><div class="stat-value text-danger">{{ (totals.balance)|inr(0) }}</div><div class="stat-label">Balance Due</div></div></div>
+</div>
+
+<div class="card">
+  <div class="card-header"><i class="bi bi-calendar3 text-secondary"></i> Day-wise Sales ({{ date_from }} to {{ date_to }})</div>
+  <div class="table-responsive">
+  <table class="table mb-0">
+    <thead><tr><th>Date</th><th>Invoices</th><th>Total Sales</th><th>Received</th><th>Balance Due</th></tr></thead>
+    <tbody>
+      {% for d in daywise %}
+      <tr>
+        <td>{{ d.date }}</td>
+        <td>{{ d.invoice_count }}</td>
+        <td>{{ (d.total)|inr(2) }}</td>
+        <td>{{ (d.received)|inr(2) }}</td>
+        <td class="{% if d.balance > 0 %}text-danger fw-bold{% endif %}">{{ (d.balance)|inr(2) }}</td>
+      </tr>
+      {% else %}<tr><td colspan="5" class="text-center text-muted py-3">No sales in this period.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endblock %}

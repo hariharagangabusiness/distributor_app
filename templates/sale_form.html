@@ -30,8 +30,12 @@
     </div>
     <div class="col-md-3"><label class="form-label">Customer *</label>
       <select required name="customer_id" id="customer_id" class="form-select">
-        <option value="">-- select --</option>
-        {% for c in customers %}<option value="{{ c.CustomerID }}" data-state="{{ c.StateCode or '' }}" {% if sale and sale.CustomerID == c.CustomerID %}selected{% endif %}>{{ c.CustomerName }}</option>{% endfor %}
+        <option value="">-- new customer (type name below) --</option>
+        {% for c in customers %}
+        <option value="{{ c.CustomerID }}" data-state="{{ c.StateCode or '' }}" data-name="{{ c.CustomerName }}"
+                data-address="{{ c.Address or '' }}" data-phone="{{ c.Phone or '' }}" data-zone="{{ c.Zone or '' }}"
+                {% if sale and sale.CustomerID == c.CustomerID %}selected{% endif %}>{{ c.CustomerName }}</option>
+        {% endfor %}
       </select></div>
     <div class="col-md-2"><label class="form-label">Sale Date *</label>
       <input required type="date" name="sale_date" class="form-control" value="{{ sale.SaleDate if sale else today }}"></div>
@@ -47,7 +51,25 @@
         <option value="{{ code }}" {% if sale and sale.PlaceOfSupplyStateCode == code %}selected{% elif not sale and company.StateCode==code %}selected{% endif %}>{{ name }} ({{ code }})</option>
         {% endfor %}
       </select></div>
+  </div>
 
+  <div class="row g-3 mb-3">
+    <div class="col-12"><div class="text-muted small mb-1">Customer details — editable here; saving the sale updates this customer's record too (or creates a new one if "new customer" is selected above).</div></div>
+    <div class="col-md-3"><label class="form-label">Customer Name *</label>
+      <input required name="customer_name" id="customer_name" class="form-control"
+             value="{{ current_customer.CustomerName if current_customer else '' }}"></div>
+    <div class="col-md-3"><label class="form-label">Address</label>
+      <input name="customer_address" id="customer_address" class="form-control"
+             value="{{ current_customer.Address if current_customer else '' }}"></div>
+    <div class="col-md-3"><label class="form-label">Phone</label>
+      <input name="customer_phone" id="customer_phone" class="form-control"
+             value="{{ current_customer.Phone if current_customer else '' }}"></div>
+    <div class="col-md-3"><label class="form-label">Zone</label>
+      <input name="customer_zone" id="customer_zone" class="form-control" placeholder="e.g. North Zone"
+             value="{{ current_customer.Zone if current_customer else '' }}"></div>
+  </div>
+
+  <div class="row g-3 mb-3">
     <div class="col-md-2"><label class="form-label">Payment Due Date</label>
       <input type="date" name="payment_due_date" class="form-control" value="{{ sale.PaymentDueDate if sale else '' }}"></div>
     <div class="col-md-3"><label class="form-label">Payment Status</label>
@@ -71,7 +93,7 @@
   <h6>Line Items <span class="text-muted fw-normal">(rate is the taxable value per unit, excl. GST)</span></h6>
   <div class="table-responsive">
   <table class="table" id="lines-table">
-    <thead><tr><th style="width:30%">Product (available stock)</th><th>HSN</th><th>GST%</th><th>Qty</th><th>Rate</th><th>Taxable</th><th>Tax</th><th>Line Total</th><th></th></tr></thead>
+    <thead><tr><th style="width:26%">Product (available stock)</th><th>HSN</th><th>GST%</th><th>Qty</th><th>Rate</th><th>Discount ₹</th><th>Taxable</th><th>Tax</th><th>Line Total</th><th></th></tr></thead>
     <tbody id="lines-body"></tbody>
   </table>
   </div>
@@ -79,11 +101,13 @@
 
   <div class="d-flex justify-content-end">
     <table class="table table-sm" style="max-width:340px">
+      <tr><td>Total Discount</td><td class="text-end" id="sum-discount">0.00</td></tr>
       <tr><td>Taxable Amount</td><td class="text-end" id="sum-taxable">0.00</td></tr>
       <tr id="row-cgst"><td>CGST</td><td class="text-end" id="sum-cgst">0.00</td></tr>
       <tr id="row-sgst"><td>SGST</td><td class="text-end" id="sum-sgst">0.00</td></tr>
       <tr id="row-igst"><td>IGST</td><td class="text-end" id="sum-igst">0.00</td></tr>
       <tr><td><strong>Grand Total (rounded)</strong></td><td class="text-end"><strong id="sum-grand">0.00</strong></td></tr>
+      <tr><td>Balance Due</td><td class="text-end text-danger fw-bold" id="sum-balance">0.00</td></tr>
     </table>
   </div>
 
@@ -113,6 +137,7 @@
     <td><input type="number" step="0.01" name="unit_price[]" class="form-control price-input" style="width:90px" required>
       <div class="scheme-hint small text-info" style="display:none"></div>
     </td>
+    <td><input type="number" step="0.01" name="discount_amount[]" class="form-control discount-input" style="width:90px" value="0"></td>
     <td class="taxable-cell align-middle">0.00</td>
     <td class="tax-cell align-middle">0.00</td>
     <td class="line-total align-middle fw-bold">0.00</td>
@@ -130,19 +155,36 @@ const companyStateCode = "{{ company.StateCode or '' }}";
 const existingLines = [
   {% if existing_lines %}
   {% for l in existing_lines %}
-  {product_id: {{ l.ProductID }}, qty: {{ l.Qty }}, unit_price: {{ l.UnitPrice }}},
+  {product_id: {{ l.ProductID }}, qty: {{ l.Qty }}, unit_price: {{ l.UnitPrice }}, discount_amount: {{ l.DiscountAmount or 0 }}},
   {% endfor %}
   {% endif %}
 ];
+const amountReceivedInput = document.querySelector('input[name="amount_received"]');
+const customerNameInput = document.getElementById('customer_name');
+const customerAddressInput = document.getElementById('customer_address');
+const customerPhoneInput = document.getElementById('customer_phone');
+const customerZoneInput = document.getElementById('customer_zone');
 
-// Auto-fill Place of Supply from the selected customer's state
+// Auto-fill Place of Supply and customer details from the selected customer
 customerSelect.addEventListener('change', () => {
   const opt = customerSelect.options[customerSelect.selectedIndex];
   const state = opt.dataset.state;
   if (state) posSelect.value = state;
+  if (opt.value) {
+    customerNameInput.value = opt.dataset.name || '';
+    customerAddressInput.value = opt.dataset.address || '';
+    customerPhoneInput.value = opt.dataset.phone || '';
+    customerZoneInput.value = opt.dataset.zone || '';
+  } else {
+    customerNameInput.value = '';
+    customerAddressInput.value = '';
+    customerPhoneInput.value = '';
+    customerZoneInput.value = '';
+  }
   recalc();
 });
 posSelect.addEventListener('change', recalc);
+if (amountReceivedInput) amountReceivedInput.addEventListener('input', recalc);
 
 function isInterState() {
   return companyStateCode && posSelect.value && posSelect.value !== companyStateCode;
@@ -164,6 +206,7 @@ function addLine(prefill) {
     }
     row.querySelector('.qty-input').value = prefill.qty;
     row.querySelector('.price-input').value = prefill.unit_price;
+    row.querySelector('.discount-input').value = prefill.discount_amount || 0;
   }
   recalc();
 }
@@ -172,6 +215,7 @@ function wireRow(row) {
   const prod = row.querySelector('.prod-select');
   const qty = row.querySelector('.qty-input');
   const price = row.querySelector('.price-input');
+  const discount = row.querySelector('.discount-input');
   prod.addEventListener('change', () => {
     const opt = prod.options[prod.selectedIndex];
     const schemePrice = opt.dataset.schemePrice;
@@ -190,11 +234,12 @@ function wireRow(row) {
   });
   qty.addEventListener('input', recalc);
   price.addEventListener('input', recalc);
+  discount.addEventListener('input', recalc);
   row.querySelector('.remove-line').addEventListener('click', () => { row.remove(); recalc(); });
 }
 
 function recalc() {
-  let taxableSum = 0, cgstSum = 0, sgstSum = 0, igstSum = 0;
+  let taxableSum = 0, cgstSum = 0, sgstSum = 0, igstSum = 0, discountSum = 0;
   const interState = isInterState();
   document.getElementById('row-cgst').style.display = interState ? 'none' : '';
   document.getElementById('row-sgst').style.display = interState ? 'none' : '';
@@ -203,8 +248,9 @@ function recalc() {
   body.querySelectorAll('tr').forEach(row => {
     const qty = parseFloat(row.querySelector('.qty-input').value) || 0;
     const price = parseFloat(row.querySelector('.price-input').value) || 0;
+    const discount = parseFloat(row.querySelector('.discount-input').value) || 0;
     const gstRate = parseFloat(row.dataset.gst || 0);
-    const taxable = qty * price;
+    const taxable = Math.max(qty * price - discount, 0);
     let cgst = 0, sgst = 0, igst = 0;
     if (interState) {
       igst = taxable * gstRate / 100;
@@ -216,17 +262,21 @@ function recalc() {
     row.querySelector('.taxable-cell').textContent = taxable.toFixed(2);
     row.querySelector('.tax-cell').textContent = tax.toFixed(2);
     row.querySelector('.line-total').textContent = (taxable + tax).toFixed(2);
-    taxableSum += taxable; cgstSum += cgst; sgstSum += sgst; igstSum += igst;
+    taxableSum += taxable; cgstSum += cgst; sgstSum += sgst; igstSum += igst; discountSum += discount;
   });
 
   const rawTotal = taxableSum + cgstSum + sgstSum + igstSum;
   const grandTotal = Math.round(rawTotal);
+  const amountReceived = parseFloat(amountReceivedInput && amountReceivedInput.value) || 0;
+  const balanceDue = grandTotal - amountReceived;
 
+  document.getElementById('sum-discount').textContent = discountSum.toFixed(2);
   document.getElementById('sum-taxable').textContent = taxableSum.toFixed(2);
   document.getElementById('sum-cgst').textContent = cgstSum.toFixed(2);
   document.getElementById('sum-sgst').textContent = sgstSum.toFixed(2);
   document.getElementById('sum-igst').textContent = igstSum.toFixed(2);
   document.getElementById('sum-grand').textContent = grandTotal.toFixed(2);
+  document.getElementById('sum-balance').textContent = balanceDue.toFixed(2);
 }
 
 document.getElementById('add-line').addEventListener('click', () => addLine());

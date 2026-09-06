@@ -18,24 +18,29 @@
 </div>
 <div class="card mb-3"><div class="card-body">
   <div class="row">
-    <div class="col-md-4"><strong>Customer:</strong> {{ sale.CustomerName }}<br>{{ sale.Phone or '' }}<br>{{ sale.Address or '' }}</div>
+    <div class="col-md-4"><strong>Customer:</strong> {{ sale.CustomerName }}<br>{{ sale.Phone or '' }}<br>{{ sale.Address or '' }}
+      {% if sale.Zone %}<br><strong>Zone:</strong> {{ sale.Zone }}{% endif %}</div>
     <div class="col-md-4"><strong>Date:</strong> {{ sale.SaleDate }}<br><strong>Due Date:</strong> {{ sale.PaymentDueDate or '-' }}<br>
       <strong>Place of Supply:</strong> {{ sale.PlaceOfSupplyState or '-' }} ({{ sale.PlaceOfSupplyStateCode or '-' }})</div>
     <div class="col-md-4"><strong>Status:</strong> {{ sale.Status }}<br><strong>Payment:</strong> {{ sale.PaymentStatus }} (Received {{ (sale.AmountReceived)|inr(2) }})<br>
-      <strong>Tax Type:</strong> {{ 'IGST' if sale.IsInterState else 'CGST + SGST' }}</div>
+      <strong>Tax Type:</strong> {{ 'IGST' if sale.IsInterState else 'CGST + SGST' }}
+      {% if balance_due and balance_due > 0 %}<br><strong class="text-danger">Balance Due: {{ (balance_due)|inr(2) }}</strong>{% endif %}</div>
   </div>
 </div></div>
+{% if sale.PaymentStatus in ('Partial', 'Unpaid') and balance_due and balance_due > 0 %}
+<div class="alert alert-warning">This sale is <strong>{{ sale.PaymentStatus }}</strong> — Balance Due: <strong>{{ (balance_due)|inr(2) }}</strong></div>
+{% endif %}
 <div class="card">
   <div class="table-responsive">
   <table class="table mb-0">
-    <thead><tr><th>Product</th><th>HSN</th><th>Qty</th><th>Rate</th><th>Taxable</th>
+    <thead><tr><th>Product</th><th>HSN</th><th>Qty</th><th>Rate</th><th>Discount</th><th>Taxable</th>
       {% if sale.IsInterState %}<th>IGST</th>{% else %}<th>CGST</th><th>SGST</th>{% endif %}
       <th>Line Total</th></tr></thead>
     <tbody>
       {% for l in lines %}
       <tr>
         <td>{{ l.ProductName }}</td><td>{{ l.HSNCode or '-' }}</td><td>{{ l.Qty }} {{ l.Unit }}</td>
-        <td>{{ (l.UnitPrice)|inr(2) }}</td><td>{{ (l.TaxableValue)|inr(2) }}</td>
+        <td>{{ (l.UnitPrice)|inr(2) }}</td><td>{{ (l.DiscountAmount or 0)|inr(2) }}</td><td>{{ (l.TaxableValue)|inr(2) }}</td>
         {% if sale.IsInterState %}
         <td>{{ (l.IGSTAmount)|inr(2) }} ({{ l.IGSTRate }}%)</td>
         {% else %}
@@ -47,15 +52,18 @@
       {% endfor %}
     </tbody>
     <tfoot>
-      <tr><th colspan="{{ 5 if sale.IsInterState else 6 }}" class="text-end">Taxable Amount</th><th>{{ (sale.TaxableAmount)|inr(2) }}</th></tr>
+      <tr><th colspan="{{ 6 if sale.IsInterState else 7 }}" class="text-end">Taxable Amount</th><th>{{ (sale.TaxableAmount)|inr(2) }}</th></tr>
       {% if sale.IsInterState %}
-      <tr><th colspan="5" class="text-end">IGST</th><th>{{ (sale.IGSTAmount)|inr(2) }}</th></tr>
+      <tr><th colspan="6" class="text-end">IGST</th><th>{{ (sale.IGSTAmount)|inr(2) }}</th></tr>
       {% else %}
-      <tr><th colspan="6" class="text-end">CGST</th><th>{{ (sale.CGSTAmount)|inr(2) }}</th></tr>
-      <tr><th colspan="6" class="text-end">SGST</th><th>{{ (sale.SGSTAmount)|inr(2) }}</th></tr>
+      <tr><th colspan="7" class="text-end">CGST</th><th>{{ (sale.CGSTAmount)|inr(2) }}</th></tr>
+      <tr><th colspan="7" class="text-end">SGST</th><th>{{ (sale.SGSTAmount)|inr(2) }}</th></tr>
       {% endif %}
-      <tr><th colspan="{{ 5 if sale.IsInterState else 6 }}" class="text-end">Round Off</th><th>{{ (sale.RoundOff)|inr(2) }}</th></tr>
-      <tr><th colspan="{{ 5 if sale.IsInterState else 6 }}" class="text-end">Grand Total</th><th>{{ (sale.TotalAmount)|inr(2) }}</th></tr>
+      <tr><th colspan="{{ 6 if sale.IsInterState else 7 }}" class="text-end">Round Off</th><th>{{ (sale.RoundOff)|inr(2) }}</th></tr>
+      <tr><th colspan="{{ 6 if sale.IsInterState else 7 }}" class="text-end">Grand Total</th><th>{{ (sale.TotalAmount)|inr(2) }}</th></tr>
+      {% if balance_due and balance_due > 0 %}
+      <tr><th colspan="{{ 6 if sale.IsInterState else 7 }}" class="text-end text-danger">Balance Due</th><th class="text-danger">{{ (balance_due)|inr(2) }}</th></tr>
+      {% endif %}
     </tfoot>
   </table>
   </div>
