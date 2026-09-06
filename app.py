@@ -60,6 +60,25 @@ def inrn_filter(value, decimals=0):
     return indian_number_format(value, decimals)
 
 
+def parse_form_number(value, field_label):
+    """Turns a form field's text into a float, tolerating the way people
+    naturally type numbers (Indian-style thousands separators like
+    '1,500', a stray ₹ symbol, surrounding spaces) instead of crashing the
+    whole request with a raw ValueError -> 500 error page. Raises ValueError
+    with a friendly, field-specific message on anything still unparseable,
+    which calling routes should catch and flash back to the user."""
+    if value is None:
+        return 0.0
+    text = str(value).strip().replace(",", "").replace("₹", "").replace("Rs.", "").replace("Rs", "").strip()
+    if text == "":
+        return 0.0
+    try:
+        return float(text)
+    except ValueError:
+        raise ValueError(f"\"{value}\" isn't a valid number for {field_label}. "
+                          f"Please enter digits only (e.g. 1500 or 1500.50, no commas or currency symbols).")
+
+
 def sale_due_amount(sale):
     """What should actually be collected from the customer for this sale.
 
@@ -2001,20 +2020,23 @@ def sale_form():
         discounts = request.form.getlist("discount_amount[]")
         if len(discounts) < len(product_ids):
             discounts = discounts + ["0"] * (len(product_ids) - len(discounts))
-        lines = [(int(p), float(q), float(pr), float(d or 0))
-                 for p, q, pr, d in zip(product_ids, qtys, prices, discounts) if p and q]
-        place_of_supply_code = f.get("place_of_supply_code", "") or company["StateCode"]
 
         try:
+            lines = [(int(p), parse_form_number(q, "Qty"), parse_form_number(pr, "Rate"),
+                      parse_form_number(d, "Discount ₹"))
+                     for p, q, pr, d in zip(product_ids, qtys, prices, discounts) if p and q]
+            amount_received = parse_form_number(f.get("amount_received"), "Amount Received")
             customer_id = resolve_sale_customer(f)
         except ValueError as e:
             flash(str(e), "error")
             return redirect(url_for("sale_form"))
 
+        place_of_supply_code = f.get("place_of_supply_code", "") or company["StateCode"]
+
         sale_id = create_sale(
             customer_id=customer_id, sale_date=f["sale_date"], status=f["status"],
             payment_status=f["payment_status"], payment_due_date=f.get("payment_due_date"),
-            amount_received=float(f["amount_received"] or 0), notes=f.get("notes", ""),
+            amount_received=amount_received, notes=f.get("notes", ""),
             place_of_supply_code=place_of_supply_code, lines=lines,
             reverse_charge=bool(f.get("reverse_charge")), invoice_no=f.get("invoice_number") or None)
         save_custom_fields("Sale", sale_id, f)
@@ -2049,20 +2071,23 @@ def sale_edit(sid):
         discounts = request.form.getlist("discount_amount[]")
         if len(discounts) < len(product_ids):
             discounts = discounts + ["0"] * (len(product_ids) - len(discounts))
-        lines = [(int(p), float(q), float(pr), float(d or 0))
-                 for p, q, pr, d in zip(product_ids, qtys, prices, discounts) if p and q]
-        place_of_supply_code = f.get("place_of_supply_code", "") or company["StateCode"]
 
         try:
+            lines = [(int(p), parse_form_number(q, "Qty"), parse_form_number(pr, "Rate"),
+                      parse_form_number(d, "Discount ₹"))
+                     for p, q, pr, d in zip(product_ids, qtys, prices, discounts) if p and q]
+            amount_received = parse_form_number(f.get("amount_received"), "Amount Received")
             customer_id = resolve_sale_customer(f)
         except ValueError as e:
             flash(str(e), "error")
             return redirect(url_for("sale_edit", sid=sid))
 
+        place_of_supply_code = f.get("place_of_supply_code", "") or company["StateCode"]
+
         create_sale(
             customer_id=customer_id, sale_date=f["sale_date"], status=f["status"],
             payment_status=f["payment_status"], payment_due_date=f.get("payment_due_date"),
-            amount_received=float(f["amount_received"] or 0), notes=f.get("notes", ""),
+            amount_received=amount_received, notes=f.get("notes", ""),
             place_of_supply_code=place_of_supply_code, lines=lines,
             reverse_charge=bool(f.get("reverse_charge")), invoice_no=existing["InvoiceNumber"], sale_id=sid)
         save_custom_fields("Sale", sid, f)
