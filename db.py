@@ -8,7 +8,11 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # restart and this file IS the entire database. Defaults to ./db, same as
 # before, for local/dev use.
 DATA_DIR = os.environ.get("DATA_DIR") or os.path.join(BASE_DIR, "db")
-DB_PATH = os.path.join(DATA_DIR, "distributor.db")
+# DB_PATH itself can also be set directly (takes priority over DATA_DIR) -
+# this is what's actually configured on Railway right now, left over from
+# an earlier deploy setup; kept working rather than requiring a dashboard
+# change to switch conventions.
+DB_PATH = os.environ.get("DB_PATH") or os.path.join(DATA_DIR, "distributor.db")
 SCHEMA_PATH = os.path.join(BASE_DIR, "db", "schema.sql")
 
 
