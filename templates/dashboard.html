@@ -12,17 +12,34 @@
 </div>
 {% endif %}
 
-<div class="d-flex justify-content-end gap-2 mb-2">
-  <a href="{{ url_for('reports_hub') }}" class="btn btn-sm btn-brand"><i class="bi bi-bar-chart-line"></i> Reports & Exports</a>
-  <a href="{{ url_for('dashboard_customize') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-sliders"></i> Customize Dashboard</a>
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+  <div class="d-flex align-items-center gap-2">
+    <a href="{{ url_for('dashboard', year=prev_year, month=prev_month) }}" class="btn btn-sm btn-outline-secondary" title="Previous month"><i class="bi bi-chevron-left"></i></a>
+    <span class="fw-bold px-1"><i class="bi bi-calendar3"></i> {{ month_name }} {{ year }}</span>
+    {% if is_current_month %}
+    <button type="button" class="btn btn-sm btn-outline-secondary" disabled title="Already viewing the current month"><i class="bi bi-chevron-right"></i></button>
+    {% else %}
+    <a href="{{ url_for('dashboard', year=next_year, month=next_month) }}" class="btn btn-sm btn-outline-secondary" title="Next month"><i class="bi bi-chevron-right"></i></a>
+    <a href="{{ url_for('dashboard') }}" class="small ms-1">Back to current month</a>
+    {% endif %}
+  </div>
+  <div class="d-flex flex-wrap gap-2">
+    <a href="{{ url_for('reports_hub') }}" class="btn btn-sm btn-brand"><i class="bi bi-bar-chart-line"></i> Reports & Exports</a>
+    <a href="{{ url_for('dashboard_customize') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-sliders"></i> Customize Dashboard</a>
+  </div>
 </div>
+{% if not is_current_month %}
+<div class="alert alert-info py-2 small mb-2"><i class="bi bi-info-circle"></i> Viewing <strong>{{ month_name }} {{ year }}</strong> — Receivable, Payable, Van Sales Due and Scheme Claims Pending below are always as-of-today balances, not scoped to this month.</div>
+{% endif %}
 
 {% macro widget_stats() %}
 <div class="row g-3 mb-1">
+  {% if is_current_month %}
   <div class="col-md-2 col-6"><div class="stat-card sc-sales"><div class="stat-value">{{ (sales_today)|inr(0) }}</div><div class="stat-label">Sales Today</div></div></div>
-  <div class="col-md-2 col-6"><div class="stat-card sc-sales"><div class="stat-value">{{ (sales_month)|inr(0) }}</div><div class="stat-label">Sales this Month</div></div></div>
-  <div class="col-md-2 col-6"><div class="stat-card sc-purchases"><div class="stat-value">{{ (purchases_month)|inr(0) }}</div><div class="stat-label">Purchases this Month</div></div></div>
-  <div class="col-md-2 col-6"><div class="stat-card sc-expenses"><div class="stat-value">{{ (expenses_month)|inr(0) }}</div><div class="stat-label">Expenses this Month</div></div></div>
+  {% endif %}
+  <div class="col-md-2 col-6"><div class="stat-card sc-sales"><div class="stat-value">{{ (sales_month)|inr(0) }}</div><div class="stat-label">Sales — {{ month_name }}</div></div></div>
+  <div class="col-md-2 col-6"><div class="stat-card sc-purchases"><div class="stat-value">{{ (purchases_month)|inr(0) }}</div><div class="stat-label">Purchases — {{ month_name }}</div></div></div>
+  <div class="col-md-2 col-6"><div class="stat-card sc-expenses"><div class="stat-value">{{ (expenses_month)|inr(0) }}</div><div class="stat-label">Expenses — {{ month_name }}</div></div></div>
   <div class="col-md-2 col-6"><div class="stat-card sc-receivable"><div class="stat-value">{{ (receivable)|inr(0) }}</div><div class="stat-label">Receivable</div></div></div>
   <div class="col-md-2 col-6"><div class="stat-card sc-payable"><div class="stat-value">{{ (payable)|inr(0) }}</div><div class="stat-label">Payable</div></div></div>
 </div>
@@ -35,7 +52,7 @@
 {% macro widget_targets() %}
 <div class="card mb-3">
   <div class="card-header d-flex justify-content-between align-items-center">
-    <span><i class="bi bi-bullseye text-secondary"></i> Sales Target — MTD ({{ month_name }} {{ year }})</span>
+    <span><i class="bi bi-bullseye text-secondary"></i> Sales Target — {{ month_name }} {{ year }}</span>
     <a href="{{ url_for('targets_view') }}" class="small">Open Targets →</a>
   </div>
   <div class="card-body">

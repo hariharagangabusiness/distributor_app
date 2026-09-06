@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}Payslip{% endblock %}
+{% block page_title %}Payslip{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 no-print">
+  <a href="{{ url_for('salary_month', year=payment.SalaryYear, month=payment.SalaryMonth) }}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left"></i> Back to Salary Schedule</a>
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('payslip_pdf_download', pid=payment.PaymentID) }}" class="btn btn-brand" target="_blank"><i class="bi bi-file-earmark-pdf"></i> Download PDF</a>
+    <button type="button" class="btn btn-outline-secondary" onclick="window.print()"><i class="bi bi-printer"></i> Print</button>
+  </div>
+</div>
+
+<div class="card payslip-card" style="max-width:720px">
+  <div class="card-body">
+    <div class="text-center mb-3 payslip-header">
+      <h4 class="mb-1">{{ company.CompanyName or 'Your Company Name' }}</h4>
+      {% if company.Address %}
+      <div class="text-muted small mb-0">{{ company.Address }}</div>
+      {% endif %}
+      {% if company.City or company.State or company.Pincode %}
+      <div class="text-muted small mb-0">{{ [company.City, company.State, company.Pincode]|select|join(' ') }}</div>
+      {% endif %}
+      {% if company.Phone or company.Email %}
+      <div class="text-muted small">{{ [('Phone: ' ~ company.Phone) if company.Phone else '', ('Email: ' ~ company.Email) if company.Email else '']|select|join(' &nbsp;|&nbsp; ')|safe }}</div>
+      {% endif %}
+      <div class="fw-bold mt-2">PAYSLIP FOR {{ month_name|upper }} {{ payment.SalaryYear }}</div>
+    </div>
+
+    <div class="row g-3 mb-3">
+      <div class="col-md-6">
+        <table class="table table-sm mb-0">
+          <tr><td class="text-muted">Employee Name</td><td class="fw-bold">{{ employee.EmployeeName }}</td></tr>
+          <tr><td class="text-muted">Designation</td><td>{{ employee.Designation or '-' }}</td></tr>
+          <tr><td class="text-muted">Employee ID</td><td>EMP-{{ '%04d'|format(employee.EmployeeID) }}</td></tr>
+        </table>
+      </div>
+      <div class="col-md-6">
+        <table class="table table-sm mb-0">
+          <tr><td class="text-muted">Pay Period</td><td>{{ month_name }} {{ payment.SalaryYear }}</td></tr>
+          <tr><td class="text-muted">Bank Account</td><td>{{ employee.BankAccount or '-' }}</td></tr>
+          <tr><td class="text-muted">Payment Status</td>
+            <td>{% if payment.Status=='Paid' %}<span class="badge badge-ok">Paid {{ payment.PaymentDate }} ({{ payment.PaymentMode }})</span>{% else %}<span class="badge badge-low">Pending</span>{% endif %}</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <div class="table-responsive mb-3">
+    <table class="table table-bordered mb-1 text-center">
+      <thead><tr><th>Days in Month</th><th>Days Worked</th><th>Leave Days Taken</th><th>Loss of Pay Days</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>{{ days_in_month|round(2) }}</td>
+          <td>{{ days_worked|round(2) }}</td>
+          <td>{{ leave_days_total|round(2) }}</td>
+          <td>{{ (payment.LOPDays or 0)|round(2) }}</td>
+        </tr>
+      </tbody>
+    </table>
+    {% if leave_details %}
+    <div class="text-muted small mb-2">Leave breakup: {% for d in leave_details %}{{ d.LeaveTypeName }}: {{ d.DaysTaken|round(2) }}{% if not loop.last %}, {% endif %}{% endfor %}</div>
+    {% elif not attendance_recorded %}
+    <div class="text-muted small mb-2">Attendance not recorded for this month — days worked shown is derived from payable days.</div>
+    {% endif %}
+    </div>
+
+    <div class="table-responsive">
+    <table class="table table-bordered mb-3">
+      <thead><tr><th>Description</th><th class="text-end">Amount</th></tr></thead>
+      <tbody>
+        <tr><td>Gross Salary (Monthly)</td><td class="text-end">{{ (payment.GrossSalary)|inr(2) }}</td></tr>
+        {% if payment.LOPDays %}
+        <tr><td>Less: Loss of Pay ({{ payment.LOPDays|round(2) }} day(s))</td><td class="text-end">- {{ (payment.GrossSalary - payment.BasicAmount)|inr(2) }}</td></tr>
+        {% endif %}
+        <tr class="fw-bold"><td>Basic Pay (after LOP adjustment)</td><td class="text-end">{{ (payment.BasicAmount)|inr(2) }}</td></tr>
+        {% if payment.Bonus %}
+        <tr><td>Add: Bonus</td><td class="text-end">{{ (payment.Bonus)|inr(2) }}</td></tr>
+        {% endif %}
+        {% if payment.Deductions %}
+        <tr><td>Less: Other Deductions</td><td class="text-end">- {{ (payment.Deductions)|inr(2) }}</td></tr>
+        {% endif %}
+        {% if payment.AdvanceDeducted %}
+        <tr><td>Less: Advance Deducted</td><td class="text-end">- {{ (payment.AdvanceDeducted)|inr(2) }}</td></tr>
+        {% endif %}
+        <tr class="table-light fw-bold fs-6"><td>Net Payable</td><td class="text-end">{{ (payment.NetPayable)|inr(2) }}</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <div class="mb-4"><strong>Net Amount in Words:</strong> {{ amount_words }}</div>
+
+    <div class="row">
+      <div class="col-6">For {{ company.CompanyName or 'Your Company Name' }}<br><br><br><span class="text-muted small">Authorised Signatory</span></div>
+      <div class="col-6 text-end"><br><br><br><span class="text-muted small">Employee Signature</span></div>
+    </div>
+
+    <div class="text-muted small mt-4">This is a computer generated payslip and does not require a physical signature.</div>
+  </div>
+</div>
+<style>
+@media print { .no-print { display: none !important; } }
+.payslip-header { max-width: 480px; margin-left: auto; margin-right: auto; }
+.payslip-header h4 { line-height: 1.3; }
+</style>
+{% endblock %}

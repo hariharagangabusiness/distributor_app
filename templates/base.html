@@ -25,9 +25,11 @@
 </head>
 <body>
 <div class="d-flex">
-  <nav class="sidebar">
+  <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+  <nav class="sidebar" id="sidebar">
     <div class="sidebar-brand">
       <img src="{{ url_for('static', filename='img/logo.png') }}" alt="" class="sidebar-logo"> Hari Hara Ganga
+      <button type="button" class="btn-close btn-close-white sidebar-close-btn d-lg-none ms-auto" id="sidebarClose" aria-label="Close menu"></button>
     </div>
     <ul class="nav flex-column">
       <li class="nav-item"><a class="nav-link {% if request.path=='/dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}"><i class="bi bi-speedometer2"></i> Dashboard
@@ -116,10 +118,15 @@
     {% set page_section = '' %}
   {% endif %}
   <main class="content" data-section="{{ page_section }}">
-    <div class="page-watermark" style="background-image: url('{{ url_for('static', filename='img/logo-emblem.png') }}');"></div>
-    <div class="topbar d-flex justify-content-between align-items-center">
-      <h5 class="mb-0">{% block page_title %}{% endblock %}</h5>
-      <div class="d-flex align-items-center gap-3">
+    <div class="page-watermark" style="background-image: url('{{ url_for('static', filename='img/logo-watermark.png') }}');"></div>
+    <div class="topbar d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <div class="d-flex align-items-center gap-2">
+        <button type="button" class="btn btn-sm btn-outline-secondary d-lg-none" id="sidebarToggle" aria-label="Open menu">
+          <i class="bi bi-list"></i>
+        </button>
+        <h5 class="mb-0">{% block page_title %}{% endblock %}</h5>
+      </div>
+      <div class="d-flex align-items-center gap-3 flex-wrap">
         <button type="button" id="themeToggle" class="btn btn-sm btn-outline-secondary" title="Toggle dark mode">
           <i class="bi bi-moon-stars-fill" id="themeToggleIcon"></i>
         </button>
@@ -209,6 +216,41 @@
         collapsed[group] = isCollapsed;
         try { localStorage.setItem(STORAGE_KEY, JSON.stringify(collapsed)); } catch (e) {}
       });
+    });
+  })();
+
+  // Mobile sidebar (off-canvas). Below the lg breakpoint the sidebar is
+  // hidden off-screen by CSS (see .sidebar in style.css) and slides in as an
+  // overlay when opened, with a dimmed backdrop behind it - the same pattern
+  // as any mobile nav drawer. Closes on: the X button, tapping the backdrop,
+  // tapping a nav link (so navigating away doesn't leave the drawer open
+  // over the new page), or resizing back up to desktop width.
+  (function () {
+    var sidebar = document.getElementById('sidebar');
+    var backdrop = document.getElementById('sidebarBackdrop');
+    var openBtn = document.getElementById('sidebarToggle');
+    var closeBtn = document.getElementById('sidebarClose');
+    if (!sidebar || !openBtn) return;
+
+    function openSidebar() {
+      sidebar.classList.add('open');
+      backdrop.classList.add('show');
+      document.body.classList.add('sidebar-open-lock');
+    }
+    function closeSidebar() {
+      sidebar.classList.remove('open');
+      backdrop.classList.remove('show');
+      document.body.classList.remove('sidebar-open-lock');
+    }
+
+    openBtn.addEventListener('click', openSidebar);
+    if (closeBtn) closeBtn.addEventListener('click', closeSidebar);
+    backdrop.addEventListener('click', closeSidebar);
+    sidebar.querySelectorAll('.nav-link').forEach(function (link) {
+      link.addEventListener('click', closeSidebar);
+    });
+    window.addEventListener('resize', function () {
+      if (window.innerWidth >= 992) closeSidebar();
     });
   })();
 </script>

@@ -50,15 +50,18 @@
         <td data-col="net_payable"><strong>{{ (r.NetPayable)|inr(2) }}</strong></td>
         <td data-col="status">{% if r.Status=='Paid' %}<span class="badge badge-ok">Paid {{ r.PaymentDate }}</span>{% else %}<span class="badge badge-low">Pending</span>{% endif %}</td>
         <td class="text-end">
-          {% if r.Status != 'Paid' %}
-          <form method="post" action="{{ url_for('salary_pay', pid=r.PaymentID) }}" class="d-flex gap-1 justify-content-end">
-            <input type="date" name="payment_date" class="form-control form-control-sm" style="width:140px" value="{{ today }}">
-            <select name="payment_mode" class="form-select form-select-sm" style="width:100px">
-              <option>Bank</option><option>Cash</option><option>UPI</option>
-            </select>
-            <button class="btn btn-sm btn-brand" type="submit">Mark Paid</button>
-          </form>
-          {% endif %}
+          <div class="d-flex gap-1 justify-content-end flex-wrap">
+            <a href="{{ url_for('payslip_view', pid=r.PaymentID) }}" class="btn btn-sm btn-outline-secondary" title="View / Download Payslip"><i class="bi bi-file-earmark-text"></i> Payslip</a>
+            {% if r.Status != 'Paid' %}
+            <form method="post" action="{{ url_for('salary_pay', pid=r.PaymentID) }}" class="d-flex gap-1 justify-content-end">
+              <input type="date" name="payment_date" class="form-control form-control-sm" style="width:140px" value="{{ today }}">
+              <select name="payment_mode" class="form-select form-select-sm" style="width:100px">
+                <option>Bank</option><option>Cash</option><option>UPI</option>
+              </select>
+              <button class="btn btn-sm btn-brand" type="submit">Mark Paid</button>
+            </form>
+            {% endif %}
+          </div>
         </td>
       </tr>
       {% else %}<tr><td colspan="7" class="text-center text-muted py-4">No salary records for this month yet. Click "Generate Schedule" above.</td></tr>{% endfor %}

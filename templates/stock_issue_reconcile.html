@@ -85,20 +85,22 @@
   </table>
   </div>
 
-  <div class="row g-3 mb-3">
-    <div class="col-md-3"><label class="form-label">Cash *</label>
+  <div class="money-row mb-3">
+    <div class="money-field"><label class="form-label">Cash *</label>
       <input required type="number" step="0.01" name="cash_amount" id="cash_amount" class="form-control"
              value="{{ issue.CashAmount if issue.CashAmount is not none else (issue.CashCollected or 0) }}"></div>
-    <div class="col-md-3"><label class="form-label">Bank *</label>
+    <div class="money-field"><label class="form-label">Bank *</label>
       <input required type="number" step="0.01" name="bank_amount" id="bank_amount" class="form-control"
              value="{{ issue.BankAmount or 0 }}"></div>
-    <div class="col-md-3"><label class="form-label">Total Collected (auto)</label>
+    <div class="money-field"><label class="form-label">Total Collected (auto)</label>
       <input type="text" id="cash_collected_total" class="form-control" disabled value="0.00"></div>
-    <div class="col-md-3"><label class="form-label">Expected Amount (auto)</label>
+    <div class="money-field"><label class="form-label">Expected Amount (auto)</label>
       <input type="text" id="expected-total" class="form-control" disabled value="0.00"></div>
-    <div class="col-md-4"><label class="form-label">Discrepancy (auto)</label>
+    <div class="money-field"><label class="form-label">Discrepancy (auto)</label>
       <input type="text" id="discrepancy-total" class="form-control" disabled value="0.00"></div>
-    <div class="col-md-8"><label class="form-label">Notes</label>
+  </div>
+  <div class="row g-3 mb-3">
+    <div class="col-md-12"><label class="form-label">Notes</label>
       <input name="notes" class="form-control" value="{{ issue.Notes or '' }}"></div>
   </div>
 

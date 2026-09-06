@@ -61,16 +61,22 @@ def inrn_filter(value, decimals=0):
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-# Same override pattern as db.py's DB_PATH - see that comment.
-SECRET_KEY_FILE = os.environ.get("SECRET_KEY_FILE", os.path.join(BASE_DIR, "secret_key.txt"))
+SECRET_KEY_FILE = os.path.join(BASE_DIR, "secret_key.txt")
 
 
 def _load_or_create_secret_key():
     """Session cookies are signed with this key - it must stay the same
     across restarts (or everyone gets logged out) and must stay private
-    (anyone with it could forge a login). Generated once on first run and
-    kept in secret_key.txt next to app.py; don't share that file or check
-    it into version control."""
+    (anyone with it could forge a login). Preferred source is the SECRET_KEY
+    environment variable (set this in production - e.g. Railway - since a
+    platform's filesystem is typically wiped on every redeploy, which would
+    otherwise silently rotate the key and log everyone out). Falls back to
+    generating one on first run and keeping it in secret_key.txt next to
+    app.py, which is fine for local/dev use on a persistent disk; don't
+    share that file or check it into version control."""
+    env_key = os.environ.get("SECRET_KEY")
+    if env_key:
+        return env_key
     if os.path.exists(SECRET_KEY_FILE):
         with open(SECRET_KEY_FILE, "r") as f:
             key = f.read().strip()
@@ -86,7 +92,7 @@ app.secret_key = _load_or_create_secret_key()
 app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024  # 25MB cap per upload request
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
 
-UPLOAD_ROOT = os.environ.get("UPLOAD_ROOT", os.path.join(BASE_DIR, "uploads"))
+UPLOAD_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
 
 MONTH_NAMES = ["", "January", "February", "March", "April", "May", "June",
                "July", "August", "September", "October", "November", "December"]
@@ -448,24 +454,56 @@ def expiring_documents(days=30):
     return db.query(sql, (d, d, d, d))
 
 
-def pending_salary_this_month():
+def pending_salary_this_month(year=None, month=None):
     today = date.today()
+    year, month = year or today.year, month or today.month
     return db.query("""
         SELECT sp.*, e.EmployeeName FROM SalaryPayments sp
         JOIN Employees e ON e.EmployeeID = sp.EmployeeID
         WHERE sp.SalaryYear=? AND sp.SalaryMonth=? AND sp.Status='Pending'
         ORDER BY e.EmployeeName
-    """, (today.year, today.month))
+    """, (year, month))
 
 
-def employees_missing_salary_record():
+def employees_missing_salary_record(year=None, month=None):
     today = date.today()
+    year, month = year or today.year, month or today.month
     return db.query("""
         SELECT e.* FROM Employees e
         WHERE e.Status='Active' AND e.EmployeeID NOT IN (
             SELECT EmployeeID FROM SalaryPayments WHERE SalaryYear=? AND SalaryMonth=?
         )
-    """, (today.year, today.month))
+    """, (year, month))
+
+
+def _selected_month_from_request():
+    """Resolve the (year, month) a dashboard/report page should show from ?year=&month=
+    query args, defaulting to the current month. Also returns the month's date range,
+    prev/next (year, month) pairs, and whether the selection is the current month —
+    everything the "back to previous months" nav control needs. Future months beyond
+    the current one are not allowed (clamped back to today's month)."""
+    today = date.today()
+    try:
+        year = int(request.args.get("year", today.year))
+        month = int(request.args.get("month", today.month))
+    except (TypeError, ValueError):
+        year, month = today.year, today.month
+    if month < 1 or month > 12:
+        year, month = today.year, today.month
+    if (year, month) > (today.year, today.month):
+        year, month = today.year, today.month
+    month_start = date(year, month, 1)
+    month_end = date(year, month, calendar.monthrange(year, month)[1])
+    prev_year, prev_month = (year - 1, 12) if month == 1 else (year, month - 1)
+    next_year, next_month = (year + 1, 1) if month == 12 else (year, month + 1)
+    is_current = (year, month) == (today.year, today.month)
+    return {
+        "year": year, "month": month,
+        "month_start": month_start.isoformat(), "month_end": month_end.isoformat(),
+        "prev_year": prev_year, "prev_month": prev_month,
+        "next_year": next_year, "next_month": next_month,
+        "is_current": is_current,
+    }
 
 
 def active_advances():
@@ -879,16 +917,19 @@ def columns_customize(module):
 @app.route("/dashboard")
 def dashboard():
     today = date.today()
-    month_start = today.replace(day=1).isoformat()
+    sel = _selected_month_from_request()
+    month_start, month_end = sel["month_start"], sel["month_end"]
 
     sales_today = db.query("SELECT COALESCE(SUM(TotalAmount),0) AS t FROM Sales WHERE SaleDate=? AND Status<>'Cancelled'",
                             (today.isoformat(),), one=True)["t"]
-    sales_month = db.query("SELECT COALESCE(SUM(TotalAmount),0) AS t FROM Sales WHERE SaleDate>=? AND Status<>'Cancelled'",
-                            (month_start,), one=True)["t"]
-    purchases_month = db.query("SELECT COALESCE(SUM(TotalAmount),0) AS t FROM Purchases WHERE PurchaseDate>=? AND Status<>'Cancelled'",
-                                (month_start,), one=True)["t"]
-    expenses_month = db.query("SELECT COALESCE(SUM(Amount),0) AS t FROM Expenses WHERE ExpenseDate>=?",
-                               (month_start,), one=True)["t"]
+    sales_month = db.query("SELECT COALESCE(SUM(TotalAmount),0) AS t FROM Sales WHERE SaleDate BETWEEN ? AND ? AND Status<>'Cancelled'",
+                            (month_start, month_end), one=True)["t"]
+    purchases_month = db.query("SELECT COALESCE(SUM(TotalAmount),0) AS t FROM Purchases WHERE PurchaseDate BETWEEN ? AND ? AND Status<>'Cancelled'",
+                                (month_start, month_end), one=True)["t"]
+    expenses_month = db.query("SELECT COALESCE(SUM(Amount),0) AS t FROM Expenses WHERE ExpenseDate BETWEEN ? AND ?",
+                               (month_start, month_end), one=True)["t"]
+    # Receivable/Payable/Van Sales Due/Scheme Claims Pending are point-in-time
+    # outstanding balances (as of now), not scoped to the month being viewed.
     receivable = db.query("SELECT COALESCE(SUM(TotalAmount - AmountReceived),0) AS t FROM Sales WHERE PaymentStatus<>'Paid' AND Status<>'Cancelled'",
                            one=True)["t"]
     payable = db.query("SELECT COALESCE(SUM(TotalAmount - AmountPaid),0) AS t FROM Purchases WHERE PaymentStatus<>'Paid' AND Status<>'Cancelled'",
@@ -911,8 +952,8 @@ def dashboard():
     gst_due = gst_logic.upcoming_due_dates(get_company_settings(), days_ahead=14)
 
     # Sales Target MTD progress - whole-employee (all-products) targets for
-    # the current month, combined across every salesperson that has one set.
-    target_summary = get_company_target_summary(today.year, today.month)
+    # the month being viewed, combined across every salesperson that has one set.
+    target_summary = get_company_target_summary(sel["year"], sel["month"])
 
     return render_template("dashboard.html",
                             sales_today=sales_today, sales_month=sales_month,
@@ -922,10 +963,13 @@ def dashboard():
                             unassigned_sales_count=unassigned_sales_count, unassigned_sales_amount=unassigned_sales_amount,
                             low_stock=low_stock_products(), over_stock=over_stock_products(),
                             maintenance=upcoming_maintenance(), docs=expiring_documents(),
-                            pending_salary=pending_salary_this_month(),
-                            missing_salary=employees_missing_salary_record(),
+                            pending_salary=pending_salary_this_month(sel["year"], sel["month"]),
+                            missing_salary=employees_missing_salary_record(sel["year"], sel["month"]),
                             advances=active_advances(), gst_due=gst_due, target_summary=target_summary,
-                            month_name=MONTH_NAMES[today.month], year=today.year,
+                            month_name=MONTH_NAMES[sel["month"]], year=sel["year"],
+                            is_current_month=sel["is_current"],
+                            prev_year=sel["prev_year"], prev_month=sel["prev_month"],
+                            next_year=sel["next_year"], next_month=sel["next_month"],
                             widget_visible=widget_visible, widget_order=widget_order)
 
 
@@ -2521,9 +2565,10 @@ def stock_issues_report():
 
     # Day-wise Cost vs Sales - a plain reconciliation check, deliberately not
     # touching Incentive (that only belongs in the P&L margin view). Cost =
-    # each issued unit's Product.CostPrice; Sales = the Stock Issue's own
-    # Expected/Collected amounts for that day.
-    daywise_cost_rows = db.query("""SELECT si.IssueDate AS d, COALESCE(SUM(sil.QtyIssued * pr.CostPrice), 0) AS cost
+    # each SOLD unit's Product.CostPrice (QtySold, not QtyIssued - unsold
+    # stock issued that day carries no cost of goods sold yet); Sales = the
+    # Stock Issue's own Expected/Collected amounts for that day.
+    daywise_cost_rows = db.query("""SELECT si.IssueDate AS d, COALESCE(SUM(sil.QtySold * pr.CostPrice), 0) AS cost
                                   FROM StockIssueLines sil
                                   JOIN StockIssues si ON si.IssueID = sil.IssueID
                                   JOIN Products pr ON pr.ProductID = sil.ProductID
@@ -3231,11 +3276,12 @@ def get_employee_month_target_progress(employee_id, year=None, month=None):
 @app.route("/reports")
 def reports_hub():
     today = date.today()
-    month_start = today.replace(day=1).isoformat()
+    sel = _selected_month_from_request()
+    month_start, month_end = sel["month_start"], sel["month_end"]
     is_admin = bool(get_current_user() and get_current_user()["Role"] == "Admin")
 
-    sales_month = db.query("SELECT COALESCE(SUM(TotalAmount),0) t, COUNT(*) n FROM Sales WHERE SaleDate>=? AND Status<>'Cancelled'",
-                            (month_start,), one=True)
+    sales_month = db.query("SELECT COALESCE(SUM(TotalAmount),0) t, COUNT(*) n FROM Sales WHERE SaleDate BETWEEN ? AND ? AND Status<>'Cancelled'",
+                            (month_start, month_end), one=True)
     top_customers = db.query("""SELECT c.CustomerName, SUM(s.TotalAmount) total FROM Sales s
                               JOIN Customers c ON c.CustomerID=s.CustomerID
                               WHERE s.Status<>'Cancelled' AND c.IsUnassignedBucket=0
@@ -3243,8 +3289,8 @@ def reports_hub():
     sales_trend = db.query("""SELECT strftime('%Y-%m', SaleDate) ym, SUM(TotalAmount) total FROM Sales
                             WHERE Status<>'Cancelled' GROUP BY ym ORDER BY ym DESC LIMIT 6""")
 
-    purchases_month = db.query("SELECT COALESCE(SUM(TotalAmount),0) t, COUNT(*) n FROM Purchases WHERE PurchaseDate>=? AND Status<>'Cancelled'",
-                                (month_start,), one=True)
+    purchases_month = db.query("SELECT COALESCE(SUM(TotalAmount),0) t, COUNT(*) n FROM Purchases WHERE PurchaseDate BETWEEN ? AND ? AND Status<>'Cancelled'",
+                                (month_start, month_end), one=True)
     top_suppliers = db.query("""SELECT s.SupplierName, SUM(p.TotalAmount) total FROM Purchases p
                               JOIN Suppliers s ON s.SupplierID=p.SupplierID
                               WHERE p.Status<>'Cancelled' GROUP BY p.SupplierID
@@ -3266,13 +3312,14 @@ def reports_hub():
                                WHERE p.Active=1 GROUP BY COALESCE(p.Category, 'Uncategorized') ORDER BY qty DESC""")
     total_qty_stock = sum(r["qty"] for r in category_stock)
 
-    expenses_month_total = db.query("SELECT COALESCE(SUM(Amount),0) t FROM Expenses WHERE ExpenseDate>=?", (month_start,), one=True)["t"]
-    expenses_by_category = db.query("""SELECT Category, SUM(Amount) total FROM Expenses WHERE ExpenseDate>=?
-                                     GROUP BY Category ORDER BY total DESC""", (month_start,))
+    expenses_month_total = db.query("SELECT COALESCE(SUM(Amount),0) t FROM Expenses WHERE ExpenseDate BETWEEN ? AND ?",
+                                     (month_start, month_end), one=True)["t"]
+    expenses_by_category = db.query("""SELECT Category, SUM(Amount) total FROM Expenses WHERE ExpenseDate BETWEEN ? AND ?
+                                     GROUP BY Category ORDER BY total DESC""", (month_start, month_end))
 
     stock_issues_month = db.query("""SELECT COALESCE(SUM(ExpectedAmount),0) expected, COALESCE(SUM(CashCollected),0) collected,
                                    COALESCE(SUM(SchemeAmount),0) scheme, COALESCE(SUM(AmountDue),0) due
-                                   FROM StockIssues WHERE IssueDate>=?""", (month_start,), one=True)
+                                   FROM StockIssues WHERE IssueDate BETWEEN ? AND ?""", (month_start, month_end), one=True)
 
     salary_summary = None
     scheme_claims_summary = None
@@ -3281,7 +3328,7 @@ def reports_hub():
                                    SUM(CASE WHEN Status='Pending' THEN 1 ELSE 0 END) pending,
                                    SUM(CASE WHEN Status='Paid' THEN 1 ELSE 0 END) paid
                                    FROM SalaryPayments WHERE SalaryYear=? AND SalaryMonth=?""",
-                                   (today.year, today.month), one=True)
+                                   (sel["year"], sel["month"]), one=True)
         scheme_claims_summary = db.query("""SELECT
                                           COALESCE(SUM(CASE WHEN Status IN ('Pending','Claimed') THEN ClaimAmount ELSE 0 END),0) pending,
                                           COALESCE(SUM(CASE WHEN Status IN ('Received','Completed')
@@ -3290,7 +3337,7 @@ def reports_hub():
 
     fleet_due = len(upcoming_maintenance()) + len(expiring_documents())
     active_customers = db.query("SELECT COUNT(*) n FROM Customers WHERE Active=1 AND IsUnassignedBucket=0", one=True)["n"]
-    target_summary = get_company_target_summary(today.year, today.month)
+    target_summary = get_company_target_summary(sel["year"], sel["month"])
 
     return render_template("reports_hub.html", is_admin=is_admin, target_summary=target_summary,
                             sales_month=sales_month, top_customers=top_customers, sales_trend=sales_trend,
@@ -3301,7 +3348,10 @@ def reports_hub():
                             expenses_month_total=expenses_month_total, expenses_by_category=expenses_by_category,
                             stock_issues_month=stock_issues_month, salary_summary=salary_summary,
                             scheme_claims_summary=scheme_claims_summary, fleet_due=fleet_due,
-                            active_customers=active_customers, month_name=MONTH_NAMES[today.month], year=today.year)
+                            active_customers=active_customers, month_name=MONTH_NAMES[sel["month"]], year=sel["year"],
+                            is_current_month=sel["is_current"],
+                            prev_year=sel["prev_year"], prev_month=sel["prev_month"],
+                            next_year=sel["next_year"], next_month=sel["next_month"])
 
 
 # ---------------------------------------------------------------------
@@ -3874,6 +3924,68 @@ def salary_pay(pid):
     return redirect(url_for("salary_month", year=payment["SalaryYear"], month=payment["SalaryMonth"]))
 
 
+def _get_payslip_context(pid):
+    payment = db.query("SELECT * FROM SalaryPayments WHERE PaymentID=?", (pid,), one=True)
+    if not payment:
+        return None
+    employee = db.query("SELECT * FROM Employees WHERE EmployeeID=?", (payment["EmployeeID"],), one=True)
+    company = get_company_settings()
+    month_name = MONTH_NAMES[payment["SalaryMonth"]]
+    words = amount_in_words(payment["NetPayable"])
+
+    # Days worked / leaves taken: pulled from the Leave & Attendance tab
+    # (AttendanceMonthly) for this employee/month when it exists; falls
+    # back to deriving "days worked" from the salary figures themselves
+    # (days in month minus LOP days) when no attendance entry was recorded,
+    # in which case leave days simply show as 0/not recorded.
+    att = db.query("SELECT * FROM AttendanceMonthly WHERE EmployeeID=? AND AttYear=? AND AttMonth=?",
+                   (payment["EmployeeID"], payment["SalaryYear"], payment["SalaryMonth"]), one=True)
+    leave_details = []
+    if att:
+        days_in_month = att["DaysInMonth"]
+        days_worked = att["PresentDays"]
+        leave_days_total = db.query("""SELECT COALESCE(SUM(DaysTaken),0) AS total FROM AttendanceLeaveDetail
+                                     WHERE AttendanceID=?""", (att["AttendanceID"],), one=True)["total"]
+        leave_details = db.query("""SELECT lt.LeaveTypeName, lt.LeaveCode, ld.DaysTaken
+                                  FROM AttendanceLeaveDetail ld JOIN LeaveTypes lt ON lt.LeaveTypeID=ld.LeaveTypeID
+                                  WHERE ld.AttendanceID=? AND ld.DaysTaken>0 ORDER BY lt.DisplayOrder""",
+                                  (att["AttendanceID"],))
+    else:
+        days_in_month = calendar.monthrange(payment["SalaryYear"], payment["SalaryMonth"])[1]
+        days_worked = max(days_in_month - payment["LOPDays"], 0)
+        leave_days_total = 0
+
+    return dict(payment=payment, employee=employee, company=company, month_name=month_name, amount_words=words,
+                days_in_month=days_in_month, days_worked=days_worked, leave_days_total=leave_days_total,
+                leave_details=leave_details, attendance_recorded=bool(att))
+
+
+@app.route("/salary/<int:pid>/payslip")
+def payslip_view(pid):
+    ctx = _get_payslip_context(pid)
+    if not ctx:
+        flash("Salary record not found.", "error")
+        return redirect(url_for("salary_month"))
+    return render_template("payslip.html", **ctx)
+
+
+@app.route("/salary/<int:pid>/payslip.pdf")
+def payslip_pdf_download(pid):
+    ctx = _get_payslip_context(pid)
+    if not ctx:
+        flash("Salary record not found.", "error")
+        return redirect(url_for("salary_month"))
+    from payslip_pdf import build_payslip_pdf
+    pdf_bytes = build_payslip_pdf(ctx["payment"], ctx["employee"], ctx["company"], ctx["month_name"], ctx["amount_words"],
+                                   days_in_month=ctx["days_in_month"], days_worked=ctx["days_worked"],
+                                   leave_days_total=ctx["leave_days_total"], leave_details=ctx["leave_details"],
+                                   attendance_recorded=ctx["attendance_recorded"])
+    from flask import Response
+    safe_name = f"{ctx['employee']['EmployeeName']}-{ctx['month_name']}-{ctx['payment']['SalaryYear']}".replace(" ", "_").replace("/", "-")
+    return Response(pdf_bytes, mimetype="application/pdf",
+                     headers={"Content-Disposition": f'inline; filename="Payslip-{safe_name}.pdf"'})
+
+
 # ---------------------------------------------------------------------
 # Advance payments
 # ---------------------------------------------------------------------
@@ -4192,22 +4304,34 @@ def api_product(pid):
     return jsonify(dict(cost_price=p["CostPrice"], selling_price=p["SellingPrice"], stock=stock, unit=p["Unit"]))
 
 
-db.init_db()  # safe: CREATE TABLE IF NOT EXISTS
+# Runs on import, not just under `python app.py` - a production WSGI server
+# (gunicorn, per the Procfile) imports this module and calls the `app`
+# object directly, it never executes the __main__ block below, so anything
+# needed at boot (creating tables, starting the reminder thread) has to live
+# here instead of down there.
+db.init_db()  # safe: CREATE TABLE IF NOT EXISTS - never touches existing data
 
-# Runs at import time so it also fires under a production WSGI server
-# (e.g. Gunicorn), which never executes the __main__ block below. Only
-# safe with a single worker process / single `python app.py` process -
-# each one that imports this module starts its own copy of the thread,
-# so running multiple Gunicorn workers would send every reminder email
-# once per worker. Keep Gunicorn at --workers 1 (SQLite is single-writer
-# anyway, so there's no benefit to more).
+# FLASK_DEBUG=1 opts into Flask's debug reloader + interactive debugger for
+# local dev; leave it unset (the default) anywhere internet-facing, since
+# Flask's debugger allows remote code execution from any page that hits an
+# unhandled error. Set on app.config here (rather than only passed to
+# app.run() below) so it's correct at *this* point too, for the reminder-
+# thread guard right after - not just once app.run() eventually applies it.
+app.debug = os.environ.get("FLASK_DEBUG", "").lower() in ("1", "true", "yes")
+
+# Flask's debug reloader re-executes this file in a second process;
+# WERKZEUG_RUN_MAIN is only set in that second (actually-serving) one, so
+# this guard stops the reminder thread starting twice (and double-sending
+# every email) when running locally with the reloader on. Under gunicorn
+# WERKZEUG_RUN_MAIN is never set, so `not app.debug` (true in production)
+# takes over and it starts normally, once per worker process - keep
+# `web: gunicorn app:app --workers 1 ...` in the Procfile (see
+# RAILWAY_DEPLOY.md) so that's once total, not once per worker.
 if not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
     gst_reminders.start_background_reminder_thread()
 
 if __name__ == "__main__":
-    # Off by default - the Werkzeug debugger this enables allows remote
-    # code execution if the app is ever reachable from outside localhost.
-    # Set FLASK_DEBUG=1 for local development only.
-    debug = os.environ.get("FLASK_DEBUG") == "1"
+    # Local/dev convenience only - production runs via gunicorn (see Procfile),
+    # which never executes this block.
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=debug)
+    app.run(host="0.0.0.0", port=port, debug=app.debug)

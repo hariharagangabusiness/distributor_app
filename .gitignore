@@ -1,10 +1,20 @@
-venv/
-__pycache__/
-*.pyc
-
-db/distributor.db
-uploads/
+# Local database and secrets - never commit these. On Railway the database
+# lives on a mounted Volume instead (see RAILWAY_DEPLOY.md), and the secret
+# key should come from the SECRET_KEY environment variable there.
+db/*.db
+db/*.db-journal
 secret_key.txt
 
+# User-uploaded files (attachments, imports, etc.) - same reasoning as the
+# database: real data shouldn't be committed, and on Railway this should
+# live on the mounted Volume too if you want uploads to survive a redeploy.
+uploads/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Editor/OS cruft
 .DS_Store
-*.log

@@ -5,6 +5,17 @@
 <p class="text-muted">A quick breakdown for each tab, with Export to Excel / PDF for that tab's full data. For
   deeper reports, see Stock Issue Schemes &amp; Dues{% if is_admin %} and Profit &amp; Loss{% endif %} in the menu.</p>
 
+<div class="d-flex align-items-center gap-2 mb-3">
+  <a href="{{ url_for('reports_hub', year=prev_year, month=prev_month) }}" class="btn btn-sm btn-outline-secondary" title="Previous month"><i class="bi bi-chevron-left"></i></a>
+  <span class="fw-bold px-1"><i class="bi bi-calendar3"></i> {{ month_name }} {{ year }}</span>
+  {% if is_current_month %}
+  <button type="button" class="btn btn-sm btn-outline-secondary" disabled title="Already viewing the current month"><i class="bi bi-chevron-right"></i></button>
+  {% else %}
+  <a href="{{ url_for('reports_hub', year=next_year, month=next_month) }}" class="btn btn-sm btn-outline-secondary" title="Next month"><i class="bi bi-chevron-right"></i></a>
+  <a href="{{ url_for('reports_hub') }}" class="small ms-1">Back to current month</a>
+  {% endif %}
+</div>
+
 <div class="row g-3">
 
   <div class="col-md-6 col-lg-4">

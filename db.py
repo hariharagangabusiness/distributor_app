@@ -2,10 +2,13 @@ import sqlite3
 import os
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-# Override via env var to point at a mounted persistent volume (e.g. on
-# Railway, where anything outside the volume's mount path is wiped on
-# every redeploy). Defaults to the in-repo path for local/LAN/VPS use.
-DB_PATH = os.environ.get("DB_PATH", os.path.join(BASE_DIR, "db", "distributor.db"))
+# DATA_DIR is where the actual .db file lives - override it with the DATA_DIR
+# environment variable to point at a mounted persistent Volume (e.g. Railway),
+# since a platform's regular filesystem is typically wiped on every redeploy/
+# restart and this file IS the entire database. Defaults to ./db, same as
+# before, for local/dev use.
+DATA_DIR = os.environ.get("DATA_DIR") or os.path.join(BASE_DIR, "db")
+DB_PATH = os.path.join(DATA_DIR, "distributor.db")
 SCHEMA_PATH = os.path.join(BASE_DIR, "db", "schema.sql")
 
 

@@ -92,12 +92,12 @@ body {
   left: 250px;
   background-repeat: no-repeat;
   background-position: center 45%;
-  background-size: min(46vw, 480px);
-  opacity: .05;
+  background-size: min(50vw, 520px);
+  opacity: .35;
   pointer-events: none;
   z-index: 0;
 }
-[data-bs-theme="dark"] .page-watermark { opacity: .07; }
+[data-bs-theme="dark"] .page-watermark { opacity: .42; }
 .page-body { position: relative; z-index: 1; }
 
 /* Per-tab accent color — every section of the app gets its own color so pages
@@ -133,22 +133,28 @@ body {
 }
 [data-bs-theme="dark"] .page-body .card:not(.report-card)::after { opacity: .08; }
 .topbar {
-  background: var(--surface);
+  background: rgba(255,255,255,.85);
   padding: .8rem 1.5rem;
   border-bottom: 1px solid var(--border);
   position: sticky;
   top: 0;
   z-index: 10;
 }
+[data-bs-theme="dark"] .topbar { background: rgba(28,34,36,.85); }
 .page-body { padding: 1.5rem; }
 
+/* Dashboard stat blocks are translucent too, same as .card, so the
+   watermark shows through them consistently across every page/tab. */
 .stat-card {
-  background: var(--surface);
+  background: rgba(255,255,255,.65);
   border-radius: 10px;
   padding: 1rem 1.2rem;
   box-shadow: var(--shadow);
   height: 100%;
+  position: relative;
+  z-index: 1;
 }
+[data-bs-theme="dark"] .stat-card { background: rgba(28,34,36,.65); }
 .stat-card .stat-value { font-size: 1.5rem; font-weight: 700; color: var(--brand-dark); }
 .stat-card .stat-label { color: var(--text-muted); font-size: .82rem; text-transform: uppercase; letter-spacing: .04em; }
 
@@ -180,8 +186,12 @@ body {
 .sc-vansales     { --sc-color: #17a2b8; }
 .sc-schemeclaims { --sc-color: #bb6bd9; }
 
-.card { border: none; box-shadow: var(--shadow); border-radius: 10px; }
-.card-header { background: var(--surface); font-weight: 600; border-bottom: 1px solid var(--border); }
+/* Cards are intentionally semi-transparent (not fully opaque var(--surface))
+   so the page watermark shows through tables/cards too, not just the empty
+   margins around them. */
+.card { border: none; box-shadow: var(--shadow); border-radius: 10px; background: rgba(255,255,255,.65); position: relative; z-index: 1; }
+[data-bs-theme="dark"] .card { background: rgba(28,34,36,.65); }
+.card-header { background: transparent; font-weight: 600; border-bottom: 1px solid var(--border); }
 
 .table thead th { font-size: .78rem; text-transform: uppercase; color: var(--text-muted); letter-spacing: .03em; border-bottom-width: 1px; }
 .badge-low { background: #f8d7da; color: #842029; }
@@ -284,4 +294,105 @@ body {
   position: fixed;
   top: 1rem;
   right: 1rem;
+}
+
+/* Reconcile form's Cash / Bank / Total Collected / Expected Amount /
+   Discrepancy fields - kept on one single line at every screen size (rather
+   than Bootstrap's default column-stacking), since they're one running
+   calculation the user reads left-to-right. Each field has a comfortable
+   minimum width; if there's not enough room (a phone, or a narrow desktop
+   window) the row scrolls horizontally within itself instead of wrapping -
+   same pattern as the line-items table above it, not a page-wide scrollbar. */
+.money-row {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 1rem;
+  overflow-x: auto;
+  padding-bottom: .25rem;
+}
+.money-field {
+  flex: 1 1 160px;
+  min-width: 160px;
+}
+
+/* ===================== Responsive / mobile ===================== */
+.sidebar-close-btn { display: none; }
+/* The hamburger toggle itself doesn't rely on Bootstrap's d-lg-none utility
+   class (which needs bootstrap.min.css to have actually loaded, e.g. from
+   its CDN, to take effect) - defined directly here instead so it reliably
+   shows only below the off-canvas breakpoint and never sits there uselessly
+   on a full desktop window regardless of what else did or didn't load. */
+#sidebarToggle { display: inline-flex; align-items: center; }
+@media (min-width: 992px) {
+  #sidebarToggle { display: none; }
+}
+.sidebar-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.45);
+  z-index: 1040;
+}
+.sidebar-backdrop.show { display: block; }
+
+/* Below the lg breakpoint (~992px - phones and most tablets in portrait),
+   the sidebar becomes an off-canvas drawer instead of a permanent 250px-wide
+   column: it's hidden off-screen and slides in over the page when opened via
+   the hamburger button in the topbar, rather than squeezing page content
+   into a few inches of width like a fixed-width sidebar would on a phone. */
+@media (max-width: 991.98px) {
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 84vw;
+    max-width: 300px;
+    z-index: 1050;
+    transform: translateX(-100%);
+    transition: transform .25s ease;
+    box-shadow: 4px 0 24px rgba(0,0,0,.35);
+  }
+  .sidebar.open { transform: translateX(0); }
+  .sidebar-close-btn { display: inline-block; }
+  body.sidebar-open-lock { overflow: hidden; }
+
+  /* The sidebar no longer takes up permanent horizontal space (it's
+     position:fixed, out of normal flow), so content already goes full width
+     without changes here - only the watermark's hardcoded 250px inset (sized
+     for the permanent desktop sidebar) needs correcting, and the page's own
+     padding needs to shrink to fit a phone screen. */
+  .page-watermark { left: 0; }
+  .page-body { padding: 1rem; }
+  .topbar { padding: .7rem 1rem; }
+  .auth-card { padding: 1.5rem; }
+}
+
+@media (max-width: 575.98px) {
+  .stat-card .stat-value { font-size: 1.25rem; }
+  .page-body { padding: .75rem; }
+  .card-body { padding: 1rem; }
+}
+
+/* Fixed-pixel-width fields (many list-page search/filter bars and table
+   line-item forms set a comfortable default like style="width:260px") would
+   otherwise overflow their row instead of shrinking as a desktop window is
+   resized narrower - well before the phone/tablet breakpoint above kicks in.
+   max-width caps them at their container's width without removing the
+   pixel width as the preferred size on wide screens: CSS applies max-width
+   over width whenever they conflict, regardless of the inline style's
+   higher specificity, so this works even though it can't "see" the inline
+   styles individually. */
+input[style*="width"], select[style*="width"] {
+  max-width: 100%;
+}
+
+/* Toolbar rows (a search/filter form beside a row of action buttons, or a
+   plain button/field group) wrap onto a second line instead of clipping or
+   forcing a horizontal scrollbar once the window gets too narrow for
+   everything to fit on one line. Harmless when there's room - flex-wrap
+   only has an effect once content actually doesn't fit. */
+.d-flex.justify-content-between,
+.d-flex.gap-2 {
+  flex-wrap: wrap;
+  row-gap: .5rem;
 }
