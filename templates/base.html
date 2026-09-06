@@ -32,10 +32,14 @@
       <button type="button" class="btn-close btn-close-white sidebar-close-btn d-lg-none ms-auto" id="sidebarClose" aria-label="Close menu"></button>
     </div>
     <ul class="nav flex-column">
+      {% if can_access('dashboard') %}
       <li class="nav-item"><a class="nav-link {% if request.path=='/dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}"><i class="bi bi-speedometer2"></i> Dashboard
         {% if alert_counts.total %}<span class="badge text-bg-danger ms-1">{{ alert_counts.total }}</span>{% endif %}
       </a></li>
+      {% endif %}
+      {% if can_access('reports') %}
       <li class="nav-item"><a class="nav-link {% if request.path.startswith('/reports') and not request.path.startswith('/reports/stock-issues') and not request.path.startswith('/reports/pnl') and not request.path.startswith('/reports/sales-live') %}active{% endif %}" href="{{ url_for('reports_hub') }}"><i class="bi bi-bar-chart-line"></i> Reports</a></li>
+      {% endif %}
 
       {% if can_access('inventory') %}
       <li class="nav-section" data-group="inventory">Inventory <i class="bi bi-chevron-down nav-section-chevron"></i></li>

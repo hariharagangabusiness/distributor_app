@@ -198,10 +198,18 @@ def admin_required(view_func):
 # RoleTabPermissions.TabKey and the URL-prefix routing table below), its
 # label (shown in the Access Control matrix and nowhere else), and which
 # group heading it's shown under in that matrix (mirrors the sidebar's own
-# grouping in base.html, purely for readability there). Dashboard and the
-# Reports hub itself are intentionally NOT in this list - every signed-in
-# user can always see those two, the same as before this feature existed.
+# grouping in base.html, purely for readability there).
+#
+# Dashboard and Reports are configurable tabs like any other - and, per
+# their entries below, are NOT granted to Staff/Supervisor/Manager by
+# default (no seed row in RoleTabPermissions for them), same as every other
+# tab. Admin is unaffected either way - user_can_access() always returns
+# True for Admin regardless of what's configured here. See
+# default_landing_url() for what a role with neither granted lands on
+# instead, right after login.
 ACCESS_TABS = [
+    ("dashboard", "Dashboard", "General"),
+    ("reports", "Reports", "General"),
     ("inventory", "Products & Stock", "Inventory"),
     ("suppliers", "Suppliers", "Purchasing"),
     ("purchases", "Purchases", "Purchasing"),
@@ -238,20 +246,21 @@ ALL_ROLES = CONFIGURABLE_ROLES + ["Admin"]
 # Maps a request path to the ACCESS_TABS key that governs it. Checked in
 # order, first (most specific) prefix match wins - e.g. "/settings/custom-
 # fields" must be checked before the bare "/settings" prefix. A path that
-# matches nothing here (Dashboard, the Reports hub, /account/change-
-# password, /api/* helpers, etc.) is left unrestricted for any signed-in user,
-# same as before this feature existed. Note: /settings/access-control itself
-# is intentionally left OUT of this table (and off the "settings" tab) -
-# its route carries its own hard @admin_required, so it can never be handed
-# to Staff/Supervisor/Manager no matter how "settings" is configured.
+# matches nothing here (/account/change-password, /api/* helpers, etc.) is
+# left unrestricted for any signed-in user. Note: /settings/access-control
+# itself is intentionally left OUT of this table (and off the "settings"
+# tab) - its route carries its own hard @admin_required, so it can never be
+# handed to Staff/Supervisor/Manager no matter how "settings" is configured.
 TAB_PATH_RULES = [
     ("/settings/access-control", None),  # always Admin-only, see admin_required on the route itself
     ("/settings/custom-fields", "custom_fields"),
     ("/settings", "settings"),
     ("/dashboard/customize", "dashboard_customize"),
+    ("/dashboard", "dashboard"),
     ("/reports/stock-issues", "stock_issues_report"),
     ("/reports/sales-live", "sales_live"),
     ("/reports/pnl", "pnl"),
+    ("/reports", "reports"),
     ("/inventory", "inventory"),
     ("/suppliers", "suppliers"),
     ("/purchases", "purchases"),
@@ -302,6 +311,44 @@ def user_can_access(user, tab_key):
     return tab_key in get_role_permissions().get(user["Role"], set())
 
 
+# Which route to send a user to for each ACCESS_TABS key, when default_landing_url()
+# below needs to find the first tab a role actually has - covers every tab except
+# "dashboard"/"reports" themselves (handled directly by default_landing_url).
+TAB_HOME_ENDPOINT = {
+    "inventory": "inventory_list", "suppliers": "suppliers_list", "purchases": "purchases_list",
+    "customers": "customers_list", "sales": "sales_list", "sales_live": "sales_live_report",
+    "stock_issues": "stock_issues_list", "stock_issues_report": "stock_issues_report",
+    "targets": "targets_view", "expenses": "expenses_list", "gst": "gst_dashboard",
+    "pnl": "pnl_report", "scheme_claims": "scheme_claims_list", "vehicles": "vehicles_list",
+    "maintenance": "maintenance_list", "attendance": "attendance_month", "employees": "employees_list",
+    "salary": "salary_month", "advances": "advances_list", "settings": "settings_form",
+    "custom_fields": "custom_fields_admin", "dashboard_customize": "dashboard_customize",
+}
+
+
+def default_landing_url(user):
+    """Where a signed-in user should land when no specific page was requested
+    (right after login, visiting '/', or bounced back by an access-control
+    check) - Dashboard if their role can see it, else Reports, else the
+    first module tab their role has actually been granted, else the always-
+    accessible Change Password page as a last resort (a role with nothing
+    granted yet). Dashboard and Reports are NOT granted to Staff/Supervisor/
+    Manager by default (see ACCESS_TABS) - only Admin always gets Dashboard,
+    everyone else needs it explicitly enabled from Access Control."""
+    if not user:
+        return url_for("login")
+    if user["Role"] == "Admin" or user_can_access(user, "dashboard"):
+        return url_for("dashboard")
+    if user_can_access(user, "reports"):
+        return url_for("reports_hub")
+    for key, _, _ in ACCESS_TABS:
+        if key in ("dashboard", "reports"):
+            continue
+        if user_can_access(user, key) and key in TAB_HOME_ENDPOINT:
+            return url_for(TAB_HOME_ENDPOINT[key])
+    return url_for("change_password")
+
+
 @app.before_request
 def require_login():
     if request.endpoint is None:
@@ -316,7 +363,7 @@ def require_login():
         if tab_key and not user_can_access(user, tab_key):
             flash("You don't have access to that section. Ask an Admin to enable it for your "
                   "role under Settings › Access Control.", "error")
-            return redirect(url_for("dashboard"))
+            return redirect(default_landing_url(user))
 
 
 @app.context_processor
@@ -332,15 +379,17 @@ def inject_sale_due_helpers():
 
 @app.route("/")
 def home():
-    if get_current_user():
-        return redirect(url_for("dashboard"))
+    user = get_current_user()
+    if user:
+        return redirect(default_landing_url(user))
     return render_template("home.html")
 
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
-    if get_current_user():
-        return redirect(url_for("dashboard"))
+    current = get_current_user()
+    if current:
+        return redirect(default_landing_url(current))
     if request.method == "POST":
         username = (request.form.get("username") or "").strip()
         password = request.form.get("password") or ""
@@ -353,7 +402,7 @@ def login():
             db.execute("UPDATE Users SET LastLoginAt=datetime('now') WHERE UserID=?", (user["UserID"],))
             nxt = request.form.get("next") or request.args.get("next")
             flash(f"Welcome back, {user['FullName'] or user['Username']}.", "success")
-            return redirect(nxt if nxt and nxt.startswith("/") else url_for("dashboard"))
+            return redirect(nxt if nxt and nxt.startswith("/") else default_landing_url(user))
         flash("Incorrect username or password.", "error")
     return render_template("login.html", next=request.args.get("next", ""))
 

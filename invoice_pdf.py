@@ -90,24 +90,23 @@ def build_invoice_pdf(sale, lines, company, amount_words):
     # --- Line items -------------------------------------------------------------------------
     is_inter = sale["IsInterState"]
     if is_inter:
-        head = ["#", "Description", "HSN/SAC", "Qty", "Unit", "Rate", "Disc.", "Taxable Val", "IGST %", "IGST Amt", "Total"]
-        col_widths = [7, 32, 17, 11, 10, 14, 12, 18, 13, 14, 19]
+        head = ["#", "Description", "HSN/SAC", "Qty", "Unit", "Rate", "Taxable Val", "IGST %", "IGST Amt", "Total"]
+        col_widths = [7, 34, 18, 12, 11, 15, 19, 14, 15, 20]
     else:
-        head = ["#", "Description", "HSN/SAC", "Qty", "Unit", "Rate", "Disc.", "Taxable Val", "CGST%", "CGST", "SGST%", "SGST", "Total"]
-        col_widths = [7, 28, 16, 10, 9, 13, 11, 16, 11, 12, 11, 12, 18]
+        head = ["#", "Description", "HSN/SAC", "Qty", "Unit", "Rate", "Taxable Val", "CGST%", "CGST", "SGST%", "SGST", "Total"]
+        col_widths = [7, 30, 17, 11, 10, 14, 17, 12, 13, 12, 13, 19]
     col_widths = [w * mm for w in col_widths]
 
     data = [[_p(h, ParagraphStyle("th", parent=NORMAL, fontName="Helvetica-Bold", fontSize=7.5)) for h in head]]
     for i, l in enumerate(lines, start=1):
         line_total = l["TaxableValue"] + l["CGSTAmount"] + l["SGSTAmount"] + l["IGSTAmount"]
-        discount_amt = l["DiscountAmount"] or 0
         if is_inter:
             row = [str(i), l["ProductName"], l["HSNCode"] or "-", f"{l['Qty']:g}", l["Unit"],
-                   f"{l['UnitPrice']:.2f}", f"{discount_amt:.2f}", f"{l['TaxableValue']:.2f}",
+                   f"{l['UnitPrice']:.2f}", f"{l['TaxableValue']:.2f}",
                    f"{l['IGSTRate']:g}%", f"{l['IGSTAmount']:.2f}", f"{line_total:.2f}"]
         else:
             row = [str(i), l["ProductName"], l["HSNCode"] or "-", f"{l['Qty']:g}", l["Unit"],
-                   f"{l['UnitPrice']:.2f}", f"{discount_amt:.2f}", f"{l['TaxableValue']:.2f}",
+                   f"{l['UnitPrice']:.2f}", f"{l['TaxableValue']:.2f}",
                    f"{l['CGSTRate']:g}%", f"{l['CGSTAmount']:.2f}", f"{l['SGSTRate']:g}%",
                    f"{l['SGSTAmount']:.2f}", f"{line_total:.2f}"]
         data.append([_p(c, ParagraphStyle("td", parent=NORMAL, fontSize=7.5)) for c in row])

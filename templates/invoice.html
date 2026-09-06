@@ -79,7 +79,6 @@
     <thead>
       <tr>
         <th>#</th><th>Description</th><th>HSN/SAC</th><th class="num">Qty</th><th>Unit</th><th class="num">Rate</th>
-        <th class="num">Discount</th>
         <th class="num">Taxable Value</th>
         {% if sale.IsInterState %}
         <th class="num">IGST %</th><th class="num">IGST Amt</th>
@@ -98,7 +97,6 @@
         <td class="num">{{ l.Qty }}</td>
         <td>{{ l.Unit }}</td>
         <td class="num">{{ (l.UnitPrice)|inrn(2) }}</td>
-        <td class="num">{{ (l.DiscountAmount or 0)|inrn(2) }}</td>
         <td class="num">{{ (l.TaxableValue)|inrn(2) }}</td>
         {% if sale.IsInterState %}
         <td class="num">{{ l.IGSTRate }}%</td><td class="num">{{ (l.IGSTAmount)|inrn(2) }}</td>
