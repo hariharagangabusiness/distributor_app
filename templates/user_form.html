@@ -9,8 +9,9 @@
       <input required name="username" class="form-control" autocomplete="off"></div>
     <div class="col-md-4"><label class="form-label">Role</label>
       <select name="role" class="form-select">
-        <option value="Staff" selected>Staff</option>
-        <option value="Admin">Admin</option>
+        {% for role in all_roles %}
+        <option value="{{ role }}" {% if role == 'Staff' %}selected{% endif %}>{{ role }}</option>
+        {% endfor %}
       </select></div>
     <div class="col-12"><label class="form-label">Full Name</label>
       <input name="full_name" class="form-control"></div>

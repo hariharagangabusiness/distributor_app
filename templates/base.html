@@ -37,56 +37,105 @@
       </a></li>
       <li class="nav-item"><a class="nav-link {% if request.path.startswith('/reports') and not request.path.startswith('/reports/stock-issues') and not request.path.startswith('/reports/pnl') %}active{% endif %}" href="{{ url_for('reports_hub') }}"><i class="bi bi-bar-chart-line"></i> Reports</a></li>
 
+      {% if can_access('inventory') %}
       <li class="nav-section" data-group="inventory">Inventory <i class="bi bi-chevron-down nav-section-chevron"></i></li>
       <li class="nav-item nav-collapsible" data-group="inventory"><a class="nav-link {% if request.path.startswith('/inventory') %}active{% endif %}" href="{{ url_for('inventory_list') }}"><i class="bi bi-box-seam"></i> Products & Stock
         {% if alert_counts.low or alert_counts.over %}<span class="badge text-bg-warning ms-1">{{ alert_counts.low + alert_counts.over }}</span>{% endif %}
       </a></li>
-
-      {% if current_user and current_user.Role == 'Admin' %}
-      <li class="nav-section" data-group="purchasing">Purchasing <i class="bi bi-chevron-down nav-section-chevron"></i></li>
-      <li class="nav-item nav-collapsible" data-group="purchasing"><a class="nav-link {% if request.path.startswith('/suppliers') %}active{% endif %}" href="{{ url_for('suppliers_list') }}"><i class="bi bi-truck"></i> Suppliers</a></li>
-      <li class="nav-item nav-collapsible" data-group="purchasing"><a class="nav-link {% if request.path.startswith('/purchases') %}active{% endif %}" href="{{ url_for('purchases_list') }}"><i class="bi bi-cart-plus"></i> Purchases</a></li>
       {% endif %}
 
-      <li class="nav-section" data-group="sales">Sales <i class="bi bi-chevron-down nav-section-chevron"></i></li>
-      <li class="nav-item nav-collapsible" data-group="sales"><a class="nav-link {% if request.path.startswith('/customers') %}active{% endif %}" href="{{ url_for('customers_list') }}"><i class="bi bi-people"></i> Customers</a></li>
-      <li class="nav-item nav-collapsible" data-group="sales"><a class="nav-link {% if request.path.startswith('/sales') %}active{% endif %}" href="{{ url_for('sales_list') }}"><i class="bi bi-cart-check"></i> Sales</a></li>
-      <li class="nav-item nav-collapsible" data-group="sales"><a class="nav-link {% if request.path.startswith('/stock-issues') %}active{% endif %}" href="{{ url_for('stock_issues_list') }}"><i class="bi bi-truck"></i> Stock Issues</a></li>
-      <li class="nav-item nav-collapsible" data-group="sales"><a class="nav-link {% if request.path.startswith('/reports/stock-issues') %}active{% endif %}" href="{{ url_for('stock_issues_report') }}"><i class="bi bi-percent"></i> Stock Issue Schemes &amp; Dues</a></li>
-      <li class="nav-item nav-collapsible" data-group="sales"><a class="nav-link {% if request.path.startswith('/targets') %}active{% endif %}" href="{{ url_for('targets_view') }}"><i class="bi bi-bullseye"></i> Targets</a></li>
+      {% if can_access('suppliers') or can_access('purchases') %}
+      <li class="nav-section" data-group="purchasing">Purchasing <i class="bi bi-chevron-down nav-section-chevron"></i></li>
+      {% if can_access('suppliers') %}
+      <li class="nav-item nav-collapsible" data-group="purchasing"><a class="nav-link {% if request.path.startswith('/suppliers') %}active{% endif %}" href="{{ url_for('suppliers_list') }}"><i class="bi bi-truck"></i> Suppliers</a></li>
+      {% endif %}
+      {% if can_access('purchases') %}
+      <li class="nav-item nav-collapsible" data-group="purchasing"><a class="nav-link {% if request.path.startswith('/purchases') %}active{% endif %}" href="{{ url_for('purchases_list') }}"><i class="bi bi-cart-plus"></i> Purchases</a></li>
+      {% endif %}
+      {% endif %}
 
+      {% if can_access('customers') or can_access('sales') or can_access('stock_issues') or can_access('stock_issues_report') or can_access('targets') %}
+      <li class="nav-section" data-group="sales">Sales <i class="bi bi-chevron-down nav-section-chevron"></i></li>
+      {% if can_access('customers') %}
+      <li class="nav-item nav-collapsible" data-group="sales"><a class="nav-link {% if request.path.startswith('/customers') %}active{% endif %}" href="{{ url_for('customers_list') }}"><i class="bi bi-people"></i> Customers</a></li>
+      {% endif %}
+      {% if can_access('sales') %}
+      <li class="nav-item nav-collapsible" data-group="sales"><a class="nav-link {% if request.path.startswith('/sales') %}active{% endif %}" href="{{ url_for('sales_list') }}"><i class="bi bi-cart-check"></i> Sales</a></li>
+      {% endif %}
+      {% if can_access('stock_issues') %}
+      <li class="nav-item nav-collapsible" data-group="sales"><a class="nav-link {% if request.path.startswith('/stock-issues') %}active{% endif %}" href="{{ url_for('stock_issues_list') }}"><i class="bi bi-truck"></i> Stock Issues</a></li>
+      {% endif %}
+      {% if can_access('stock_issues_report') %}
+      <li class="nav-item nav-collapsible" data-group="sales"><a class="nav-link {% if request.path.startswith('/reports/stock-issues') %}active{% endif %}" href="{{ url_for('stock_issues_report') }}"><i class="bi bi-percent"></i> Stock Issue Schemes &amp; Dues</a></li>
+      {% endif %}
+      {% if can_access('targets') %}
+      <li class="nav-item nav-collapsible" data-group="sales"><a class="nav-link {% if request.path.startswith('/targets') %}active{% endif %}" href="{{ url_for('targets_view') }}"><i class="bi bi-bullseye"></i> Targets</a></li>
+      {% endif %}
+      {% endif %}
+
+      {% if can_access('expenses') or can_access('gst') or can_access('pnl') or can_access('scheme_claims') %}
       <li class="nav-section" data-group="finance">Finance <i class="bi bi-chevron-down nav-section-chevron"></i></li>
+      {% if can_access('expenses') %}
       <li class="nav-item nav-collapsible" data-group="finance"><a class="nav-link {% if request.path.startswith('/expenses') %}active{% endif %}" href="{{ url_for('expenses_list') }}"><i class="bi bi-cash-stack"></i> Operating Expenses</a></li>
-      {% if current_user and current_user.Role == 'Admin' %}
+      {% endif %}
+      {% if can_access('gst') %}
       <li class="nav-item nav-collapsible" data-group="finance"><a class="nav-link {% if request.path.startswith('/gst') %}active{% endif %}" href="{{ url_for('gst_dashboard') }}"><i class="bi bi-receipt"></i> GST Filing
         {% if alert_counts.gst %}<span class="badge text-bg-danger ms-1">{{ alert_counts.gst }}</span>{% endif %}
       </a></li>
+      {% endif %}
+      {% if can_access('pnl') %}
       <li class="nav-item nav-collapsible" data-group="finance"><a class="nav-link {% if request.path.startswith('/reports/pnl') %}active{% endif %}" href="{{ url_for('pnl_report') }}"><i class="bi bi-graph-up-arrow"></i> Profit &amp; Loss</a></li>
+      {% endif %}
+      {% if can_access('scheme_claims') %}
       <li class="nav-item nav-collapsible" data-group="finance"><a class="nav-link {% if request.path.startswith('/scheme-claims') %}active{% endif %}" href="{{ url_for('scheme_claims_list') }}"><i class="bi bi-award"></i> Scheme Claims</a></li>
       {% endif %}
+      {% endif %}
 
+      {% if can_access('vehicles') or can_access('maintenance') %}
       <li class="nav-section" data-group="fleet">Fleet <i class="bi bi-chevron-down nav-section-chevron"></i></li>
+      {% if can_access('vehicles') %}
       <li class="nav-item nav-collapsible" data-group="fleet"><a class="nav-link {% if request.path.startswith('/vehicles') %}active{% endif %}" href="{{ url_for('vehicles_list') }}"><i class="bi bi-truck-front"></i> Vehicles</a></li>
+      {% endif %}
+      {% if can_access('maintenance') %}
       <li class="nav-item nav-collapsible" data-group="fleet"><a class="nav-link {% if request.path.startswith('/maintenance') %}active{% endif %}" href="{{ url_for('maintenance_list') }}"><i class="bi bi-tools"></i> Maintenance
         {% if alert_counts.maint or alert_counts.docs %}<span class="badge text-bg-warning ms-1">{{ alert_counts.maint + alert_counts.docs }}</span>{% endif %}
       </a></li>
+      {% endif %}
+      {% endif %}
 
+      {% if can_access('attendance') or can_access('employees') or can_access('salary') or can_access('advances') %}
       <li class="nav-section" data-group="payroll">Payroll <i class="bi bi-chevron-down nav-section-chevron"></i></li>
+      {% if can_access('attendance') %}
       <li class="nav-item nav-collapsible" data-group="payroll"><a class="nav-link {% if request.path.startswith('/attendance') %}active{% endif %}" href="{{ url_for('attendance_month') }}"><i class="bi bi-calendar-check"></i> Leave & Attendance</a></li>
-      {% if current_user and current_user.Role == 'Admin' %}
+      {% endif %}
+      {% if can_access('employees') %}
       <li class="nav-item nav-collapsible" data-group="payroll"><a class="nav-link {% if request.path.startswith('/employees') %}active{% endif %}" href="{{ url_for('employees_list') }}"><i class="bi bi-person-badge"></i> Employees</a></li>
+      {% endif %}
+      {% if can_access('salary') %}
       <li class="nav-item nav-collapsible" data-group="payroll"><a class="nav-link {% if request.path.startswith('/salary') %}active{% endif %}" href="{{ url_for('salary_month') }}"><i class="bi bi-calendar-month"></i> Salary Schedule
         {% if alert_counts.sal %}<span class="badge text-bg-warning ms-1">{{ alert_counts.sal }}</span>{% endif %}
       </a></li>
+      {% endif %}
+      {% if can_access('advances') %}
       <li class="nav-item nav-collapsible" data-group="payroll"><a class="nav-link {% if request.path.startswith('/advances') %}active{% endif %}" href="{{ url_for('advances_list') }}"><i class="bi bi-wallet2"></i> Advance Payments</a></li>
       {% endif %}
+      {% endif %}
 
-      {% if current_user and current_user.Role == 'Admin' %}
+      {% if can_access('settings') or can_access('custom_fields') or can_access('dashboard_customize') or (current_user and current_user.Role == 'Admin') %}
       <li class="nav-section" data-group="setup">Setup <i class="bi bi-chevron-down nav-section-chevron"></i></li>
-      <li class="nav-item nav-collapsible" data-group="setup"><a class="nav-link {% if request.path.startswith('/settings') and not request.path.startswith('/settings/custom-fields') %}active{% endif %}" href="{{ url_for('settings_form') }}"><i class="bi bi-gear"></i> Company / GST Settings</a></li>
+      {% if can_access('settings') %}
+      <li class="nav-item nav-collapsible" data-group="setup"><a class="nav-link {% if request.path.startswith('/settings') and not request.path.startswith('/settings/custom-fields') and not request.path.startswith('/settings/access-control') %}active{% endif %}" href="{{ url_for('settings_form') }}"><i class="bi bi-gear"></i> Company / GST Settings</a></li>
+      {% endif %}
+      {% if can_access('custom_fields') %}
       <li class="nav-item nav-collapsible" data-group="setup"><a class="nav-link {% if request.path.startswith('/settings/custom-fields') %}active{% endif %}" href="{{ url_for('custom_fields_admin') }}"><i class="bi bi-input-cursor-text"></i> Custom Fields</a></li>
+      {% endif %}
+      {% if can_access('dashboard_customize') %}
       <li class="nav-item nav-collapsible" data-group="setup"><a class="nav-link {% if request.path.startswith('/dashboard/customize') %}active{% endif %}" href="{{ url_for('dashboard_customize') }}"><i class="bi bi-grid-3x3-gap"></i> Customize Dashboard</a></li>
+      {% endif %}
+      {% if current_user and current_user.Role == 'Admin' %}
       <li class="nav-item nav-collapsible" data-group="setup"><a class="nav-link {% if request.path.startswith('/users') %}active{% endif %}" href="{{ url_for('users_list') }}"><i class="bi bi-people-fill"></i> Manage Users</a></li>
+      <li class="nav-item nav-collapsible" data-group="setup"><a class="nav-link {% if request.path.startswith('/settings/access-control') %}active{% endif %}" href="{{ url_for('access_control') }}"><i class="bi bi-shield-lock"></i> Access Control</a></li>
+      {% endif %}
       {% endif %}
     </ul>
   </nav>

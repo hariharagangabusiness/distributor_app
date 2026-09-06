@@ -6,7 +6,7 @@ import calendar
 import mimetypes
 from functools import wraps
 from datetime import date, datetime, timedelta
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_from_directory, session
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_from_directory, session, g
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -145,19 +145,141 @@ def admin_required(view_func):
     return wrapper
 
 
+# =======================================================================
+# ACCESS CONTROL  (Staff / Supervisor / Manager / Admin hierarchy)
+# =======================================================================
+# Which sidebar tabs a non-Admin user can see/use is data-driven, stored in
+# the RoleTabPermissions table (Role, TabKey) -> Allowed, configured by an
+# Admin from Settings > Access Control. 'Admin' is never stored there - it
+# always has access to every tab and isn't configurable away.
+#
+# ACCESS_TABS is the registry of every configurable tab: its key (matches
+# RoleTabPermissions.TabKey and the URL-prefix routing table below), its
+# label (shown in the Access Control matrix and nowhere else), and which
+# group heading it's shown under in that matrix (mirrors the sidebar's own
+# grouping in base.html, purely for readability there). Dashboard and the
+# Reports hub itself are intentionally NOT in this list - every signed-in
+# user can always see those two, the same as before this feature existed.
+ACCESS_TABS = [
+    ("inventory", "Products & Stock", "Inventory"),
+    ("suppliers", "Suppliers", "Purchasing"),
+    ("purchases", "Purchases", "Purchasing"),
+    ("customers", "Customers", "Sales"),
+    ("sales", "Sales", "Sales"),
+    ("stock_issues", "Stock Issues", "Sales"),
+    ("stock_issues_report", "Stock Issue Schemes & Dues", "Sales"),
+    ("targets", "Targets", "Sales"),
+    ("expenses", "Operating Expenses", "Finance"),
+    ("gst", "GST Filing", "Finance"),
+    ("pnl", "Profit & Loss", "Finance"),
+    ("scheme_claims", "Scheme Claims", "Finance"),
+    ("vehicles", "Vehicles", "Fleet"),
+    ("maintenance", "Maintenance", "Fleet"),
+    ("attendance", "Leave & Attendance", "Payroll"),
+    ("employees", "Employees", "Payroll"),
+    ("salary", "Salary Schedule", "Payroll"),
+    ("advances", "Advance Payments", "Payroll"),
+    ("settings", "Company / GST Settings", "Setup"),
+    ("custom_fields", "Custom Fields", "Setup"),
+    ("dashboard_customize", "Customize Dashboard", "Setup"),
+]
+# "Manage Users" and "Access Control" itself are deliberately NOT
+# configurable tabs - only Admin can ever manage other logins, reset
+# passwords, or change Access Control (letting a non-Admin grant themselves
+# Admin via a role dropdown would defeat the whole feature). Their routes
+# carry a hard @admin_required regardless of anything set here.
+ACCESS_TAB_KEYS = {key for key, _, _ in ACCESS_TABS}
+ACCESS_TAB_LABELS = {key: label for key, label, _ in ACCESS_TABS}
+CONFIGURABLE_ROLES = ["Staff", "Supervisor", "Manager"]  # Admin is deliberately excluded - always full access
+ALL_ROLES = CONFIGURABLE_ROLES + ["Admin"]
+
+# Maps a request path to the ACCESS_TABS key that governs it. Checked in
+# order, first (most specific) prefix match wins - e.g. "/settings/custom-
+# fields" must be checked before the bare "/settings" prefix. A path that
+# matches nothing here (Dashboard, the Reports hub, /account/change-
+# password, /api/* helpers, etc.) is left unrestricted for any signed-in user,
+# same as before this feature existed. Note: /settings/access-control itself
+# is intentionally left OUT of this table (and off the "settings" tab) -
+# its route carries its own hard @admin_required, so it can never be handed
+# to Staff/Supervisor/Manager no matter how "settings" is configured.
+TAB_PATH_RULES = [
+    ("/settings/access-control", None),  # always Admin-only, see admin_required on the route itself
+    ("/settings/custom-fields", "custom_fields"),
+    ("/settings", "settings"),
+    ("/dashboard/customize", "dashboard_customize"),
+    ("/reports/stock-issues", "stock_issues_report"),
+    ("/reports/pnl", "pnl"),
+    ("/inventory", "inventory"),
+    ("/suppliers", "suppliers"),
+    ("/purchases", "purchases"),
+    ("/customers", "customers"),
+    ("/sales", "sales"),
+    ("/stock-issues", "stock_issues"),
+    ("/targets", "targets"),
+    ("/expenses", "expenses"),
+    ("/gst", "gst"),
+    ("/scheme-claims", "scheme_claims"),
+    ("/vehicles", "vehicles"),
+    ("/maintenance", "maintenance"),
+    ("/attendance", "attendance"),
+    ("/employees", "employees"),
+    ("/salary", "salary"),
+    ("/advances", "advances"),
+]
+
+
+def _tab_key_for_path(path):
+    for prefix, key in TAB_PATH_RULES:
+        if path.startswith(prefix):
+            return key
+    return None
+
+
+def get_role_permissions():
+    """{Role: set(allowed TabKeys)} for the configurable roles, cached for
+    the lifetime of this request (it's consulted once per sidebar item plus
+    once in require_login() below, and the underlying table rarely changes)."""
+    if not hasattr(g, "_role_tab_perms"):
+        rows = db.query("SELECT Role, TabKey FROM RoleTabPermissions WHERE Allowed=1")
+        perms = {role: set() for role in CONFIGURABLE_ROLES}
+        for r in rows:
+            perms.setdefault(r["Role"], set()).add(r["TabKey"])
+        g._role_tab_perms = perms
+    return g._role_tab_perms
+
+
+def user_can_access(user, tab_key):
+    """True if this user's role may use the given ACCESS_TABS tab. Admin
+    always can; an unrecognized tab_key (None, or a typo) is always denied
+    rather than silently allowed."""
+    if not user or not tab_key:
+        return False
+    if user["Role"] == "Admin":
+        return True
+    return tab_key in get_role_permissions().get(user["Role"], set())
+
+
 @app.before_request
 def require_login():
     if request.endpoint is None:
         return  # unmatched routes fall through to the normal 404 handling
     if request.endpoint in PUBLIC_ENDPOINTS:
         return
-    if not get_current_user():
+    user = get_current_user()
+    if not user:
         return redirect(url_for("login", next=request.path))
+    if user["Role"] != "Admin":
+        tab_key = _tab_key_for_path(request.path)
+        if tab_key and not user_can_access(user, tab_key):
+            flash("You don't have access to that section. Ask an Admin to enable it for your "
+                  "role under Settings › Access Control.", "error")
+            return redirect(url_for("dashboard"))
 
 
 @app.context_processor
 def inject_current_user():
-    return dict(current_user=get_current_user())
+    user = get_current_user()
+    return dict(current_user=user, can_access=lambda tab_key: user_can_access(user, tab_key))
 
 
 @app.route("/")
@@ -220,7 +342,7 @@ def change_password():
 @admin_required
 def users_list():
     users = db.query("SELECT * FROM Users ORDER BY Active DESC, Username")
-    return render_template("users_list.html", users=users)
+    return render_template("users_list.html", users=users, all_roles=ALL_ROLES)
 
 
 @app.route("/users/new", methods=["GET", "POST"])
@@ -229,7 +351,7 @@ def user_add():
     if request.method == "POST":
         username = (request.form.get("username") or "").strip()
         full_name = (request.form.get("full_name") or "").strip()
-        role = request.form.get("role") if request.form.get("role") in ("Admin", "Staff") else "Staff"
+        role = request.form.get("role") if request.form.get("role") in ALL_ROLES else "Staff"
         password = request.form.get("password") or ""
         confirm = request.form.get("confirm_password") or ""
         if not username:
@@ -248,7 +370,60 @@ def user_add():
                 return redirect(url_for("users_list"))
             except Exception:
                 flash(f"Could not create login — the username '{username}' may already be taken.", "error")
-    return render_template("user_form.html")
+    return render_template("user_form.html", all_roles=ALL_ROLES)
+
+
+@app.route("/users/<int:uid>/role", methods=["POST"])
+@admin_required
+def user_role_update(uid):
+    me = get_current_user()
+    role = request.form.get("role")
+    if role not in ALL_ROLES:
+        flash("Not a recognized role.", "error")
+        return redirect(url_for("users_list"))
+    if uid == me["UserID"] and role != "Admin":
+        flash("You can't demote your own account away from Admin while signed in as it.", "error")
+        return redirect(url_for("users_list"))
+    user = db.query("SELECT * FROM Users WHERE UserID=?", (uid,), one=True)
+    if not user:
+        flash("User not found.", "error")
+        return redirect(url_for("users_list"))
+    db.execute("UPDATE Users SET Role=? WHERE UserID=?", (role, uid))
+    flash(f"{user['Username']}'s role changed to {role}.", "success")
+    return redirect(url_for("users_list"))
+
+
+@app.route("/settings/access-control", methods=["GET", "POST"])
+@admin_required
+def access_control():
+    if request.method == "POST":
+        rows = []
+        for key in ACCESS_TAB_KEYS:
+            for role in CONFIGURABLE_ROLES:
+                if request.form.get(f"perm__{role}__{key}"):
+                    rows.append((role, key, 1))
+        conn = db.get_conn()
+        try:
+            conn.execute("DELETE FROM RoleTabPermissions")
+            conn.executemany(
+                "INSERT INTO RoleTabPermissions (Role, TabKey, Allowed) VALUES (?,?,?)", rows)
+            conn.commit()
+        finally:
+            conn.close()
+        flash("Access Control settings saved.", "success")
+        return redirect(url_for("access_control"))
+
+    perms = get_role_permissions()
+    # Group tabs in display order for the matrix, same grouping as the sidebar.
+    groups = []
+    seen_groups = {}
+    for key, label, group_label in ACCESS_TABS:
+        if group_label not in seen_groups:
+            seen_groups[group_label] = {"label": group_label, "tabs": []}
+            groups.append(seen_groups[group_label])
+        seen_groups[group_label]["tabs"].append({"key": key, "label": label})
+    return render_template("access_control.html", groups=groups, perms=perms,
+                            configurable_roles=CONFIGURABLE_ROLES)
 
 
 @app.route("/users/<int:uid>/toggle", methods=["POST"])
@@ -723,7 +898,6 @@ def get_custom_attachments(module, record_id):
 
 
 @app.route("/settings/custom-fields")
-@admin_required
 def custom_fields_admin():
     module = request.args.get("module", CUSTOM_FIELD_MODULES[0][0])
     fields = db.query("SELECT * FROM CustomFieldDefinitions WHERE ModuleName=? ORDER BY DisplayOrder, FieldID", (module,))
@@ -733,7 +907,6 @@ def custom_fields_admin():
 
 
 @app.route("/settings/custom-fields/add", methods=["POST"])
-@admin_required
 def custom_field_add():
     f = request.form
     module = f["module"]
@@ -755,7 +928,6 @@ def custom_field_add():
 
 
 @app.route("/settings/custom-fields/<int:field_id>/toggle", methods=["POST"])
-@admin_required
 def custom_field_toggle(field_id):
     d = db.query("SELECT * FROM CustomFieldDefinitions WHERE FieldID=?", (field_id,), one=True)
     module = request.form.get("module", d["ModuleName"] if d else "")
@@ -806,7 +978,6 @@ def get_dashboard_widgets():
 
 
 @app.route("/dashboard/customize", methods=["GET", "POST"])
-@admin_required
 def dashboard_customize():
     all_keys = list(DASHBOARD_WIDGET_LABELS.keys())
     if request.method == "POST":
@@ -1077,7 +1248,6 @@ def inventory_adjust(pid):
 # ---------------------------------------------------------------------
 
 @app.route("/suppliers")
-@admin_required
 def suppliers_list():
     return render_template("suppliers_list.html", suppliers=db.query("SELECT * FROM Suppliers ORDER BY SupplierName"),
                             columns=get_effective_columns("Supplier"))
@@ -1085,7 +1255,6 @@ def suppliers_list():
 
 @app.route("/suppliers/new", methods=["GET", "POST"])
 @app.route("/suppliers/<int:sid>/edit", methods=["GET", "POST"])
-@admin_required
 def supplier_form(sid=None):
     supplier = db.query("SELECT * FROM Suppliers WHERE SupplierID=?", (sid,), one=True) if sid else None
     if request.method == "POST":
@@ -1240,7 +1409,6 @@ def api_customer(cid):
 # ---------------------------------------------------------------------
 
 @app.route("/purchases")
-@admin_required
 def purchases_list():
     purchases = db.query("""SELECT p.*, s.SupplierName FROM Purchases p
                           JOIN Suppliers s ON s.SupplierID = p.SupplierID ORDER BY p.PurchaseDate DESC, p.PurchaseID DESC""")
@@ -1331,7 +1499,6 @@ def create_purchase(supplier_id, po_number, purchase_date, invoice_number, statu
 
 
 @app.route("/purchases/new", methods=["GET", "POST"])
-@admin_required
 def purchase_form():
     company = get_company_settings()
     if request.method == "POST":
@@ -1360,7 +1527,6 @@ def purchase_form():
 
 
 @app.route("/purchases/<int:pid>")
-@admin_required
 def purchase_view(pid):
     purchase = db.query("""SELECT p.*, s.SupplierName, s.Phone, s.Address FROM Purchases p
                          JOIN Suppliers s ON s.SupplierID=p.SupplierID WHERE p.PurchaseID=?""", (pid,), one=True)
@@ -1376,7 +1542,6 @@ def purchase_view(pid):
 
 
 @app.route("/purchases/<int:pid>/edit", methods=["GET", "POST"])
-@admin_required
 def purchase_edit(pid):
     """Admin-only: correct a mistake on an already-saved purchase (wrong
     quantity/price/product/date/etc.) without deleting and re-entering it.
@@ -1443,7 +1608,6 @@ def find_supplier_product_match(supplier_id, material_code):
 
 
 @app.route("/purchases/import", methods=["GET", "POST"])
-@admin_required
 def purchase_import_upload():
     if request.method == "POST":
         supplier_id = request.form.get("supplier_id")
@@ -1515,7 +1679,6 @@ def purchase_import_upload():
 
 
 @app.route("/purchases/import/confirm", methods=["POST"])
-@admin_required
 def purchase_import_confirm():
     f = request.form
     supplier_id = int(f["supplier_id"])
@@ -2618,7 +2781,6 @@ def stock_issues_report():
 # ---------------------------------------------------------------------
 
 @app.route("/scheme-claims")
-@admin_required
 def scheme_claims_list():
     status_filter = request.args.get("status", "")
     sql = "SELECT * FROM SchemeClaims"
@@ -2638,7 +2800,6 @@ def scheme_claims_list():
 
 @app.route("/scheme-claims/new", methods=["GET", "POST"])
 @app.route("/scheme-claims/<int:claim_id>/edit", methods=["GET", "POST"])
-@admin_required
 def scheme_claim_form(claim_id=None):
     claim = db.query("SELECT * FROM SchemeClaims WHERE ClaimID=?", (claim_id,), one=True) if claim_id else None
     if request.method == "POST":
@@ -2658,7 +2819,6 @@ def scheme_claim_form(claim_id=None):
 
 
 @app.route("/scheme-claims/<int:claim_id>/mark", methods=["POST"])
-@admin_required
 def scheme_claim_mark(claim_id):
     claim = db.query("SELECT * FROM SchemeClaims WHERE ClaimID=?", (claim_id,), one=True)
     if not claim:
@@ -3359,7 +3519,6 @@ def reports_hub():
 # ---------------------------------------------------------------------
 
 @app.route("/settings", methods=["GET", "POST"])
-@admin_required
 def settings_form():
     if request.method == "POST":
         f = request.form
@@ -3386,7 +3545,6 @@ def settings_form():
 
 
 @app.route("/settings/gst-test-email", methods=["POST"])
-@admin_required
 def settings_gst_test_email():
     company = get_company_settings()
     to_address = (request.form.get("test_email") or "").strip()
@@ -3439,7 +3597,6 @@ def _year_month_from_request():
 # ---------------------------------------------------------------------
 
 @app.route("/reports/pnl")
-@admin_required
 def pnl_report():
     today = date.today()
     default_from = today.replace(day=1).isoformat()
@@ -3491,7 +3648,6 @@ def pnl_report():
 
 
 @app.route("/gst")
-@admin_required
 def gst_dashboard():
     company = get_company_settings()
     due_items = gst_logic.gst_due_dates(company)
@@ -3502,7 +3658,6 @@ def gst_dashboard():
 
 
 @app.route("/gst/gstr1")
-@admin_required
 def gst_gstr1():
     year, month = _year_month_from_request()
     summary = gst_logic.gstr1_summary(year, month)
@@ -3515,7 +3670,6 @@ def gst_gstr1():
 
 
 @app.route("/gst/gstr3b")
-@admin_required
 def gst_gstr3b():
     year, month = _year_month_from_request()
     company = get_company_settings()
@@ -3529,14 +3683,12 @@ def gst_gstr3b():
 
 
 @app.route("/gst/gstr2b")
-@admin_required
 def gst_gstr2b_list():
     uploads = db.query("SELECT * FROM Gstr2bUploads ORDER BY Period DESC, UploadID DESC")
     return render_template("gst_gstr2b.html", uploads=uploads, today=today_str())
 
 
 @app.route("/gst/gstr2b/upload", methods=["POST"])
-@admin_required
 def gst_gstr2b_upload():
     period = (request.form.get("period") or "").strip()
     file_storage = request.files.get("file")
@@ -3568,7 +3720,6 @@ def gst_gstr2b_upload():
 
 
 @app.route("/gst/gstr2b/<int:upload_id>/download")
-@admin_required
 def gst_gstr2b_download(upload_id):
     upload = db.query("SELECT * FROM Gstr2bUploads WHERE UploadID=?", (upload_id,), one=True)
     if not upload:
@@ -3581,7 +3732,6 @@ def gst_gstr2b_download(upload_id):
 
 
 @app.route("/gst/gstr2b/<int:upload_id>/delete", methods=["POST"])
-@admin_required
 def gst_gstr2b_delete(upload_id):
     upload = db.query("SELECT * FROM Gstr2bUploads WHERE UploadID=?", (upload_id,), one=True)
     if upload:
@@ -3731,7 +3881,6 @@ def get_active_leave_types():
 
 
 @app.route("/employees")
-@admin_required
 def employees_list():
     return render_template("employees_list.html", employees=db.query("SELECT * FROM Employees ORDER BY EmployeeName"),
                             columns=get_effective_columns("Employee"))
@@ -3739,7 +3888,6 @@ def employees_list():
 
 @app.route("/employees/new", methods=["GET", "POST"])
 @app.route("/employees/<int:eid>/edit", methods=["GET", "POST"])
-@admin_required
 def employee_form(eid=None):
     employee = db.query("SELECT * FROM Employees WHERE EmployeeID=?", (eid,), one=True) if eid else None
     if request.method == "POST":
@@ -3770,7 +3918,6 @@ def employee_form(eid=None):
 # ---------------------------------------------------------------------
 
 @app.route("/salary")
-@admin_required
 def salary_month():
     today = date.today()
     year = int(request.args.get("year", today.year))
@@ -3837,7 +3984,6 @@ def compute_salary_figures(e, year, month):
 
 
 @app.route("/salary/generate", methods=["POST"])
-@admin_required
 def salary_generate():
     year = int(request.form["year"])
     month = int(request.form["month"])
@@ -3862,7 +4008,6 @@ def salary_generate():
 
 
 @app.route("/salary/refresh", methods=["POST"])
-@admin_required
 def salary_refresh():
     """Re-pulls active advances and recalculates pro-rated pay (Join Date,
     attendance, leave policy) for every Pending salary row this month, and
@@ -3902,7 +4047,6 @@ def salary_refresh():
 
 
 @app.route("/salary/<int:pid>/pay", methods=["POST"])
-@admin_required
 def salary_pay(pid):
     payment = db.query("SELECT * FROM SalaryPayments WHERE PaymentID=?", (pid,), one=True)
     db.execute("""UPDATE SalaryPayments SET Status='Paid', PaymentDate=?, PaymentMode=? WHERE PaymentID=?""",
@@ -3991,7 +4135,6 @@ def payslip_pdf_download(pid):
 # ---------------------------------------------------------------------
 
 @app.route("/advances")
-@admin_required
 def advances_list():
     advances = db.query("""SELECT a.*, e.EmployeeName FROM AdvancePayments a
                          JOIN Employees e ON e.EmployeeID=a.EmployeeID ORDER BY a.AdvanceDate DESC""")
@@ -3999,7 +4142,6 @@ def advances_list():
 
 
 @app.route("/advances/new", methods=["GET", "POST"])
-@admin_required
 def advance_form():
     if request.method == "POST":
         f = request.form
@@ -4021,7 +4163,6 @@ def advance_form():
 
 
 @app.route("/advances/<int:aid>")
-@admin_required
 def advance_view(aid):
     advance = db.query("""SELECT a.*, e.EmployeeName, e.Designation, e.Phone FROM AdvancePayments a
                         JOIN Employees e ON e.EmployeeID=a.EmployeeID WHERE a.AdvanceID=?""", (aid,), one=True)
@@ -4038,7 +4179,6 @@ def advance_view(aid):
 
 
 @app.route("/advances/<int:aid>/close", methods=["POST"])
-@admin_required
 def advance_close(aid):
     db.execute("UPDATE AdvancePayments SET Status='Closed', BalanceRemaining=0 WHERE AdvanceID=?", (aid,))
     flash("Advance closed.", "success")

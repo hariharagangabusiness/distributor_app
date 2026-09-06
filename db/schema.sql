@@ -621,19 +621,34 @@ CREATE TABLE IF NOT EXISTS StockIssueDuePayments (
 -- =====================================================================
 -- One row per person who can log in. Passwords are never stored in
 -- plain text - PasswordHash holds a salted hash (werkzeug's
--- generate_password_hash). Role "Admin" can manage other users (add,
--- deactivate, reset a password); "Staff" can use the app but not the
--- Manage Users screen. Active=0 blocks login without deleting the
--- account or its history.
+-- generate_password_hash). Role is one of 'Staff', 'Supervisor', 'Manager'
+-- or 'Admin' (increasing seniority). Only "Admin" can manage other users,
+-- reset passwords, and configure Access Control; what the other three
+-- roles can see is governed by RoleTabPermissions below, which an Admin
+-- sets from Settings > Access Control. Active=0 blocks login without
+-- deleting the account or its history.
 CREATE TABLE IF NOT EXISTS Users (
     UserID          INTEGER PRIMARY KEY AUTOINCREMENT,
     Username        TEXT NOT NULL UNIQUE COLLATE NOCASE,
     PasswordHash    TEXT NOT NULL,
     FullName        TEXT,
-    Role            TEXT NOT NULL DEFAULT 'Staff',   -- 'Admin' or 'Staff'
+    Role            TEXT NOT NULL DEFAULT 'Staff',   -- 'Staff', 'Supervisor', 'Manager', or 'Admin'
     Active          INTEGER NOT NULL DEFAULT 1,
     CreatedAt       TEXT NOT NULL DEFAULT (datetime('now')),
     LastLoginAt     TEXT
+);
+
+-- Access Control: which sidebar tabs each non-Admin role can see/use.
+-- 'Admin' is intentionally never stored here - it always has access to
+-- everything and isn't configurable away. One row per (Role, TabKey) that
+-- IS granted; a missing row means "not allowed". TabKey values are the
+-- app's own internal tab identifiers (see ACCESS_TABS in app.py), not
+-- table/route names, so this survives routes being renamed.
+CREATE TABLE IF NOT EXISTS RoleTabPermissions (
+    Role            TEXT NOT NULL,
+    TabKey          TEXT NOT NULL,
+    Allowed         INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (Role, TabKey)
 );
 
 -- Sales targets to drive the distributor's business: set per Employee

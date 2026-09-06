@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Access Control{% endblock %}
+{% block page_title %}Access Control{% endblock %}
+{% block content %}
+<p class="text-muted">Choose which sidebar tabs each role can see and use. <strong>Admin</strong> always has access
+  to everything and isn't shown here — this only configures <strong>Staff</strong>, <strong>Supervisor</strong> and
+  <strong>Manager</strong> (increasing seniority). Dashboard and Reports are always visible to every signed-in user
+  and aren't listed either. Assign roles to individual logins from Manage Users.</p>
+
+<form method="post">
+  <div class="card mb-3">
+    <div class="table-responsive">
+      <table class="table mb-0 align-middle">
+        <thead>
+          <tr>
+            <th style="min-width:220px">Tab</th>
+            {% for role in configurable_roles %}
+            <th class="text-center">{{ role }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for group in groups %}
+          <tr class="table-light"><td colspan="{{ configurable_roles|length + 1 }}"><strong>{{ group.label }}</strong></td></tr>
+          {% for tab in group.tabs %}
+          <tr>
+            <td>{{ tab.label }}</td>
+            {% for role in configurable_roles %}
+            <td class="text-center">
+              <input type="checkbox" class="form-check-input" name="perm__{{ role }}__{{ tab.key }}"
+                     {% if tab.key in perms.get(role, []) %}checked{% endif %}>
+            </td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <button type="submit" class="btn btn-brand"><i class="bi bi-check-lg"></i> Save Access Control Settings</button>
+</form>
+{% endblock %}
