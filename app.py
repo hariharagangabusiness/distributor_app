@@ -1062,7 +1062,7 @@ MODULE_COLUMNS = {
                  ("total", "Total")],
     "Sale": [("invoice_number", "Invoice #"), ("customer", "Customer"), ("date", "Date"),
              ("status", "Status"), ("payment", "Payment"), ("due_date", "Due Date"), ("total", "Total"),
-             ("balance", "Balance")],
+             ("balance", "Balance"), ("salesperson", "Salesperson")],
     "Expense": [("date", "Date"), ("category", "Category"), ("vehicle", "Vehicle"),
                 ("paid_to", "Paid To"), ("mode", "Mode"), ("amount", "Amount")],
     "Vehicle": [("reg_number", "Reg. No"), ("type", "Type"), ("make_model", "Make/Model"),
@@ -1841,8 +1841,10 @@ def purchase_import_confirm():
 
 @app.route("/sales")
 def sales_list():
-    sales = db.query("""SELECT s.*, c.CustomerName, c.IsUnassignedBucket FROM Sales s
-                      JOIN Customers c ON c.CustomerID=s.CustomerID ORDER BY s.SaleDate DESC, s.SaleID DESC""")
+    sales = db.query("""SELECT s.*, c.CustomerName, c.IsUnassignedBucket, e.EmployeeName FROM Sales s
+                      JOIN Customers c ON c.CustomerID=s.CustomerID
+                      LEFT JOIN Employees e ON e.EmployeeID=s.EmployeeID
+                      ORDER BY s.SaleDate DESC, s.SaleID DESC""")
     filt = request.args.get("filter", "")
     if filt == "unassigned":
         sales = [s for s in sales if s["IsUnassignedBucket"]]
@@ -1886,9 +1888,36 @@ def sales_daywise_report():
                             date_from=date_from, date_to=date_to)
 
 
+def find_open_stock_issue(employee_id, sale_date):
+    """The Stock Issue (if any) for this salesperson on this exact date that
+    hasn't been reconciled yet - the only kind a directly-entered Sale is
+    allowed to auto-credit against. Once a Stock Issue is Reconciled it's
+    treated as closed for this purpose (its figures are locked/reviewed by
+    a person at that point); a late sale against a reconciled issue just
+    deducts from warehouse stock normally instead, same as any plain sale."""
+    if not employee_id:
+        return None
+    return db.query("""SELECT * FROM StockIssues WHERE EmployeeID=? AND IssueDate=? AND Status='Issued'
+                     ORDER BY IssueID DESC LIMIT 1""", (employee_id, sale_date), one=True)
+
+
+def reverse_sale_stock_issue_links(sale_id):
+    """Undoes whatever a prior save of this Sale credited against any Stock
+    Issue lines' Qty Sold (via SaleStockIssueLinks), and removes those link
+    rows - the first step whenever a Sale is being edited, before its
+    quantities/salesperson/date are re-evaluated and (maybe) re-credited
+    from scratch. Floors at 0 so this is safe even if the Stock Issue line
+    was itself edited down in the meantime."""
+    links = db.query("SELECT * FROM SaleStockIssueLinks WHERE SaleID=?", (sale_id,))
+    for link in links:
+        db.execute("UPDATE StockIssueLines SET QtySold = MAX(COALESCE(QtySold, 0) - ?, 0) WHERE LineID=?",
+                   (link["QtyApplied"], link["StockIssueLineID"]))
+    db.execute("DELETE FROM SaleStockIssueLinks WHERE SaleID=?", (sale_id,))
+
+
 def create_sale(customer_id, sale_date, status, payment_status, payment_due_date, amount_received, notes,
                  place_of_supply_code, lines, reverse_charge=False, invoice_no=None, sale_id=None,
-                 post_inventory=True):
+                 post_inventory=True, employee_id=None):
     """Creates a Sale + SalesLines with the GST breakup, or (when `sale_id`
     is passed) EDITS an existing one in place: its old SalesLines and the
     InventoryTransaction rows it originally created are removed first, then
@@ -1903,6 +1932,20 @@ def create_sale(customer_id, sale_date, status, payment_status, payment_due_date
     accounted for elsewhere (e.g. a Sale auto-created from a reconciled
     Stock Issue, whose Issue/Return-In/Free-Scheme transactions already
     cover the sold units; a second deduction here would double-count it).
+
+    `employee_id`, when given, names the salesperson this sale is against.
+    If that salesperson has an open (not-yet-reconciled) Stock Issue for
+    `sale_date`, each line's quantity is first credited against that Stock
+    Issue's matching product line's Qty Sold (up to however much of it is
+    still unaccounted-for) instead of deducting warehouse stock directly —
+    the stock was already deducted once when it was issued out, so crediting
+    it here (rather than posting a second "Sale" deduction) avoids double-
+    counting, and it makes the sale show up pre-filled on that issue's
+    Reconcile screen. Only the portion of a line beyond what the day's Stock
+    Issue can cover (no employee/issue, product not on it, or oversold past
+    what's still unaccounted) falls back to a normal warehouse deduction.
+    Exactly how much was credited where is recorded in SaleStockIssueLinks
+    so a later edit of this same Sale can precisely reverse and redo it.
 
     `lines` is a list of (product_id, qty, unit_price) OR
     (product_id, qty, unit_price, discount_amount) tuples — the 4-tuple form
@@ -1939,24 +1982,30 @@ def create_sale(customer_id, sale_date, status, payment_status, payment_due_date
     if sale_id is None:
         sale_id = db.execute("""INSERT INTO Sales (InvoiceNumber, CustomerID, SaleDate, Status, PaymentStatus,
                     PaymentDueDate, TotalAmount, AmountReceived, Notes, PlaceOfSupplyState, PlaceOfSupplyStateCode,
-                    IsInterState, TaxableAmount, CGSTAmount, SGSTAmount, IGSTAmount, RoundOff, ReverseCharge)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    IsInterState, TaxableAmount, CGSTAmount, SGSTAmount, IGSTAmount, RoundOff, ReverseCharge, EmployeeID)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (invoice_no, customer_id, sale_date, status, payment_status,
                      payment_due_date or None, grand_total, amount_received, notes,
                      place_of_supply_name, place_of_supply_code, is_interstate,
                      round(taxable_total, 2), round(cgst_total, 2), round(sgst_total, 2), round(igst_total, 2),
-                     round_off, 1 if reverse_charge else 0))
+                     round_off, 1 if reverse_charge else 0, employee_id))
     else:
         db.execute("""UPDATE Sales SET CustomerID=?, SaleDate=?, Status=?, PaymentStatus=?, PaymentDueDate=?,
                     TotalAmount=?, AmountReceived=?, Notes=?, PlaceOfSupplyState=?, PlaceOfSupplyStateCode=?,
                     IsInterState=?, TaxableAmount=?, CGSTAmount=?, SGSTAmount=?, IGSTAmount=?, RoundOff=?,
-                    ReverseCharge=? WHERE SaleID=?""",
+                    ReverseCharge=?, EmployeeID=? WHERE SaleID=?""",
                    (customer_id, sale_date, status, payment_status, payment_due_date or None,
                     grand_total, amount_received, notes, place_of_supply_name, place_of_supply_code, is_interstate,
                     round(taxable_total, 2), round(cgst_total, 2), round(sgst_total, 2), round(igst_total, 2),
-                    round_off, 1 if reverse_charge else 0, sale_id))
+                    round_off, 1 if reverse_charge else 0, employee_id, sale_id))
         db.execute("DELETE FROM SalesLines WHERE SaleID=?", (sale_id,))
         db.execute("DELETE FROM InventoryTransactions WHERE RefType='Sale' AND RefID=?", (sale_id,))
+        # Undo whatever this Sale previously credited toward any Stock Issue's Qty Sold,
+        # before re-evaluating (below) what it should credit now - the employee, date, or
+        # quantities may all have changed since the last save.
+        reverse_sale_stock_issue_links(sale_id)
+
+    open_issue = find_open_stock_issue(employee_id, sale_date) if (status == "Completed" and post_inventory) else None
 
     for prod_id, qty, price, discount, taxable_value, hsn, gst_rate, gst in line_data:
         db.execute("""INSERT INTO SalesLines (SaleID, ProductID, Qty, UnitPrice, DiscountAmount, LineTotal, HSNCode,
@@ -1966,10 +2015,38 @@ def create_sale(customer_id, sale_date, status, payment_status, payment_due_date
                     gst["cgst_rate"], gst["cgst_amt"], gst["sgst_rate"], gst["sgst_amt"],
                     gst["igst_rate"], gst["igst_amt"]))
         if status == "Completed" and post_inventory:
-            db.execute("""INSERT INTO InventoryTransactions (ProductID, TransactionDate, TransactionType,
-                        QtyChange, RefType, RefID, Notes) VALUES (?,?,?,?,?,?,?)""",
-                       (prod_id, sale_date, "Sale", -qty, "Sale", sale_id, invoice_no))
+            remaining_qty = qty
+            if open_issue:
+                sil = db.query("""SELECT LineID, QtyIssued, QtySold, QtyReturned, QtyFree FROM StockIssueLines
+                                WHERE IssueID=? AND ProductID=?""", (open_issue["IssueID"], prod_id), one=True)
+                if sil:
+                    available = max((sil["QtyIssued"] or 0) - (sil["QtySold"] or 0)
+                                     - (sil["QtyReturned"] or 0) - (sil["QtyFree"] or 0), 0)
+                    apply_qty = min(remaining_qty, available)
+                    if apply_qty > 0:
+                        db.execute("UPDATE StockIssueLines SET QtySold = COALESCE(QtySold, 0) + ? WHERE LineID=?",
+                                   (apply_qty, sil["LineID"]))
+                        db.execute("""INSERT INTO SaleStockIssueLinks (SaleID, StockIssueLineID, QtyApplied)
+                                    VALUES (?,?,?)""", (sale_id, sil["LineID"], apply_qty))
+                        remaining_qty = round(remaining_qty - apply_qty, 4)
+            if remaining_qty > 0:
+                db.execute("""INSERT INTO InventoryTransactions (ProductID, TransactionDate, TransactionType,
+                            QtyChange, RefType, RefID, Notes) VALUES (?,?,?,?,?,?,?)""",
+                           (prod_id, sale_date, "Sale", -remaining_qty, "Sale", sale_id, invoice_no))
     return sale_id
+
+
+def sale_stock_issue_credit_message(sale_id, plain=False):
+    """Friendly one-line summary of how much of this Sale (if any) got
+    credited against a salesperson's open Stock Issue, for the post-save
+    flash message - so it's obvious the app picked up the link rather than
+    silently doing something invisible."""
+    applied = db.query("""SELECT COUNT(*) c, COALESCE(SUM(QtyApplied),0) q FROM SaleStockIssueLinks
+                        WHERE SaleID=?""", (sale_id,), one=True)
+    if applied and applied["c"]:
+        msg = f"{applied['q']:g} unit(s) credited against the salesperson's open Stock Issue for that day."
+        return msg if plain else f"Sale recorded — {msg}"
+    return "" if plain else "Sale recorded."
 
 
 def get_unassigned_customer_id():
@@ -2032,21 +2109,24 @@ def sale_form():
             return redirect(url_for("sale_form"))
 
         place_of_supply_code = f.get("place_of_supply_code", "") or company["StateCode"]
+        employee_id = int(f["employee_id"]) if f.get("employee_id") else None
 
         sale_id = create_sale(
             customer_id=customer_id, sale_date=f["sale_date"], status=f["status"],
             payment_status=f["payment_status"], payment_due_date=f.get("payment_due_date"),
             amount_received=amount_received, notes=f.get("notes", ""),
             place_of_supply_code=place_of_supply_code, lines=lines,
-            reverse_charge=bool(f.get("reverse_charge")), invoice_no=f.get("invoice_number") or None)
+            reverse_charge=bool(f.get("reverse_charge")), invoice_no=f.get("invoice_number") or None,
+            employee_id=employee_id)
         save_custom_fields("Sale", sale_id, f)
-        flash(f"Sale recorded.", "success")
+        flash(sale_stock_issue_credit_message(sale_id), "success")
         return redirect(url_for("sale_invoice", sid=sale_id, auto_print=1))
     customers = db.query("SELECT * FROM Customers WHERE Active=1 ORDER BY CustomerName")
     products = get_products_with_stock()
+    employees = db.query("SELECT * FROM Employees WHERE Status='Active' ORDER BY EmployeeName")
     custom_fields = get_custom_field_defs("Sale")
-    return render_template("sale_form.html", customers=customers, products=products, today=today_str(),
-                            states=INDIAN_STATES, company=company, suggested_invoice=None,
+    return render_template("sale_form.html", customers=customers, products=products, employees=employees,
+                            today=today_str(), states=INDIAN_STATES, company=company, suggested_invoice=None,
                             custom_fields=custom_fields, custom_values={},
                             cf_record_id=None, custom_attachments={}, sale=None, existing_lines=None,
                             current_customer=None)
@@ -2083,25 +2163,29 @@ def sale_edit(sid):
             return redirect(url_for("sale_edit", sid=sid))
 
         place_of_supply_code = f.get("place_of_supply_code", "") or company["StateCode"]
+        employee_id = int(f["employee_id"]) if f.get("employee_id") else None
 
         create_sale(
             customer_id=customer_id, sale_date=f["sale_date"], status=f["status"],
             payment_status=f["payment_status"], payment_due_date=f.get("payment_due_date"),
             amount_received=amount_received, notes=f.get("notes", ""),
             place_of_supply_code=place_of_supply_code, lines=lines,
-            reverse_charge=bool(f.get("reverse_charge")), invoice_no=existing["InvoiceNumber"], sale_id=sid)
+            reverse_charge=bool(f.get("reverse_charge")), invoice_no=existing["InvoiceNumber"], sale_id=sid,
+            employee_id=employee_id)
         save_custom_fields("Sale", sid, f)
-        flash(f"Sale {existing['InvoiceNumber']} updated.", "success")
+        credit_note = sale_stock_issue_credit_message(sid, plain=True)
+        flash(f"Sale {existing['InvoiceNumber']} updated." + (f" {credit_note}" if credit_note else ""), "success")
         return redirect(url_for("sale_view", sid=sid))
 
     customers = db.query("SELECT * FROM Customers WHERE Active=1 ORDER BY CustomerName")
     products = get_products_with_stock()
+    employees = db.query("SELECT * FROM Employees WHERE Status='Active' ORDER BY EmployeeName")
     existing_lines = db.query("SELECT * FROM SalesLines WHERE SaleID=?", (sid,))
     custom_fields = get_custom_field_defs("Sale")
     custom_values = get_custom_values("Sale", sid)
     current_customer = db.query("SELECT * FROM Customers WHERE CustomerID=?", (existing["CustomerID"],), one=True)
-    return render_template("sale_form.html", customers=customers, products=products, today=existing["SaleDate"],
-                            states=INDIAN_STATES, company=company, suggested_invoice=None,
+    return render_template("sale_form.html", customers=customers, products=products, employees=employees,
+                            today=existing["SaleDate"], states=INDIAN_STATES, company=company, suggested_invoice=None,
                             custom_fields=custom_fields, custom_values=custom_values, cf_record_id=sid,
                             custom_attachments={}, sale=existing, existing_lines=existing_lines,
                             current_customer=current_customer)
@@ -2270,14 +2354,22 @@ def sales_import_confirm():
 
 @app.route("/sales/<int:sid>")
 def sale_view(sid):
-    sale = db.query("""SELECT s.*, c.CustomerName, c.Phone, c.Address, c.Zone, c.IsUnassignedBucket FROM Sales s
-                     JOIN Customers c ON c.CustomerID=s.CustomerID WHERE s.SaleID=?""", (sid,), one=True)
+    sale = db.query("""SELECT s.*, c.CustomerName, c.Phone, c.Address, c.Zone, c.IsUnassignedBucket,
+                     e.EmployeeName FROM Sales s
+                     JOIN Customers c ON c.CustomerID=s.CustomerID
+                     LEFT JOIN Employees e ON e.EmployeeID=s.EmployeeID WHERE s.SaleID=?""", (sid,), one=True)
     lines = db.query("""SELECT sl.*, pr.ProductName, pr.Unit FROM SalesLines sl
                       JOIN Products pr ON pr.ProductID=sl.ProductID WHERE sl.SaleID=?""", (sid,))
     custom_fields = get_custom_field_defs("Sale")
     custom_values = get_custom_values("Sale", sid)
     balance_due = sale_balance_due(sale)
+    stock_issue_credit = db.query("""SELECT COUNT(*) c, COALESCE(SUM(QtyApplied),0) q, si.IssueID
+                                   FROM SaleStockIssueLinks ssl
+                                   JOIN StockIssueLines sil ON sil.LineID = ssl.StockIssueLineID
+                                   JOIN StockIssues si ON si.IssueID = sil.IssueID
+                                   WHERE ssl.SaleID=?""", (sid,), one=True)
     return render_template("sale_view.html", sale=sale, lines=lines, balance_due=balance_due,
+                            stock_issue_credit=stock_issue_credit if stock_issue_credit and stock_issue_credit["c"] else None,
                             custom_fields=custom_fields, custom_values=custom_values,
                             cf_record_id=sid, custom_attachments=get_custom_attachments("Sale", sid))
 
@@ -2752,8 +2844,18 @@ def stock_issue_reconcile(issue_id):
 
     y, m = int(issue["IssueDate"][:4]), int(issue["IssueDate"][5:7])
     target_progress = get_employee_month_target_progress(issue["EmployeeID"], y, m)
+    # Sales entered directly (Sales tab, with this issue's salesperson selected) that have
+    # already credited this issue's Qty Sold - shown so whoever reconciles isn't puzzled by
+    # pre-filled Qty Sold figures they didn't type in themselves.
+    credited_sales = db.query("""SELECT s.SaleID, s.InvoiceNumber, s.SaleDate, pr.ProductName,
+                               ssl.QtyApplied FROM SaleStockIssueLinks ssl
+                               JOIN StockIssueLines sil ON sil.LineID = ssl.StockIssueLineID
+                               JOIN Sales s ON s.SaleID = ssl.SaleID
+                               JOIN Products pr ON pr.ProductID = sil.ProductID
+                               WHERE sil.IssueID=? ORDER BY s.SaleID""", (issue_id,))
     return render_template("stock_issue_reconcile.html", issue=issue, lines=lines, is_reedit=is_reedit,
-                            money_locked=money_locked, target_progress=target_progress)
+                            money_locked=money_locked, target_progress=target_progress,
+                            credited_sales=credited_sales)
 
 
 @app.route("/stock-issues/<int:issue_id>/delete", methods=["POST"])

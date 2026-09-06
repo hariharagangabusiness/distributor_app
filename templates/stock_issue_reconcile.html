@@ -6,6 +6,17 @@
 <div class="alert alert-warning">Editing an already-reconciled stock issue (Admin only). Saving replaces the previous
   sold/returned/free/discount figures and cash collected entirely — recompute carefully.</div>
 {% endif %}
+{% if credited_sales %}
+<div class="alert alert-info">
+  <strong>{{ credited_sales|length }} line item(s) from Sales entered directly on the Sales tab have already been
+  credited toward this issue's Qty Sold</strong> (shown pre-filled below) — no need to re-enter them here:
+  <ul class="mb-0 mt-1">
+    {% for cs in credited_sales %}
+    <li><a href="{{ url_for('sale_view', sid=cs.SaleID) }}">{{ cs.InvoiceNumber }}</a> — {{ cs.ProductName }}: {{ cs.QtyApplied|round(2) }}</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
 {% if target_progress %}
 <div class="alert alert-secondary d-flex justify-content-between align-items-center flex-wrap gap-2">
   <span><i class="bi bi-bullseye"></i> {{ issue.EmployeeName }}'s month-to-date pace: {{ target_progress.mtd.qty_sold|round(2) }} /

@@ -227,7 +227,26 @@ CREATE TABLE IF NOT EXISTS Sales (
     IGSTAmount              REAL NOT NULL DEFAULT 0,
     RoundOff                REAL NOT NULL DEFAULT 0,
     ReverseCharge           INTEGER NOT NULL DEFAULT 0,
-    FOREIGN KEY (CustomerID) REFERENCES Customers(CustomerID)
+    EmployeeID              INTEGER,  -- optional: the salesperson this sale is against, when it's
+                                       -- being sold from stock already issued to them that day (see
+                                       -- SaleStockIssueLinks) rather than a plain counter/warehouse sale
+    FOREIGN KEY (CustomerID) REFERENCES Customers(CustomerID),
+    FOREIGN KEY (EmployeeID) REFERENCES Employees(EmployeeID)
+);
+
+-- Tracks exactly how much of a Sale's line quantity was credited against a
+-- specific StockIssueLines row's QtySold (rather than deducted fresh from
+-- warehouse stock), so editing or re-crediting that Sale can precisely
+-- reverse the earlier credit before reapplying. One Sale can span multiple
+-- StockIssueLines rows (multiple products), and in principle multiple Sales
+-- can credit the same StockIssueLines row over the course of a day.
+CREATE TABLE IF NOT EXISTS SaleStockIssueLinks (
+    LinkID            INTEGER PRIMARY KEY AUTOINCREMENT,
+    SaleID            INTEGER NOT NULL,
+    StockIssueLineID  INTEGER NOT NULL,
+    QtyApplied        REAL NOT NULL,
+    FOREIGN KEY (SaleID) REFERENCES Sales(SaleID),
+    FOREIGN KEY (StockIssueLineID) REFERENCES StockIssueLines(LineID)
 );
 
 CREATE TABLE IF NOT EXISTS SalesLines (

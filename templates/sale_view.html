@@ -21,7 +21,8 @@
     <div class="col-md-4"><strong>Customer:</strong> {{ sale.CustomerName }}<br>{{ sale.Phone or '' }}<br>{{ sale.Address or '' }}
       {% if sale.Zone %}<br><strong>Zone:</strong> {{ sale.Zone }}{% endif %}</div>
     <div class="col-md-4"><strong>Date:</strong> {{ sale.SaleDate }}<br><strong>Due Date:</strong> {{ sale.PaymentDueDate or '-' }}<br>
-      <strong>Place of Supply:</strong> {{ sale.PlaceOfSupplyState or '-' }} ({{ sale.PlaceOfSupplyStateCode or '-' }})</div>
+      <strong>Place of Supply:</strong> {{ sale.PlaceOfSupplyState or '-' }} ({{ sale.PlaceOfSupplyStateCode or '-' }})
+      {% if sale.EmployeeName %}<br><strong>Salesperson:</strong> {{ sale.EmployeeName }}{% endif %}</div>
     <div class="col-md-4"><strong>Status:</strong> {{ sale.Status }}<br><strong>Payment:</strong> {{ sale.PaymentStatus }} (Received {{ (sale.AmountReceived)|inr(2) }})<br>
       <strong>Tax Type:</strong> {{ 'IGST' if sale.IsInterState else 'CGST + SGST' }}
       {% if sale.ReverseCharge %}<br><strong>Reverse Charge:</strong> Yes — Amount Due is product value only ({{ (sale.TaxableAmount)|inr(2) }}); GST is payable by the customer directly to the Government{% endif %}
@@ -30,6 +31,11 @@
 </div></div>
 {% if sale.PaymentStatus in ('Partial', 'Unpaid') and balance_due and balance_due > 0 %}
 <div class="alert alert-warning">This sale is <strong>{{ sale.PaymentStatus }}</strong> — Balance Due: <strong>{{ (balance_due)|inr(2) }}</strong></div>
+{% endif %}
+{% if stock_issue_credit %}
+<div class="alert alert-info">{{ stock_issue_credit.q|round(2) }} unit(s) on this sale were credited toward
+  <a href="{{ url_for('stock_issue_view', issue_id=stock_issue_credit.IssueID) }}">{{ sale.EmployeeName }}'s Stock Issue for {{ sale.SaleDate }}</a>
+  instead of being deducted from warehouse stock separately.</div>
 {% endif %}
 <div class="card">
   <div class="table-responsive">
