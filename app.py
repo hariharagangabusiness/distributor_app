@@ -60,6 +60,28 @@ def inrn_filter(value, decimals=0):
     return indian_number_format(value, decimals)
 
 
+def sale_due_amount(sale):
+    """What should actually be collected from the customer for this sale.
+
+    Under Reverse Charge, the customer remits GST straight to the government
+    rather than paying it to us - so the amount we're actually owed is just
+    the taxable (product) value, not the GST-inclusive invoice total. For a
+    normal (non-reverse-charge) sale, the full GST-inclusive TotalAmount is
+    what's due, same as before. The invoice itself always still shows the
+    full GST breakup either way - this only affects what counts as
+    receivable/balance-due for collection purposes. Accepts a sqlite3.Row or
+    dict with at least ReverseCharge/TaxableAmount/TotalAmount."""
+    if sale["ReverseCharge"]:
+        return sale["TaxableAmount"] or 0
+    return sale["TotalAmount"] or 0
+
+
+def sale_balance_due(sale):
+    """Balance still owed on a sale: sale_due_amount() minus AmountReceived,
+    rounded to paise. Accepts a sqlite3.Row or dict with AmountReceived too."""
+    return round(sale_due_amount(sale) - (sale["AmountReceived"] or 0), 2)
+
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SECRET_KEY_FILE = os.path.join(BASE_DIR, "secret_key.txt")
 
@@ -280,6 +302,11 @@ def require_login():
 def inject_current_user():
     user = get_current_user()
     return dict(current_user=user, can_access=lambda tab_key: user_can_access(user, tab_key))
+
+
+@app.context_processor
+def inject_sale_due_helpers():
+    return dict(sale_due_amount=sale_due_amount, sale_balance_due=sale_balance_due)
 
 
 @app.route("/")
@@ -1102,7 +1129,11 @@ def dashboard():
                                (month_start, month_end), one=True)["t"]
     # Receivable/Payable/Van Sales Due/Scheme Claims Pending are point-in-time
     # outstanding balances (as of now), not scoped to the month being viewed.
-    receivable = db.query("SELECT COALESCE(SUM(TotalAmount - AmountReceived),0) AS t FROM Sales WHERE PaymentStatus<>'Paid' AND Status<>'Cancelled'",
+    # Reverse Charge sales are only receivable up to their taxable (product)
+    # value - the GST portion is paid by the customer straight to the
+    # government, not collected by us.
+    receivable = db.query("""SELECT COALESCE(SUM((CASE WHEN ReverseCharge THEN TaxableAmount ELSE TotalAmount END)
+                           - AmountReceived),0) AS t FROM Sales WHERE PaymentStatus<>'Paid' AND Status<>'Cancelled'""",
                            one=True)["t"]
     payable = db.query("SELECT COALESCE(SUM(TotalAmount - AmountPaid),0) AS t FROM Purchases WHERE PaymentStatus<>'Paid' AND Status<>'Cancelled'",
                         one=True)["t"]
@@ -1807,22 +1838,30 @@ def sales_daywise_report():
     date_from = request.args.get("from") or default_from
     date_to = request.args.get("to") or default_to
 
+    # Total Sales is always the full GST-inclusive invoice value (for revenue
+    # visibility). Balance Due, though, is based on what's actually
+    # collectable from the customer: for a Reverse Charge sale that's the
+    # taxable (product) value only, since the customer pays GST straight to
+    # the government rather than to us - so "due" is computed per-sale via
+    # the CASE below rather than off the SUM(TotalAmount) directly.
     rows = db.query("""SELECT SaleDate AS d, COUNT(*) AS invoice_count,
                      COALESCE(SUM(TotalAmount), 0) AS total,
+                     COALESCE(SUM(CASE WHEN ReverseCharge THEN TaxableAmount ELSE TotalAmount END), 0) AS due_total,
                      COALESCE(SUM(AmountReceived), 0) AS received
                      FROM Sales WHERE Status<>'Cancelled' AND SaleDate BETWEEN ? AND ?
                      GROUP BY SaleDate ORDER BY SaleDate DESC""", (date_from, date_to))
     daywise = []
-    grand_total = grand_received = 0.0
+    grand_total = grand_due = grand_received = 0.0
     for r in rows:
-        balance = round((r["total"] or 0) - (r["received"] or 0), 2)
+        balance = round((r["due_total"] or 0) - (r["received"] or 0), 2)
         daywise.append({"date": r["d"], "invoice_count": r["invoice_count"],
                          "total": round(r["total"], 2), "received": round(r["received"], 2),
                          "balance": balance})
         grand_total += r["total"] or 0
+        grand_due += r["due_total"] or 0
         grand_received += r["received"] or 0
     totals = {"total": round(grand_total, 2), "received": round(grand_received, 2),
-              "balance": round(grand_total - grand_received, 2),
+              "balance": round(grand_due - grand_received, 2),
               "invoice_count": sum(d["invoice_count"] for d in daywise)}
     return render_template("sales_daywise_report.html", daywise=daywise, totals=totals,
                             date_from=date_from, date_to=date_to)
@@ -2212,7 +2251,7 @@ def sale_view(sid):
                       JOIN Products pr ON pr.ProductID=sl.ProductID WHERE sl.SaleID=?""", (sid,))
     custom_fields = get_custom_field_defs("Sale")
     custom_values = get_custom_values("Sale", sid)
-    balance_due = round((sale["TotalAmount"] or 0) - (sale["AmountReceived"] or 0), 2)
+    balance_due = sale_balance_due(sale)
     return render_template("sale_view.html", sale=sale, lines=lines, balance_due=balance_due,
                             custom_fields=custom_fields, custom_values=custom_values,
                             cf_record_id=sid, custom_attachments=get_custom_attachments("Sale", sid))
@@ -2353,7 +2392,7 @@ def sale_invoice(sid):
                       JOIN Products pr ON pr.ProductID=sl.ProductID WHERE sl.SaleID=?""", (sid,))
     company = get_company_settings()
     words = amount_in_words(sale["TotalAmount"])
-    balance_due = round((sale["TotalAmount"] or 0) - (sale["AmountReceived"] or 0), 2)
+    balance_due = sale_balance_due(sale)
     auto_print = request.args.get("auto_print") == "1"
     return render_template("invoice.html", sale=sale, lines=lines, company=company, amount_words=words,
                             balance_due=balance_due, auto_print=auto_print)

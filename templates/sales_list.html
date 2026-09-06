@@ -34,8 +34,8 @@
             {% elif s.PaymentStatus=='Partial' %}<span class="badge badge-over">Partial</span>
             {% else %}<span class="badge badge-low">Unpaid</span>{% endif %}</td>
         <td data-col="due_date">{{ s.PaymentDueDate or '-' }}</td>
-        <td data-col="total">{{ (s.TotalAmount)|inr(2) }}</td>
-        <td data-col="balance" class="{% if (s.TotalAmount - s.AmountReceived) > 0 %}text-danger fw-bold{% endif %}">{{ (s.TotalAmount - s.AmountReceived)|inr(2) }}</td>
+        <td data-col="total">{{ (s.TotalAmount)|inr(2) }}{% if s.ReverseCharge %} <span class="badge text-bg-info" title="Reverse Charge — product value only counted below">RC</span>{% endif %}</td>
+        <td data-col="balance" class="{% if sale_balance_due(s) > 0 %}text-danger fw-bold{% endif %}">{{ (sale_balance_due(s))|inr(2) }}</td>
         <td class="text-end">
           <a href="{{ url_for('sale_view', sid=s.SaleID) }}" class="btn btn-sm btn-outline-secondary">View</a>
           {% if s.IsUnassignedBucket %}<a href="{{ url_for('sale_reassign', sid=s.SaleID) }}" class="btn btn-sm btn-warning">Reassign</a>{% endif %}

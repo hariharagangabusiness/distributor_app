@@ -134,7 +134,14 @@ def build_invoice_pdf(sale, lines, company, amount_words):
     totals_rows.append(["Round Off", f"Rs. {sale['RoundOff']:.2f}"])
     totals_rows.append(["Total Invoice Value", f"Rs. {sale['TotalAmount']:.2f}"])
     totals_rows.append(["Amount Received", f"Rs. {(sale['AmountReceived'] or 0):.2f}"])
-    balance_due = (sale["TotalAmount"] or 0) - (sale["AmountReceived"] or 0)
+    # Under Reverse Charge the customer remits GST straight to the government,
+    # not to us - so what's actually due from them is the taxable (product)
+    # value only, not the GST-inclusive Total Invoice Value above. The GST
+    # breakup itself still prints in full either way, for compliance.
+    due_amount = (sale["TaxableAmount"] or 0) if sale["ReverseCharge"] else (sale["TotalAmount"] or 0)
+    balance_due = due_amount - (sale["AmountReceived"] or 0)
+    if sale["ReverseCharge"]:
+        totals_rows.append(["Amount Due (Reverse Charge - product value only)", f"Rs. {due_amount:.2f}"])
     if balance_due > 0:
         totals_rows.append(["Balance Due", f"Rs. {balance_due:.2f}"])
 

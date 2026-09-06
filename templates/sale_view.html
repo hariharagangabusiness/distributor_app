@@ -24,6 +24,7 @@
       <strong>Place of Supply:</strong> {{ sale.PlaceOfSupplyState or '-' }} ({{ sale.PlaceOfSupplyStateCode or '-' }})</div>
     <div class="col-md-4"><strong>Status:</strong> {{ sale.Status }}<br><strong>Payment:</strong> {{ sale.PaymentStatus }} (Received {{ (sale.AmountReceived)|inr(2) }})<br>
       <strong>Tax Type:</strong> {{ 'IGST' if sale.IsInterState else 'CGST + SGST' }}
+      {% if sale.ReverseCharge %}<br><strong>Reverse Charge:</strong> Yes — Amount Due is product value only ({{ (sale.TaxableAmount)|inr(2) }}); GST is payable by the customer directly to the Government{% endif %}
       {% if balance_due and balance_due > 0 %}<br><strong class="text-danger">Balance Due: {{ (balance_due)|inr(2) }}</strong>{% endif %}</div>
   </div>
 </div></div>

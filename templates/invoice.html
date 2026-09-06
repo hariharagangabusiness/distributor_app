@@ -120,6 +120,9 @@
     {% endif %}
     <tr><td>Round Off</td><td>{{ (sale.RoundOff)|inr(2) }}</td></tr>
     <tr class="grand"><td>Total Invoice Value</td><td>{{ (sale.TotalAmount)|inr(2) }}</td></tr>
+    {% if sale.ReverseCharge %}
+    <tr><td>Amount Due from Customer (Reverse Charge — product value only, GST payable by customer to Govt.)</td><td>{{ (sale.TaxableAmount)|inr(2) }}</td></tr>
+    {% endif %}
     <tr><td>Amount Received</td><td>{{ (sale.AmountReceived)|inr(2) }}</td></tr>
     {% if balance_due and balance_due > 0 %}
     <tr class="grand"><td>Balance Due</td><td>{{ (balance_due)|inr(2) }}</td></tr>

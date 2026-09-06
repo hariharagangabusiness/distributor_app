@@ -82,8 +82,10 @@
       <input type="number" step="0.01" name="amount_received" class="form-control" value="{{ sale.AmountReceived if sale else 0 }}"></div>
     <div class="col-md-2 d-flex align-items-end">
       <div class="form-check">
-        <input type="checkbox" class="form-check-input" name="reverse_charge" id="reverse_charge" {% if sale and sale.ReverseCharge %}checked{% endif %}>
+        <input type="checkbox" class="form-check-input" name="reverse_charge" id="reverse_charge"
+               {% if sale %}{% if sale.ReverseCharge %}checked{% endif %}{% else %}checked{% endif %}>
         <label class="form-check-label" for="reverse_charge">Reverse Charge</label>
+        <div class="form-text">When checked, GST still shows on the invoice, but Balance Due only counts the product value — the customer pays GST directly to the Government.</div>
       </div>
     </div>
     <div class="col-md-6"><label class="form-label">Notes</label>
@@ -107,6 +109,7 @@
       <tr id="row-sgst"><td>SGST</td><td class="text-end" id="sum-sgst">0.00</td></tr>
       <tr id="row-igst"><td>IGST</td><td class="text-end" id="sum-igst">0.00</td></tr>
       <tr><td><strong>Grand Total (rounded)</strong></td><td class="text-end"><strong id="sum-grand">0.00</strong></td></tr>
+      <tr id="row-due-amount" style="display:none"><td>Amount Due (Reverse Charge — product value only)</td><td class="text-end" id="sum-due-amount">0.00</td></tr>
       <tr><td>Balance Due</td><td class="text-end text-danger fw-bold" id="sum-balance">0.00</td></tr>
     </table>
   </div>
@@ -160,6 +163,7 @@ const existingLines = [
   {% endif %}
 ];
 const amountReceivedInput = document.querySelector('input[name="amount_received"]');
+const reverseChargeInput = document.getElementById('reverse_charge');
 const customerNameInput = document.getElementById('customer_name');
 const customerAddressInput = document.getElementById('customer_address');
 const customerPhoneInput = document.getElementById('customer_phone');
@@ -185,6 +189,7 @@ customerSelect.addEventListener('change', () => {
 });
 posSelect.addEventListener('change', recalc);
 if (amountReceivedInput) amountReceivedInput.addEventListener('input', recalc);
+if (reverseChargeInput) reverseChargeInput.addEventListener('change', recalc);
 
 function isInterState() {
   return companyStateCode && posSelect.value && posSelect.value !== companyStateCode;
@@ -268,7 +273,12 @@ function recalc() {
   const rawTotal = taxableSum + cgstSum + sgstSum + igstSum;
   const grandTotal = Math.round(rawTotal);
   const amountReceived = parseFloat(amountReceivedInput && amountReceivedInput.value) || 0;
-  const balanceDue = grandTotal - amountReceived;
+  const reverseCharge = reverseChargeInput && reverseChargeInput.checked;
+  // Reverse Charge: customer pays GST straight to the Government, so what's
+  // actually due from them is the taxable (product) value only, not the
+  // GST-inclusive grand total. The invoice/GST breakup above is unaffected.
+  const dueAmount = reverseCharge ? taxableSum : grandTotal;
+  const balanceDue = dueAmount - amountReceived;
 
   document.getElementById('sum-discount').textContent = discountSum.toFixed(2);
   document.getElementById('sum-taxable').textContent = taxableSum.toFixed(2);
@@ -276,6 +286,9 @@ function recalc() {
   document.getElementById('sum-sgst').textContent = sgstSum.toFixed(2);
   document.getElementById('sum-igst').textContent = igstSum.toFixed(2);
   document.getElementById('sum-grand').textContent = grandTotal.toFixed(2);
+  const dueRow = document.getElementById('row-due-amount');
+  if (dueRow) dueRow.style.display = reverseCharge ? '' : 'none';
+  document.getElementById('sum-due-amount').textContent = dueAmount.toFixed(2);
   document.getElementById('sum-balance').textContent = balanceDue.toFixed(2);
 }
 
