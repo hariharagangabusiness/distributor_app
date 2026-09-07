@@ -13,10 +13,13 @@
 </div></div>
 
 <div class="alert alert-info">
-  A working-paper view computed from Sales, Purchases/Products, Operating Expenses, and Salary Payments already
-  recorded elsewhere in the app — nothing is entered here. Cost of Goods Sold uses each product's <em>current</em>
-  cost price, not necessarily what it cost at the time of an older sale, so treat it as a close estimate rather
-  than an exact figure for past periods where costs have changed.
+  A working-paper view computed from Sales, Purchases/Products, Operating Expenses, Salary Payments, and Fleet
+  records already recorded elsewhere in the app — nothing is entered here. Cost of Goods Sold uses each product's
+  <em>current</em> cost price, not necessarily what it cost at the time of an older sale, so treat it as a close
+  estimate rather than an exact figure for past periods where costs have changed. Vehicle Depreciation is
+  auto-computed from each vehicle's Purchase Date/Price using the Income Tax Act's 15% WDV method — running this
+  report for one exact financial year (1 Apr – 31 Mar) matches the tax depreciation for that year exactly; any
+  other date range is a day-prorated estimate.
 </div>
 
 <div class="card">
@@ -44,6 +47,10 @@
 
       <tr class="table-light"><td colspan="2"><strong>Salary Payouts</strong></td></tr>
       <tr><td class="ps-4">Salary paid (Status = Paid)</td><td class="text-end">{{ (total_salary)|inr(2) }}</td></tr>
+
+      <tr class="table-light"><td colspan="2"><strong>Vehicle Costs</strong></td></tr>
+      <tr><td class="ps-4">Vehicle Maintenance &amp; Repairs (Fleet &gt; Maintenance log)</td><td class="text-end">{{ (vehicle_maintenance_total)|inr(2) }}</td></tr>
+      <tr><td class="ps-4">Vehicle Depreciation (15% WDV, Income Tax Act)</td><td class="text-end">{{ (vehicle_depreciation_total)|inr(2) }}</td></tr>
 
       <tr class="table-secondary"><td><strong>Total Operating Costs</strong></td><td class="text-end"><strong>{{ (total_operating_costs)|inr(2) }}</strong></td></tr>
 

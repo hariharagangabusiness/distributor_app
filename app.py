@@ -15,6 +15,7 @@ import gst_logic
 import gst_reminders
 import purchase_import
 import bulk_import
+import depreciation
 
 app = Flask(__name__)
 
@@ -1142,7 +1143,8 @@ MODULE_COLUMNS = {
     "Expense": [("date", "Date"), ("category", "Category"), ("vehicle", "Vehicle"),
                 ("paid_to", "Paid To"), ("mode", "Mode"), ("amount", "Amount")],
     "Vehicle": [("reg_number", "Reg. No"), ("type", "Type"), ("make_model", "Make/Model"),
-                ("odometer", "Odometer"), ("insurance", "Insurance"), ("permit", "Permit"),
+                ("odometer", "Odometer"), ("purchase_price", "Purchase Price"),
+                ("insurance", "Insurance"), ("permit", "Permit"),
                 ("puc", "PUC"), ("fitness", "Fitness"), ("status", "Status")],
     "Maintenance": [("vehicle", "Vehicle"), ("service_type", "Service Type"), ("date", "Date"),
                      ("odometer", "Odometer"), ("next_due_date", "Next Due Date"), ("cost", "Cost"),
@@ -4272,15 +4274,43 @@ def pnl_report():
                              (date_from, date_to), one=True)
     incentive_income = round(incentive_row["total"], 2)
 
+    # Vehicle maintenance & repairs (Fleet > Maintenance) - revenue expenditure,
+    # fully deductible in the period incurred (Section 37(1)), so it's summed
+    # straight from the maintenance log rather than requiring a duplicate
+    # manual entry under Operating Expenses.
+    maint_row = db.query("""SELECT COALESCE(SUM(Cost), 0) AS total FROM VehicleMaintenance
+                          WHERE ServiceDate BETWEEN ? AND ?""", (date_from, date_to), one=True)
+    vehicle_maintenance_total = round(maint_row["total"], 2)
+
+    # Vehicle depreciation - capital expenditure, written down under the
+    # Income Tax Act's 15% WDV method (see depreciation.py for the full
+    # rationale) rather than expensed in full on purchase.
+    d_from = datetime.strptime(date_from, "%Y-%m-%d").date()
+    d_to = datetime.strptime(date_to, "%Y-%m-%d").date()
+    vehicles_for_dep = db.query("SELECT PurchaseDate, PurchasePrice FROM Vehicles WHERE PurchaseDate IS NOT NULL AND PurchasePrice IS NOT NULL")
+    vehicle_depreciation_total = 0.0
+    for v in vehicles_for_dep:
+        try:
+            p_date = datetime.strptime(v["PurchaseDate"], "%Y-%m-%d").date()
+        except (TypeError, ValueError):
+            continue
+        vehicle_depreciation_total += depreciation.vehicle_depreciation_for_range(
+            p_date, v["PurchasePrice"], d_from, d_to)
+    vehicle_depreciation_total = round(vehicle_depreciation_total, 2)
+
     gross_profit = round(revenue - cogs, 2)
-    total_operating_costs = round(total_expenses + total_salary, 2)
+    total_operating_costs = round(total_expenses + total_salary + vehicle_maintenance_total
+                                   + vehicle_depreciation_total, 2)
     net_profit = round(gross_profit + incentive_income - total_operating_costs, 2)
 
     return render_template("pnl_report.html", date_from=date_from, date_to=date_to,
                             revenue=round(revenue, 2), cogs=round(cogs, 2), gross_profit=gross_profit,
                             incentive_income=incentive_income,
                             expense_rows=expense_rows, total_expenses=round(total_expenses, 2),
-                            total_salary=round(total_salary, 2), total_operating_costs=total_operating_costs,
+                            total_salary=round(total_salary, 2),
+                            vehicle_maintenance_total=vehicle_maintenance_total,
+                            vehicle_depreciation_total=vehicle_depreciation_total,
+                            total_operating_costs=total_operating_costs,
                             net_profit=net_profit)
 
 
@@ -4445,18 +4475,20 @@ def vehicle_form(vid=None):
     if request.method == "POST":
         f = request.form
         args = (f["registration_number"], f["vehicle_type"], f["make"], f["model"],
-                f.get("purchase_date") or None, f.get("insurance_expiry") or None,
+                f.get("purchase_date") or None,
+                float(f["purchase_price"]) if f.get("purchase_price") else None,
+                f.get("insurance_expiry") or None,
                 f.get("permit_expiry") or None, f.get("puc_expiry") or None,
                 f.get("fitness_expiry") or None, float(f["current_odometer"] or 0), f["status"])
         if vid:
             db.execute("""UPDATE Vehicles SET RegistrationNumber=?, VehicleType=?, Make=?, Model=?,
-                        PurchaseDate=?, InsuranceExpiry=?, PermitExpiry=?, PUCExpiry=?, FitnessExpiry=?,
+                        PurchaseDate=?, PurchasePrice=?, InsuranceExpiry=?, PermitExpiry=?, PUCExpiry=?, FitnessExpiry=?,
                         CurrentOdometer=?, Status=? WHERE VehicleID=?""", args + (vid,))
             save_custom_fields("Vehicle", vid, f)
         else:
             new_id = db.execute("""INSERT INTO Vehicles (RegistrationNumber, VehicleType, Make, Model, PurchaseDate,
-                        InsuranceExpiry, PermitExpiry, PUCExpiry, FitnessExpiry, CurrentOdometer, Status)
-                        VALUES (?,?,?,?,?,?,?,?,?,?,?)""", args)
+                        PurchasePrice, InsuranceExpiry, PermitExpiry, PUCExpiry, FitnessExpiry, CurrentOdometer, Status)
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""", args)
             save_custom_fields("Vehicle", new_id, f)
         flash("Vehicle saved.", "success")
         return redirect(url_for("vehicles_list"))
