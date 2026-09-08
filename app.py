@@ -2047,8 +2047,9 @@ def reverse_sale_stock_issue_links(sale_id):
     was itself edited down in the meantime."""
     links = db.query("SELECT * FROM SaleStockIssueLinks WHERE SaleID=?", (sale_id,))
     for link in links:
-        db.execute("UPDATE StockIssueLines SET QtySold = MAX(COALESCE(QtySold, 0) - ?, 0) WHERE LineID=?",
-                   (link["QtyApplied"], link["StockIssueLineID"]))
+        db.execute("""UPDATE StockIssueLines SET QtySold = MAX(COALESCE(QtySold, 0) - ?, 0),
+                    DiscountAmount = MAX(COALESCE(DiscountAmount, 0) - ?, 0) WHERE LineID=?""",
+                   (link["QtyApplied"], link["DiscountApplied"] or 0, link["StockIssueLineID"]))
     db.execute("DELETE FROM SaleStockIssueLinks WHERE SaleID=?", (sale_id,))
 
 
@@ -2269,10 +2270,12 @@ def create_sale(customer_id, sale_date, status, payment_status, payment_due_date
                                      - (sil["QtyReturned"] or 0) - (sil["QtyFree"] or 0), 0)
                     apply_qty = min(remaining_qty, available)
                     if apply_qty > 0:
-                        db.execute("UPDATE StockIssueLines SET QtySold = COALESCE(QtySold, 0) + ? WHERE LineID=?",
-                                   (apply_qty, sil["LineID"]))
-                        db.execute("""INSERT INTO SaleStockIssueLinks (SaleID, StockIssueLineID, QtyApplied)
-                                    VALUES (?,?,?)""", (sale_id, sil["LineID"], apply_qty))
+                        discount_share = round((discount or 0) * (apply_qty / qty), 2) if qty else 0
+                        db.execute("""UPDATE StockIssueLines SET QtySold = COALESCE(QtySold, 0) + ?,
+                                    DiscountAmount = COALESCE(DiscountAmount, 0) + ? WHERE LineID=?""",
+                                   (apply_qty, discount_share, sil["LineID"]))
+                        db.execute("""INSERT INTO SaleStockIssueLinks (SaleID, StockIssueLineID, QtyApplied, DiscountApplied)
+                                    VALUES (?,?,?,?)""", (sale_id, sil["LineID"], apply_qty, discount_share))
                         remaining_qty = round(remaining_qty - apply_qty, 4)
             if remaining_qty > 0:
                 db.execute("""INSERT INTO InventoryTransactions (ProductID, TransactionDate, TransactionType,

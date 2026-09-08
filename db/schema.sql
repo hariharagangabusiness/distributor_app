@@ -248,6 +248,7 @@ CREATE TABLE IF NOT EXISTS SaleStockIssueLinks (
     SaleID            INTEGER NOT NULL,
     StockIssueLineID  INTEGER NOT NULL,
     QtyApplied        REAL NOT NULL,
+    DiscountApplied   REAL NOT NULL DEFAULT 0,  -- proportional discount credited to StockIssueLines.DiscountAmount
     FOREIGN KEY (SaleID) REFERENCES Sales(SaleID),
     FOREIGN KEY (StockIssueLineID) REFERENCES StockIssueLines(LineID)
 );
