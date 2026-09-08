@@ -2052,23 +2052,59 @@ def reverse_sale_stock_issue_links(sale_id):
     db.execute("DELETE FROM SaleStockIssueLinks WHERE SaleID=?", (sale_id,))
 
 
-@app.route("/sales/<int:sid>/delete", methods=["POST"])
+def sale_delete_impact(sid):
+    """Everything that will actually change if this Sale is deleted right
+    now - computed up front so the confirmation page can show the real
+    consequences (not just a generic warning) before anyone commits to it."""
+    stock_restored = db.query("""SELECT pr.ProductName, pr.Unit, -SUM(it.QtyChange) AS qty
+                               FROM InventoryTransactions it JOIN Products pr ON pr.ProductID = it.ProductID
+                               WHERE it.RefType='Sale' AND it.RefID=?
+                               GROUP BY it.ProductID HAVING qty <> 0""", (sid,))
+    issue_credit = db.query("""SELECT pr.ProductName, pr.Unit, ssl.QtyApplied AS qty, si.IssueID, si.IssueDate,
+                             e.EmployeeName
+                             FROM SaleStockIssueLinks ssl
+                             JOIN StockIssueLines sil ON sil.LineID = ssl.StockIssueLineID
+                             JOIN StockIssues si ON si.IssueID = sil.IssueID
+                             JOIN Products pr ON pr.ProductID = sil.ProductID
+                             LEFT JOIN Employees e ON e.EmployeeID = si.EmployeeID
+                             WHERE ssl.SaleID=?""", (sid,))
+    reconciliation_linked = db.query("SELECT IssueID, IssueDate FROM StockIssues WHERE SaleID=?", (sid,), one=True)
+    custom_field_count = db.query("""SELECT COUNT(*) c FROM CustomFieldValues v
+                                   JOIN CustomFieldDefinitions d ON d.FieldID = v.FieldID
+                                   WHERE d.ModuleName='Sale' AND v.RecordID=?""", (sid,), one=True)["c"]
+    return {
+        "stock_restored": stock_restored,
+        "issue_credit": issue_credit,
+        "reconciliation_linked": reconciliation_linked,
+        "custom_field_count": custom_field_count,
+    }
+
+
+@app.route("/sales/<int:sid>/delete", methods=["GET", "POST"])
 @admin_required
 def sale_delete(sid):
-    """Permanently deletes a Sale and fully reverses everything it did:
-    any warehouse stock it deducted directly, any Stock Issue Qty Sold it
-    credited instead, and (if this is the auto-created 'Unassigned' sale
-    from a reconciled Stock Issue) unlinks it from that issue first, the
-    same way stock_issue_delete() does the reverse case. Admin-only and
-    irreversible - there's no undo once this runs. Note this does NOT
-    retroactively adjust any GST return or P&L figure already filed/shared
-    outside the app for a period this sale fell in - both are computed
-    live from the Sales table, so they'll simply reflect the sale's
-    absence from now on."""
-    sale = db.query("SELECT * FROM Sales WHERE SaleID=?", (sid,), one=True)
+    """GET shows a confirmation page listing the actual, computed impact of
+    deleting this Sale (stock that will be restored, any Stock Issue credit
+    that will be reversed, whether it's reconciliation-linked) before asking
+    'do you still want to continue'; POST is the one that actually deletes
+    it. Fully reverses everything the Sale did: any warehouse stock it
+    deducted directly, any Stock Issue Qty Sold it credited instead, and
+    (if this is the auto-created 'Unassigned' sale from a reconciled Stock
+    Issue) unlinks it from that issue first, the same way stock_issue_delete()
+    does the reverse case. Admin-only and irreversible - there's no undo
+    once this runs. Note this does NOT retroactively adjust any GST return
+    or P&L figure already filed/shared outside the app for a period this
+    sale fell in - both are computed live from the Sales table, so they'll
+    simply reflect the sale's absence from now on."""
+    sale = db.query("""SELECT s.*, c.CustomerName FROM Sales s
+                     JOIN Customers c ON c.CustomerID = s.CustomerID WHERE s.SaleID=?""", (sid,), one=True)
     if not sale:
         flash("Sale not found.", "error")
         return redirect(url_for("sales_list"))
+
+    if request.method == "GET":
+        impact = sale_delete_impact(sid)
+        return render_template("sale_delete_confirm.html", sale=sale, **impact)
 
     # Give back whatever this Sale credited toward a Stock Issue's Qty Sold,
     # and remove the link rows (mirrors the first step of an edit).

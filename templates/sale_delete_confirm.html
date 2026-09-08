@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Delete Sale {{ sale.InvoiceNumber }}{% endblock %}
+{% block page_title %}Delete Sale — {{ sale.InvoiceNumber }}{% endblock %}
+{% block content %}
+<div class="card mb-3"><div class="card-body">
+  <div class="row">
+    <div class="col-md-4"><strong>Customer:</strong> {{ sale.CustomerName }}</div>
+    <div class="col-md-4"><strong>Date:</strong> {{ sale.SaleDate }}</div>
+    <div class="col-md-4"><strong>Total:</strong> {{ (sale.TotalAmount)|inr(2) }}
+      &nbsp;<span class="text-muted">(Received {{ (sale.AmountReceived)|inr(2) }})</span></div>
+  </div>
+</div></div>
+
+<div class="alert alert-danger">
+  <h5 class="alert-heading"><i class="bi bi-exclamation-triangle-fill"></i> This will permanently delete Sale {{ sale.InvoiceNumber }} — this cannot be undone.</h5>
+  <p class="mb-0">Here's exactly what will happen. Review it, then confirm below if you still want to continue.</p>
+</div>
+
+<div class="card mb-3"><div class="card-body">
+  <h6>What will be reversed</h6>
+  <ul class="mb-0">
+    {% if stock_restored %}
+    <li>Warehouse stock will be <strong>added back</strong> for:
+      <ul>
+        {% for r in stock_restored %}
+        <li>{{ r.qty|round(2) }} {{ r.Unit }} of <strong>{{ r.ProductName }}</strong></li>
+        {% endfor %}
+      </ul>
+    </li>
+    {% endif %}
+    {% if issue_credit %}
+    <li>The quantity this sale had credited against a salesperson's Stock Issue will be
+      <strong>given back as unsold</strong> (i.e. that Stock Issue's Qty Sold will go back down):
+      <ul>
+        {% for r in issue_credit %}
+        <li>{{ r.qty|round(2) }} {{ r.Unit }} of <strong>{{ r.ProductName }}</strong> on
+          <a href="{{ url_for('stock_issue_view', issue_id=r.IssueID) }}" target="_blank">{{ r.EmployeeName or 'that' }}'s Stock Issue for {{ r.IssueDate }}</a></li>
+        {% endfor %}
+      </ul>
+    </li>
+    {% endif %}
+    {% if reconciliation_linked %}
+    <li>This sale was <strong>auto-created from reconciling</strong>
+      <a href="{{ url_for('stock_issue_view', issue_id=reconciliation_linked.IssueID) }}" target="_blank">the Stock Issue for {{ reconciliation_linked.IssueDate }}</a> —
+      that Stock Issue will be unlinked from it (its own cash/bank/discrepancy figures are not affected, only the link to this Sale).</li>
+    {% endif %}
+    {% if custom_field_count %}
+    <li>{{ custom_field_count }} custom field value(s)/attachment(s) recorded on this sale will be deleted.</li>
+    {% endif %}
+    {% if not stock_restored and not issue_credit and not reconciliation_linked %}
+    <li>No stock or Stock Issue credit is tied to this sale — deleting it will only remove the sale record itself.</li>
+    {% endif %}
+  </ul>
+</div></div>
+
+<div class="alert alert-warning">
+  <strong>Also worth knowing:</strong> GST returns (GSTR-1/3B) and the Profit &amp; Loss report are computed live
+  from the Sales table, not stored as fixed figures — deleting this sale will change those reports' numbers for
+  {{ sale.SaleDate }} going forward. It will <strong>not</strong> retroactively correct anything you may have
+  already filed with the tax department using the old figures, so double-check that before continuing if this
+  sale is from a period you've already filed.
+</div>
+
+<form method="post" action="{{ url_for('sale_delete', sid=sale.SaleID) }}"
+      onsubmit="return confirm('Last check — permanently delete Sale {{ sale.InvoiceNumber }}? This cannot be undone.');">
+  <button type="submit" class="btn btn-danger"><i class="bi bi-trash"></i> Yes, delete this sale</button>
+  <a href="{{ url_for('sale_view', sid=sale.SaleID) }}" class="btn btn-outline-secondary">Cancel — go back</a>
+</form>
+{% endblock %}

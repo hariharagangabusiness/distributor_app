@@ -49,10 +49,7 @@
           <a href="{{ url_for('sale_view', sid=s.SaleID) }}" class="btn btn-sm btn-outline-secondary">View</a>
           {% if s.IsUnassignedBucket %}<a href="{{ url_for('sale_reassign', sid=s.SaleID) }}" class="btn btn-sm btn-warning">Reassign</a>{% endif %}
           {% if current_user.Role == 'Admin' %}
-          <form method="post" action="{{ url_for('sale_delete', sid=s.SaleID) }}" class="d-inline"
-                onsubmit="return confirm('Permanently delete Sale {{ s.InvoiceNumber }}? This reverses its stock impact (and any Stock Issue credit) and cannot be undone. Continue?');">
-            <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
-          </form>
+          <a href="{{ url_for('sale_delete', sid=s.SaleID) }}" class="btn btn-sm btn-outline-danger">Delete</a>
           {% endif %}
         </td>
       </tr>
