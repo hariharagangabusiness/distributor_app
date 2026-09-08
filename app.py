@@ -1020,6 +1020,27 @@ def get_custom_attachments(module, record_id):
     return out
 
 
+def delete_record_custom_data(module, record_id):
+    """Removes every CustomFieldValues row and any attachment-type custom
+    field's uploaded files for one specific record of `module` - the
+    counterpart to save_custom_fields()/get_custom_attachments(), used when
+    the record itself (e.g. a Sale) is being permanently deleted so its
+    custom-field values and files don't linger orphaned."""
+    for d in get_custom_field_defs(module):
+        if d["FieldType"] == "attachment":
+            att_module = custom_field_attachment_module(d["FieldID"])
+            for att in get_attachments(att_module, record_id):
+                full_path = os.path.join(UPLOAD_ROOT, att["StoredPath"])
+                try:
+                    if os.path.exists(full_path):
+                        os.remove(full_path)
+                except OSError:
+                    pass
+            db.execute("DELETE FROM Attachments WHERE ModuleName=? AND RecordID=?", (att_module, record_id))
+        else:
+            db.execute("DELETE FROM CustomFieldValues WHERE FieldID=? AND RecordID=?", (d["FieldID"], record_id))
+
+
 @app.route("/settings/custom-fields")
 def custom_fields_admin():
     module = request.args.get("module", CUSTOM_FIELD_MODULES[0][0])
@@ -2029,6 +2050,40 @@ def reverse_sale_stock_issue_links(sale_id):
         db.execute("UPDATE StockIssueLines SET QtySold = MAX(COALESCE(QtySold, 0) - ?, 0) WHERE LineID=?",
                    (link["QtyApplied"], link["StockIssueLineID"]))
     db.execute("DELETE FROM SaleStockIssueLinks WHERE SaleID=?", (sale_id,))
+
+
+@app.route("/sales/<int:sid>/delete", methods=["POST"])
+@admin_required
+def sale_delete(sid):
+    """Permanently deletes a Sale and fully reverses everything it did:
+    any warehouse stock it deducted directly, any Stock Issue Qty Sold it
+    credited instead, and (if this is the auto-created 'Unassigned' sale
+    from a reconciled Stock Issue) unlinks it from that issue first, the
+    same way stock_issue_delete() does the reverse case. Admin-only and
+    irreversible - there's no undo once this runs. Note this does NOT
+    retroactively adjust any GST return or P&L figure already filed/shared
+    outside the app for a period this sale fell in - both are computed
+    live from the Sales table, so they'll simply reflect the sale's
+    absence from now on."""
+    sale = db.query("SELECT * FROM Sales WHERE SaleID=?", (sid,), one=True)
+    if not sale:
+        flash("Sale not found.", "error")
+        return redirect(url_for("sales_list"))
+
+    # Give back whatever this Sale credited toward a Stock Issue's Qty Sold,
+    # and remove the link rows (mirrors the first step of an edit).
+    reverse_sale_stock_issue_links(sid)
+    # Reverse this Sale's own warehouse stock deduction, if any.
+    db.execute("DELETE FROM InventoryTransactions WHERE RefType='Sale' AND RefID=?", (sid,))
+    # If this is the reconciliation-created 'Unassigned' sale a Stock Issue still
+    # points at, unlink it first - StockIssues.SaleID has no ON DELETE CASCADE, so
+    # deleting the Sale while it's still referenced would fail the foreign key check.
+    db.execute("UPDATE StockIssues SET SaleID=NULL WHERE SaleID=?", (sid,))
+    delete_record_custom_data("Sale", sid)
+    db.execute("DELETE FROM SalesLines WHERE SaleID=?", (sid,))
+    db.execute("DELETE FROM Sales WHERE SaleID=?", (sid,))
+    flash(f"Sale {sale['InvoiceNumber']} deleted permanently, and its stock impact reversed.", "success")
+    return redirect(url_for("sales_list"))
 
 
 def create_sale(customer_id, sale_date, status, payment_status, payment_due_date, amount_received, notes,

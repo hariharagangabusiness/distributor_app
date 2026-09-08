@@ -15,6 +15,10 @@
   <a href="{{ url_for('sale_invoice_thermal', sid=sale.SaleID) }}" class="btn btn-outline-secondary" target="_blank"><i class="bi bi-receipt-cutoff"></i> 58mm Thermal Receipt</a>
   {% if current_user.Role == 'Admin' %}
   <a href="{{ url_for('sale_edit', sid=sale.SaleID) }}" class="btn btn-outline-secondary"><i class="bi bi-pencil"></i> Edit</a>
+  <form method="post" action="{{ url_for('sale_delete', sid=sale.SaleID) }}" class="d-inline"
+        onsubmit="return confirm('Permanently delete Sale {{ sale.InvoiceNumber }}? This reverses its stock impact (and any Stock Issue credit) and cannot be undone. Continue?');">
+    <button type="submit" class="btn btn-outline-danger"><i class="bi bi-trash"></i> Delete Sale</button>
+  </form>
   {% endif %}
 </div>
 <div class="card mb-3"><div class="card-body">
