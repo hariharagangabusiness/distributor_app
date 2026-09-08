@@ -96,13 +96,21 @@
   </table>
   </div>
 
+  {% if not is_reedit and credited_sales_money and (credited_sales_money.cash or credited_sales_money.bank) %}
+  <div class="alert alert-info">
+    <strong>₹{{ '%.2f'|format(credited_sales_money.cash) }} cash / ₹{{ '%.2f'|format(credited_sales_money.bank) }}
+    bank have already been recorded</strong> against the Sales-tab entries listed above and are pre-filled into
+    the Cash/Bank fields below — this total already covers that money, so only ADD any further cash/bank
+    collected beyond those Sales (don't re-enter the same amount again, or Collected will be double-counted).
+  </div>
+  {% endif %}
   <div class="money-row mb-3">
     <div class="money-field"><label class="form-label">Cash *</label>
       <input required type="number" step="0.01" name="cash_amount" id="cash_amount" class="form-control"
-             value="{{ issue.CashAmount if issue.CashAmount is not none else (issue.CashCollected or 0) }}"></div>
+             value="{{ issue.CashAmount if issue.CashAmount is not none and issue.CashAmount != 0 else (credited_sales_money.cash if not is_reedit and credited_sales_money else (issue.CashCollected or 0)) }}"></div>
     <div class="money-field"><label class="form-label">Bank *</label>
       <input required type="number" step="0.01" name="bank_amount" id="bank_amount" class="form-control"
-             value="{{ issue.BankAmount or 0 }}"></div>
+             value="{{ issue.BankAmount if issue.BankAmount is not none and issue.BankAmount != 0 else (credited_sales_money.bank if not is_reedit and credited_sales_money else 0) }}"></div>
     <div class="money-field"><label class="form-label">Total Collected (auto)</label>
       <input type="text" id="cash_collected_total" class="form-control" disabled value="0.00"></div>
     <div class="money-field"><label class="form-label">Expected Amount (auto)</label>

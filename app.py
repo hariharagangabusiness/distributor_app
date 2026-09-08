@@ -3192,9 +3192,22 @@ def stock_issue_reconcile(issue_id):
                                JOIN Sales s ON s.SaleID = ssl.SaleID
                                JOIN Products pr ON pr.ProductID = sil.ProductID
                                WHERE sil.IssueID=? ORDER BY s.SaleID""", (issue_id,))
+    # Cash/Bank already collected via those same credited Sales - pre-filled into the Cash/Bank
+    # fields below (on a FRESH reconciliation only) so whoever reconciles sees the running total
+    # instead of re-typing the whole day's collection from scratch and unknowingly double-
+    # counting money that's already recorded per-Sale (this is what the Live Sales Monitor's
+    # Collected figure used to double up on before this pre-fill existed).
+    credited_sales_money = db.query("""SELECT COALESCE(SUM(DISTINCT_SALE.CashAmount),0) cash,
+                                     COALESCE(SUM(DISTINCT_SALE.BankAmount),0) bank FROM (
+                                       SELECT DISTINCT s.SaleID, s.CashAmount, s.BankAmount
+                                       FROM SaleStockIssueLinks ssl
+                                       JOIN StockIssueLines sil ON sil.LineID = ssl.StockIssueLineID
+                                       JOIN Sales s ON s.SaleID = ssl.SaleID
+                                       WHERE sil.IssueID=?
+                                     ) DISTINCT_SALE""", (issue_id,), one=True)
     return render_template("stock_issue_reconcile.html", issue=issue, lines=lines, is_reedit=is_reedit,
                             money_locked=money_locked, target_progress=target_progress,
-                            credited_sales=credited_sales)
+                            credited_sales=credited_sales, credited_sales_money=credited_sales_money)
 
 
 @app.route("/stock-issues/<int:issue_id>/delete", methods=["POST"])
@@ -3416,6 +3429,23 @@ def sales_live_report():
                                   GROUP BY s.EmployeeID""", (date_str,))
     discount_by_emp = {r["EmployeeID"]: r["discount"] for r in discount_agg_rows}
 
+    # Cash/Bank already folded into a Reconciled Stock Issue's own CashAmount/BankAmount via
+    # the credited Sales that Reconcile's form is now pre-filled from (see
+    # stock_issue_reconcile()) - excluded below from the plain per-Sale sum so Collected isn't
+    # double-counted (once for the individual Sale, again for the reconciliation total that
+    # already includes it).
+    credited_reconciled_rows = db.query("""
+        SELECT EmployeeID, COALESCE(SUM(CashAmount),0) cash, COALESCE(SUM(BankAmount),0) bank FROM (
+          SELECT DISTINCT si.EmployeeID AS EmployeeID, s.SaleID AS SaleID,
+                 s.CashAmount AS CashAmount, s.BankAmount AS BankAmount
+          FROM SaleStockIssueLinks ssl
+          JOIN StockIssueLines sil ON sil.LineID = ssl.StockIssueLineID
+          JOIN StockIssues si ON si.IssueID = sil.IssueID
+          JOIN Sales s ON s.SaleID = ssl.SaleID
+          WHERE si.IssueDate=? AND si.Status='Reconciled'
+        ) t GROUP BY EmployeeID""", (date_str,))
+    credited_reconciled_by_emp = {r["EmployeeID"]: r for r in credited_reconciled_rows}
+
     top_products_rows = db.query("""SELECT s.EmployeeID, p.ProductName, SUM(sl.Qty) qty
                                   FROM Sales s JOIN SalesLines sl ON sl.SaleID = s.SaleID
                                   JOIN Products p ON p.ProductID = sl.ProductID
@@ -3435,7 +3465,16 @@ def sales_live_report():
         sales_cash = sa["cash"] if sa else 0
         sales_bank = sa["bank"] if sa else 0
         expected_live = round(la["expected_live"], 2) if la else 0
-        collected_live = round(sales_cash + sales_bank + recon_cash + recon_bank, 2)
+        if any(i["Status"] == "Reconciled" for i in emp_issues):
+            # Reconciled: the recon total already covers every credited Sale's cash/bank (it's
+            # pre-filled from exactly that sum) - only add whatever Sales money DIDN'T flow into
+            # this reconciliation (a walk-in sale on the same day with no Stock Issue credit, etc).
+            cr = credited_reconciled_by_emp.get(e["EmployeeID"])
+            unlinked_cash = max(sales_cash - (cr["cash"] if cr else 0), 0)
+            unlinked_bank = max(sales_bank - (cr["bank"] if cr else 0), 0)
+            collected_live = round(recon_cash + recon_bank + unlinked_cash + unlinked_bank, 2)
+        else:
+            collected_live = round(sales_cash + sales_bank, 2)
         if not emp_issues and not sa:
             issue_badge = "No activity"
         elif any(i["ReviewStatus"] == "Pending" for i in emp_issues):
