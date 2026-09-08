@@ -3079,6 +3079,14 @@ def stock_issue_reconcile(issue_id):
 
     if request.method == "POST":
         f = request.form
+        # How much of each line's Qty Sold was already billed on a real customer's own
+        # Sales-tab invoice (credited via SaleStockIssueLinks) - the auto-created "Unassigned"
+        # Sale below must only cover whatever's LEFT beyond that, or it re-invoices the same
+        # units a second time (double-counting Sales Today/Month, GST, and P&L revenue).
+        already_invoiced_by_line = {r["LineID"]: r["qty"] for r in db.query(
+            """SELECT sil.LineID, COALESCE(SUM(ssl.QtyApplied), 0) qty FROM StockIssueLines sil
+             LEFT JOIN SaleStockIssueLinks ssl ON ssl.StockIssueLineID = sil.LineID
+             WHERE sil.IssueID=? GROUP BY sil.LineID""", (issue_id,))}
         cash_amount = float(f.get("cash_amount") or 0)
         bank_amount = float(f.get("bank_amount") or 0)
         cash_collected = round(cash_amount + bank_amount, 2)
@@ -3117,7 +3125,10 @@ def stock_issue_reconcile(issue_id):
             scheme_amount += scheme_claim_amount
             if qty_sold > 0:
                 effective_rate = round(max((qty_sold * line["UnitPrice"]) - discount_amount, 0) / qty_sold, 4)
-                sale_lines.append((line["ProductID"], qty_sold, effective_rate))
+                already_invoiced = already_invoiced_by_line.get(line["LineID"], 0) or 0
+                auto_invoice_qty = round(max(qty_sold - already_invoiced, 0), 4)
+                if auto_invoice_qty > 0:
+                    sale_lines.append((line["ProductID"], auto_invoice_qty, effective_rate))
             if qty_returned > 0:
                 db.execute("""INSERT INTO InventoryTransactions (ProductID, TransactionDate, TransactionType,
                             QtyChange, RefType, RefID, Notes) VALUES (?,?,?,?,?,?,?)""",
