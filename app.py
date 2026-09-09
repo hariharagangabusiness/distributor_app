@@ -3163,6 +3163,23 @@ def true_product_qty_sold(employee_id, sale_date, product_id):
     return row["q"] or 0
 
 
+def true_product_discount_sold(employee_id, sale_date, product_id):
+    """The Discount-column equivalent of true_product_qty_sold(): the real total discount
+    given across every one of a salesperson's Sales for one product/date, computed directly
+    from SalesLines - independent of StockIssueLines.DiscountAmount, which only reflects
+    whatever was credited to that line plus whatever an Admin typed at reconcile time. A
+    Sale that fell through to a direct warehouse deduction (see true_product_qty_sold) still
+    has its own real discount recorded on its own invoice, which this counts but the Stock
+    Issue line's own DiscountAmount does not - by design, that's a different, separately-
+    invoiced sale, not a mistake. Used to pre-fill Reconcile's Discount Rs field so it isn't
+    left understating the true figure the way Qty Sold used to."""
+    row = db.query("""SELECT COALESCE(SUM(sl.DiscountAmount), 0) q FROM SalesLines sl
+                    JOIN Sales s ON s.SaleID = sl.SaleID
+                    WHERE s.EmployeeID=? AND s.SaleDate=? AND sl.ProductID=? AND s.Status<>'Cancelled'""",
+                   (employee_id, sale_date, product_id), one=True)
+    return row["q"] or 0
+
+
 def stock_issue_post_line(issue_id, product_id, qty, price, txn_date, txn_notes):
     """Issue (deduct stock for) qty of product_id against a Stock Issue, consolidated to one
     StockIssueLines row per product per issue rather than a separate row every time. If this
@@ -3491,12 +3508,21 @@ def stock_issue_reconcile(issue_id):
     # for why the stored figure can under-report on a fresh (not yet reconciled) issue whose
     # Qty Issued capacity was topped up in installments. Only done for a fresh reconciliation,
     # never a re-edit, so an Admin's own already-reconciled figures are never silently changed.
+    # Same idea, same reasoning, for Discount Rs: a Sale that fell through to a direct
+    # deduction still has its own real discount on its own invoice, which StockIssueLines.
+    # DiscountAmount doesn't include (it's not this line's own bookkeeping) but Live Sales
+    # Monitor's Discount column correctly adds back in - pre-filling here so both agree by
+    # default instead of only after someone notices the gap and manually retypes it.
     lines = [dict(l) for l in lines]
     for l in lines:
         l["TrueQtySold"] = true_product_qty_sold(issue["EmployeeID"], issue["IssueDate"], l["ProductID"])
         l["StoredQtySold"] = l["QtySold"] or 0
         if not is_reedit and l["TrueQtySold"] > l["StoredQtySold"] + 0.001:
             l["QtySold"] = l["TrueQtySold"]
+        l["TrueDiscount"] = true_product_discount_sold(issue["EmployeeID"], issue["IssueDate"], l["ProductID"])
+        l["StoredDiscount"] = l["DiscountAmount"] or 0
+        if not is_reedit and l["TrueDiscount"] > l["StoredDiscount"] + 0.001:
+            l["DiscountAmount"] = l["TrueDiscount"]
 
     y, m = int(issue["IssueDate"][:4]), int(issue["IssueDate"][5:7])
     target_progress = get_employee_month_target_progress(issue["EmployeeID"], y, m)
@@ -3747,20 +3773,6 @@ def sales_live_report():
                                   GROUP BY s.EmployeeID""", (date_str,))
     discount_by_emp = {r["EmployeeID"]: r["discount"] for r in discount_agg_rows}
 
-    # How much of each employee's Sales-tab discount (above) was actually credited onto a
-    # Stock Issue line (via SaleStockIssueLinks.DiscountApplied) - needed below to compute
-    # discount_live for a Reconciled issue without double-counting: once reconciled,
-    # StockIssueLines.DiscountAmount becomes the authoritative full-day figure (it also
-    # covers the auto-created "Unassigned" invoice's share, which has no EmployeeID and so
-    # is invisible to discount_by_emp above), so only the genuinely UNLINKED portion of
-    # discount_by_emp (never credited to any line at all) should be added on top of it.
-    credited_discount_rows = db.query("""
-        SELECT si.EmployeeID, COALESCE(SUM(ssl.DiscountApplied),0) discount FROM SaleStockIssueLinks ssl
-        JOIN StockIssueLines sil ON sil.LineID = ssl.StockIssueLineID
-        JOIN StockIssues si ON si.IssueID = sil.IssueID
-        WHERE si.IssueDate=? GROUP BY si.EmployeeID""", (date_str,))
-    credited_discount_by_emp = {r["EmployeeID"]: r["discount"] for r in credited_discount_rows}
-
     # Cash/Bank already folded into a Reconciled Stock Issue's own CashAmount/BankAmount via
     # the credited Sales that Reconcile's form is now pre-filled from (see
     # stock_issue_reconcile()) - excluded below from the plain per-Sale sum so Collected isn't
@@ -3805,18 +3817,21 @@ def sales_live_report():
             unlinked_cash = max(sales_cash - (cr["cash"] if cr else 0), 0)
             unlinked_bank = max(sales_bank - (cr["bank"] if cr else 0), 0)
             collected_live = round(recon_cash + recon_bank + unlinked_cash + unlinked_bank, 2)
-            # Same reasoning as Cash/Bank just above: once reconciled, StockIssueLines.
-            # DiscountAmount (la["discount_from_lines"]) is the authoritative full-day figure
-            # for this employee's issue(s) - it already includes both the directly-credited
-            # Sales-tab discount AND whatever was typed at reconcile for the auto-invoiced
-            # portion. Add back only Sales-tab discount that was NEVER credited to any line
-            # at all (e.g. a sale entered before any Stock Issue existed that day), or this
-            # would either double-count the credited portion or silently drop the uncredited
-            # one - discount_by_emp alone can't tell those apart, credited_discount_by_emp can.
+            # Once reconciled, StockIssueLines.DiscountAmount (la["discount_from_lines"]) is
+            # meant to be the authoritative full-day figure - Reconcile's GET handler now
+            # pre-fills it from true_product_discount_sold(), the same ground truth
+            # discount_by_emp is built from, so in the normal case they already agree and
+            # there's nothing to add. But an issue reconciled BEFORE that pre-fill existed
+            # can still have a stale, lower discount_from_lines than the true Sales-tab
+            # total (discount_by_emp) - e.g. a sale that fell to a direct warehouse
+            # deduction and was never folded in. Rather than trying to work out exactly how
+            # much of discount_by_emp is "new" (which double-counted once pre-filling
+            # started doing that same job - a sale's own discount would get added once via
+            # the line and again as "unlinked"), simply take whichever total is higher: an
+            # Admin-typed figure above the true total is deliberately kept, and a stale
+            # figure below it is bridged up to ground truth without double-adding anything.
             issue_discount = la["discount_from_lines"] if la else 0
-            cd = credited_discount_by_emp.get(e["EmployeeID"], 0)
-            unlinked_discount = max(discount_by_emp.get(e["EmployeeID"], 0) - cd, 0)
-            discount_live = round(issue_discount + unlinked_discount, 2)
+            discount_live = round(max(issue_discount, discount_by_emp.get(e["EmployeeID"], 0)), 2)
         else:
             collected_live = round(sales_cash + sales_bank, 2)
             discount_live = round(discount_by_emp.get(e["EmployeeID"], 0), 2)

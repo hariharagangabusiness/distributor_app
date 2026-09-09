@@ -80,6 +80,11 @@
         <td><input type="number" step="0.01" class="form-control qty-free-input" name="qty_free_{{ l.LineID }}" style="width:100px" value="{{ l.QtyFree or 0 }}"></td>
         <td><input type="number" step="0.01" class="form-control discount-input" name="discount_amount_{{ l.LineID }}" style="width:100px" value="{{ l.DiscountAmount or 0 }}">
           {% if l.SchemePercent %}<div class="small text-info scheme-hint"></div>{% endif %}
+          {% if l.TrueDiscount is defined and l.TrueDiscount > (l.StoredDiscount or 0) + 0.01 and not is_reedit %}
+          <div class="small text-warning">auto-corrected from {{ (l.StoredDiscount)|inr(2) }} to the true total discount given today ({{ (l.TrueDiscount)|inr(2) }}) — includes a sale that fell to a direct warehouse deduction and carries its own discount</div>
+          {% elif l.TrueDiscount is defined and l.TrueDiscount > (l.StoredDiscount or 0) + 0.01 %}
+          <div class="small text-warning">true total discount given today is {{ (l.TrueDiscount)|inr(2) }} — the value above may need updating (not auto-corrected since this issue is already reconciled)</div>
+          {% endif %}
         </td>
         <td><input type="number" step="0.01" class="form-control scheme-claim-input" name="scheme_claim_{{ l.LineID }}" style="width:100px" value="{{ l.SchemeClaimAmount or 0 }}"></td>
         <td><input type="text" class="form-control" name="comments_{{ l.LineID }}" style="width:160px" placeholder="scheme / reason" value="{{ l.LineComments or '' }}"></td>
