@@ -3358,13 +3358,21 @@ def stock_issue_reconcile(issue_id):
     if request.method == "POST":
         f = request.form
         # How much of each line's Qty Sold was already billed on a real customer's own
-        # Sales-tab invoice (credited via SaleStockIssueLinks) - the auto-created "Unassigned"
-        # Sale below must only cover whatever's LEFT beyond that, or it re-invoices the same
-        # units a second time (double-counting Sales Today/Month, GST, and P&L revenue).
-        already_invoiced_by_line = {r["LineID"]: r["qty"] for r in db.query(
-            """SELECT sil.LineID, COALESCE(SUM(ssl.QtyApplied), 0) qty FROM StockIssueLines sil
-             LEFT JOIN SaleStockIssueLinks ssl ON ssl.StockIssueLineID = sil.LineID
-             WHERE sil.IssueID=? GROUP BY sil.LineID""", (issue_id,))}
+        # Sales-tab invoice - the auto-created "Unassigned" Sale below must only cover
+        # whatever's LEFT beyond that, or it re-invoices the same units a second time
+        # (double-counting Sales Today/Month, GST, and P&L revenue). This used to only
+        # count quantity CREDITED to this line (via SaleStockIssueLinks), which was correct
+        # as long as Qty Sold above was pre-filled from that same credited figure - but
+        # since the Reconcile GET handler now pre-fills Qty Sold with the true ground-truth
+        # total (true_product_qty_sold(), which also includes units that fell through to a
+        # DIRECT warehouse deduction rather than being credited - see that function's
+        # docstring), "already invoiced" must cover those too, or they'd get invoiced a
+        # second time here. true_product_qty_sold() is exactly "how much of this product
+        # was already invoiced anywhere today for this salesperson", so it's used directly.
+        already_invoiced_by_line = {
+            l["LineID"]: true_product_qty_sold(issue["EmployeeID"], issue["IssueDate"], l["ProductID"])
+            for l in lines
+        }
         cash_amount = float(f.get("cash_amount") or 0)
         bank_amount = float(f.get("bank_amount") or 0)
         cash_collected = round(cash_amount + bank_amount, 2)
