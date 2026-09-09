@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Today's Discrepancy — Line-wise{% endblock %}
+{% block page_title %}Today's Discrepancy — Line-wise{% endblock %}
+{% block content %}
+<p class="text-muted">Every Stock Issue on this date with a nonzero Discrepancy, a pending Amount Due, or a line
+  whose stored Qty Sold looks lower than the true total actually sold (the multi-top-up pattern — see the Product
+  Qty Sold / Stock Issue Top-up History reports). If Amount Due looks lower than it should be, the "Gap" and "Est.
+  Rs Understated" columns below point at exactly which product line is under-counted and by how much.</p>
+
+<form class="d-flex gap-2 mb-3 flex-wrap align-items-end" method="get">
+  <div>
+    <label class="form-label mb-0 small">Date</label>
+    <input type="date" name="date" class="form-control" style="max-width:180px" value="{{ report_date }}" max="{{ today }}">
+  </div>
+  <button type="submit" class="btn btn-primary">Show</button>
+  {% if report_date != today %}
+  <a href="{{ url_for('todays_discrepancy_report') }}" class="btn btn-outline-secondary">Today Only</a>
+  {% endif %}
+</form>
+
+{% if total_understated > 0.01 %}
+<div class="alert alert-warning">Estimated total Rs understated across all issues on {{ report_date }} due to
+  under-counted Qty Sold: <strong>{{ (total_understated)|inr(2) }}</strong> (an upper-bound estimate — see the note
+  above about discount not being netted out).</div>
+{% endif %}
+
+{% if not issue_rows %}
+<div class="card"><div class="card-body text-center text-muted py-4">
+  No Stock Issues on {{ report_date }} have a Discrepancy, a pending Amount Due, or an under-counted line.
+</div></div>
+{% endif %}
+
+{% for ir in issue_rows %}
+<div class="card mb-3">
+  <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <div>
+      <a href="{{ url_for('stock_issue_view', issue_id=ir.issue.IssueID) }}"><strong>Issue #{{ ir.issue.IssueID }}</strong></a>
+      — {{ ir.issue.EmployeeName }} — {{ ir.issue.Status }}
+    </div>
+    <div class="small">
+      Expected: {{ (ir.issue.ExpectedAmount or 0)|inr(2) }} &nbsp;
+      Collected: {{ (ir.issue.CashCollected or 0)|inr(2) }} &nbsp;
+      Discrepancy: <span class="{% if (ir.issue.Discrepancy or 0) != 0 %}text-danger fw-bold{% endif %}">{{ (ir.issue.Discrepancy or 0)|inr(2) }}</span> &nbsp;
+      Amount Due: <span class="{% if (ir.issue.AmountDue or 0) > 0 %}text-danger fw-bold{% endif %}">{{ (ir.issue.AmountDue or 0)|inr(2) }}</span>
+      {% if ir.understated > 0.01 %} &nbsp; <span class="text-warning fw-bold">Est. understated: {{ (ir.understated)|inr(2) }}</span>{% endif %}
+    </div>
+  </div>
+  <div class="table-responsive">
+  <table class="table table-sm mb-0">
+    <thead><tr><th>Product</th><th>Qty Issued</th><th>Qty Sold (stored)</th><th>True Qty Sold</th><th>Gap</th><th>Unit Price</th><th>Est. Rs Understated</th></tr></thead>
+    <tbody>
+      {% for l in ir.lines %}
+      <tr class="{% if l.Gap > 0.01 %}table-warning{% endif %}">
+        <td>{{ l.ProductName }}</td>
+        <td>{{ l.QtyIssued }} {{ l.Unit }}</td>
+        <td>{{ l.StoredQtySold }} {{ l.Unit }}</td>
+        <td>{{ l.TrueQtySold }} {{ l.Unit }}</td>
+        <td>{% if l.Gap > 0.01 %}<span class="text-danger fw-bold">{{ l.Gap }}</span>{% else %}0{% endif %}</td>
+        <td>{{ (l.UnitPrice)|inr(2) }}</td>
+        <td>{% if l.GapAmount > 0.01 %}<span class="text-danger">{{ (l.GapAmount)|inr(2) }}</span>{% else %}—{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% if ir.understated > 0.01 %}
+  <div class="card-body py-2 small text-muted">
+    To correct: if this issue isn't reconciled yet, open <a href="{{ url_for('stock_issue_reconcile', issue_id=ir.issue.IssueID) }}">Reconcile</a> —
+    Qty Sold will auto-fill with the true total. If it's already reconciled, use "Edit Reconciliation" (Admin), or
+    run <code>fix_stock_issue_qty_sold_gap.py {{ ir.issue.IssueID }} &lt;ProductID&gt;</code> for a specific line
+    (it refuses on an already-reconciled issue and tells you to re-edit instead).
+  </div>
+  {% endif %}
+</div>
+{% endfor %}
+{% endblock %}

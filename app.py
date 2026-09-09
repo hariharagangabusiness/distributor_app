@@ -2332,6 +2332,58 @@ def stock_issue_topup_history_report():
                             running_total=running_total, all_issues=all_issues)
 
 
+@app.route("/reports/todays-discrepancy")
+@admin_required
+def todays_discrepancy_report():
+    """Admin-only: for a date (defaults to today), every Stock Issue with a nonzero
+    Discrepancy or a positive AmountDue, broken down line-by-line - each line's stored
+    QtySold vs. the ground-truth true total sold (see true_product_qty_sold()), so a
+    "total Amount Due shows less than what's actually owed" complaint can be traced to
+    its cause in one place: usually a line whose QtySold under-reports because its Qty
+    Issued capacity was topped up in several installments during the day (the same
+    pattern fixed for Issue #28/TATA Copper+), which under-states Expected Rs and
+    therefore Amount Due on that issue, even though the Discrepancy/Amount Due figures
+    themselves are computed correctly from whatever QtySold happens to be stored."""
+    report_date = request.args.get("date") or today_str()
+    issues = db.query("""SELECT si.*, e.EmployeeName FROM StockIssues si
+                       JOIN Employees e ON e.EmployeeID = si.EmployeeID
+                       WHERE si.IssueDate=? ORDER BY si.IssueID""", (report_date,))
+
+    issue_rows = []
+    total_understated = 0.0
+    for issue in issues:
+        lines = db.query("""SELECT sil.*, pr.ProductName, pr.Unit FROM StockIssueLines sil
+                          JOIN Products pr ON pr.ProductID = sil.ProductID WHERE sil.IssueID=?""",
+                         (issue["IssueID"],))
+        line_rows = []
+        issue_understated = 0.0
+        for l in lines:
+            stored = l["QtySold"] or 0
+            true_total = true_product_qty_sold(issue["EmployeeID"], issue["IssueDate"], l["ProductID"])
+            gap = round(true_total - stored, 2)
+            # Approximate Rs impact of the gap at this line's unit price - a straight
+            # multiply, not netting out discount (a line's Discount Rs is only ever
+            # recorded against whatever was credited, so the gap's own discount share
+            # is unknown; treat this as an upper-bound estimate, not an exact figure)
+            gap_amount = round(gap * (l["UnitPrice"] or 0), 2)
+            if gap > 0.01:
+                issue_understated += gap_amount
+            line_rows.append({
+                "ProductName": l["ProductName"], "Unit": l["Unit"], "QtyIssued": l["QtyIssued"],
+                "StoredQtySold": stored, "TrueQtySold": true_total, "Gap": gap,
+                "UnitPrice": l["UnitPrice"], "GapAmount": gap_amount,
+            })
+        issue_understated = round(issue_understated, 2)
+        total_understated += issue_understated
+        if (issue["Discrepancy"] or 0) != 0 or (issue["AmountDue"] or 0) > 0 or issue_understated > 0.01:
+            issue_rows.append({
+                "issue": issue, "lines": line_rows, "understated": issue_understated,
+            })
+    total_understated = round(total_understated, 2)
+    return render_template("todays_discrepancy_report.html", report_date=report_date, today=today_str(),
+                            issue_rows=issue_rows, total_understated=total_understated)
+
+
 def create_sale(customer_id, sale_date, status, payment_status, payment_due_date, amount_received, notes,
                  place_of_supply_code, lines, reverse_charge=False, invoice_no=None, sale_id=None,
                  post_inventory=True, employee_id=None, cash_amount=None, bank_amount=None,
