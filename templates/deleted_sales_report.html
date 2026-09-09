@@ -47,6 +47,7 @@
         <th>Line Items</th>
         <th>Total ₹</th>
         <th>Deleted By</th>
+        <th>Reason</th>
       </tr>
     </thead>
     <tbody>
@@ -60,9 +61,10 @@
         <td>{{ r.LineCount }}</td>
         <td>{{ (r.TotalAmount)|inr(2) }}</td>
         <td>{{ r.DeletedByUsername or '-' }}</td>
+        <td class="small">{{ r.Reason or '—' }}</td>
       </tr>
       {% else %}
-      <tr><td colspan="8" class="text-center text-muted py-4">No sales deleted in this date range.</td></tr>
+      <tr><td colspan="9" class="text-center text-muted py-4">No sales deleted in this date range.</td></tr>
       {% endfor %}
     </tbody>
     {% if rows %}
@@ -70,6 +72,7 @@
       <tr class="table-light fw-bold">
         <td colspan="6">Total</td>
         <td>{{ (totals.amount)|inr(2) }}</td>
+        <td></td>
         <td></td>
       </tr>
     </tfoot>

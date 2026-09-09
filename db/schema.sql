@@ -737,6 +737,7 @@ CREATE TABLE IF NOT EXISTS DeletedSalesLog (
     LineCount       INTEGER NOT NULL DEFAULT 0,
     DeletedByUserID   INTEGER,
     DeletedByUsername TEXT,
+    Reason          TEXT,                    -- why it was deleted, typed by whoever deleted it
     DeletedAt       TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

@@ -2118,19 +2118,27 @@ def sale_delete(sid):
         impact = sale_delete_impact(sid)
         return render_template("sale_delete_confirm.html", sale=sale, **impact)
 
+    # A reason is required - typed on the confirmation page - so the audit trail below
+    # answers not just what/who/when but why, without a separate follow-up question.
+    reason = (request.form.get("delete_reason") or "").strip()
+    if not reason:
+        flash("Enter a reason for deleting this sale before continuing.", "error")
+        impact = sale_delete_impact(sid)
+        return render_template("sale_delete_confirm.html", sale=sale, delete_reason="", **impact)
+
     # Snapshot what this Sale looked like before it's gone for good - the only trace left
     # once the DELETEs below run, and what the 'Deleted Sales' report reads from.
     current_user = get_current_user()
     line_count = db.query("SELECT COUNT(*) c FROM SalesLines WHERE SaleID=?", (sid,), one=True)["c"]
     db.execute("""INSERT INTO DeletedSalesLog (SaleID, InvoiceNumber, CustomerName, SaleDate, EmployeeName,
-                TotalAmount, LineCount, DeletedByUserID, DeletedByUsername)
-                VALUES (?,?,?,?,?,?,?,?,?)""",
+                TotalAmount, LineCount, DeletedByUserID, DeletedByUsername, Reason)
+                VALUES (?,?,?,?,?,?,?,?,?,?)""",
                (sid, sale["InvoiceNumber"], sale["CustomerName"], sale["SaleDate"],
                 db.query("SELECT EmployeeName FROM Employees WHERE EmployeeID=?",
                          (sale["EmployeeID"],), one=True)["EmployeeName"] if sale["EmployeeID"] else None,
                 sale["TotalAmount"] or 0, line_count,
                 current_user["UserID"] if current_user else None,
-                current_user["Username"] if current_user else None))
+                current_user["Username"] if current_user else None, reason))
 
     # Give back whatever this Sale credited toward a Stock Issue's Qty Sold,
     # and remove the link rows (mirrors the first step of an edit).

@@ -63,6 +63,13 @@
 
 <form method="post" action="{{ url_for('sale_delete', sid=sale.SaleID) }}"
       onsubmit="return confirm('Last check — permanently delete Sale {{ sale.InvoiceNumber }}? This cannot be undone.');">
+  <div class="mb-3">
+    <label class="form-label" for="delete_reason">Reason for deleting this sale <span class="text-danger">*</span></label>
+    <textarea class="form-control" id="delete_reason" name="delete_reason" rows="2" required
+      placeholder="e.g. duplicate invoice from a reconciliation double-billing bug">{{ delete_reason or '' }}</textarea>
+    <div class="form-text">Saved to the Deleted Sales log along with who deleted it and when — required so there's
+      always a record of why, not just what.</div>
+  </div>
   <button type="submit" class="btn btn-danger"><i class="bi bi-trash"></i> Yes, delete this sale</button>
   <a href="{{ url_for('sale_view', sid=sale.SaleID) }}" class="btn btn-outline-secondary">Cancel — go back</a>
 </form>
