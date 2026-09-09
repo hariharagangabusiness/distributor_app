@@ -3713,7 +3713,8 @@ def sales_live_report():
                               COALESCE(SUM(sil.QtyFree), 0) AS qty_free,
                               COALESCE(SUM(sil.QtyIssued - COALESCE(sil.QtySold,0) - COALESCE(sil.QtyReturned,0)
                                         - COALESCE(sil.QtyFree,0)), 0) AS unaccounted,
-                              COALESCE(SUM(sil.QtySold * sil.UnitPrice - COALESCE(sil.DiscountAmount,0)), 0) AS expected_live
+                              COALESCE(SUM(sil.QtySold * sil.UnitPrice - COALESCE(sil.DiscountAmount,0)), 0) AS expected_live,
+                              COALESCE(SUM(sil.DiscountAmount), 0) AS discount_from_lines
                               FROM StockIssueLines sil JOIN StockIssues si ON si.IssueID = sil.IssueID
                               WHERE si.IssueDate=? GROUP BY si.EmployeeID""", (date_str,))
     lines_by_emp = {r["EmployeeID"]: r for r in line_agg_rows}
@@ -3729,6 +3730,20 @@ def sales_live_report():
                                   WHERE s.SaleDate=? AND s.Status<>'Cancelled' AND s.EmployeeID IS NOT NULL
                                   GROUP BY s.EmployeeID""", (date_str,))
     discount_by_emp = {r["EmployeeID"]: r["discount"] for r in discount_agg_rows}
+
+    # How much of each employee's Sales-tab discount (above) was actually credited onto a
+    # Stock Issue line (via SaleStockIssueLinks.DiscountApplied) - needed below to compute
+    # discount_live for a Reconciled issue without double-counting: once reconciled,
+    # StockIssueLines.DiscountAmount becomes the authoritative full-day figure (it also
+    # covers the auto-created "Unassigned" invoice's share, which has no EmployeeID and so
+    # is invisible to discount_by_emp above), so only the genuinely UNLINKED portion of
+    # discount_by_emp (never credited to any line at all) should be added on top of it.
+    credited_discount_rows = db.query("""
+        SELECT si.EmployeeID, COALESCE(SUM(ssl.DiscountApplied),0) discount FROM SaleStockIssueLinks ssl
+        JOIN StockIssueLines sil ON sil.LineID = ssl.StockIssueLineID
+        JOIN StockIssues si ON si.IssueID = sil.IssueID
+        WHERE si.IssueDate=? GROUP BY si.EmployeeID""", (date_str,))
+    credited_discount_by_emp = {r["EmployeeID"]: r["discount"] for r in credited_discount_rows}
 
     # Cash/Bank already folded into a Reconciled Stock Issue's own CashAmount/BankAmount via
     # the credited Sales that Reconcile's form is now pre-filled from (see
@@ -3774,8 +3789,21 @@ def sales_live_report():
             unlinked_cash = max(sales_cash - (cr["cash"] if cr else 0), 0)
             unlinked_bank = max(sales_bank - (cr["bank"] if cr else 0), 0)
             collected_live = round(recon_cash + recon_bank + unlinked_cash + unlinked_bank, 2)
+            # Same reasoning as Cash/Bank just above: once reconciled, StockIssueLines.
+            # DiscountAmount (la["discount_from_lines"]) is the authoritative full-day figure
+            # for this employee's issue(s) - it already includes both the directly-credited
+            # Sales-tab discount AND whatever was typed at reconcile for the auto-invoiced
+            # portion. Add back only Sales-tab discount that was NEVER credited to any line
+            # at all (e.g. a sale entered before any Stock Issue existed that day), or this
+            # would either double-count the credited portion or silently drop the uncredited
+            # one - discount_by_emp alone can't tell those apart, credited_discount_by_emp can.
+            issue_discount = la["discount_from_lines"] if la else 0
+            cd = credited_discount_by_emp.get(e["EmployeeID"], 0)
+            unlinked_discount = max(discount_by_emp.get(e["EmployeeID"], 0) - cd, 0)
+            discount_live = round(issue_discount + unlinked_discount, 2)
         else:
             collected_live = round(sales_cash + sales_bank, 2)
+            discount_live = round(discount_by_emp.get(e["EmployeeID"], 0), 2)
         if not emp_issues and not sa:
             issue_badge = "No activity"
         elif any(i["ReviewStatus"] == "Pending" for i in emp_issues):
@@ -3799,7 +3827,7 @@ def sales_live_report():
             "sales_total": round(sa["total"], 2) if sa else 0,
             "sales_cash": round(sales_cash, 2),
             "sales_bank": round(sales_bank, 2),
-            "discount": round(discount_by_emp.get(e["EmployeeID"], 0), 2),
+            "discount": discount_live,
             "recon_cash": round(recon_cash, 2),
             "recon_bank": round(recon_bank, 2),
             "expected_live": expected_live,
