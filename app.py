@@ -1178,7 +1178,17 @@ MODULE_COLUMNS = {
     "Advance": [("employee", "Employee"), ("date", "Date"), ("amount", "Amount"), ("reason", "Reason"),
                 ("repay_months", "Repay (months)"), ("monthly_deduction", "Monthly Deduction"),
                 ("balance", "Balance"), ("status", "Status")],
+    "SalesLive": [("salesperson", "Salesperson"), ("status", "Status"), ("qty_issued", "Qty Issued"),
+                  ("qty_sold", "Qty Sold"), ("qty_returned", "Qty Returned"), ("qty_free", "Qty Free"),
+                  ("unaccounted", "Unaccounted"), ("sales_count", "Sales"), ("cash", "Cash ₹"),
+                  ("bank", "Bank ₹"), ("discount", "Discount ₹"), ("expected", "Expected ₹"),
+                  ("collected", "Collected ₹"), ("discrepancy", "Discrepancy ₹"), ("month_pace", "Month Pace"),
+                  ("top_products", "Top Products Today")],
 }
+
+# Display-only labels for the Customize Columns page, for modules that aren't part of the
+# custom-fields system (CUSTOM_FIELD_MODULE_LABELS) but still have customizable list columns.
+EXTRA_COLUMN_MODULE_LABELS = {"SalesLive": "Live Sales Monitor"}
 
 
 def get_effective_columns(module):
@@ -1224,7 +1234,8 @@ def columns_customize(module):
         flash("Column layout saved.", "success")
         return redirect(request.form.get("return_to") or url_for("dashboard"))
     return render_template("columns_customize.html", module=module, columns=columns,
-                            module_label=CUSTOM_FIELD_MODULE_LABELS.get(module, module))
+                            module_label=CUSTOM_FIELD_MODULE_LABELS.get(
+                                module, EXTRA_COLUMN_MODULE_LABELS.get(module, module)))
 
 
 # ---------------------------------------------------------------------
@@ -3553,7 +3564,8 @@ def sales_live_report():
     }
 
     return render_template("sales_live_report.html", date_str=date_str, today=today_str(),
-                            rows=rows, other_sales=other_sales, totals=totals)
+                            rows=rows, other_sales=other_sales, totals=totals,
+                            columns=get_effective_columns("SalesLive"))
 
 
 # ---------------------------------------------------------------------

@@ -16,6 +16,8 @@
   {% else %}
   <span class="badge text-bg-success"><i class="bi bi-broadcast"></i> Live — Today</span>
   {% endif %}
+  <a href="{{ url_for('columns_customize', module='SalesLive') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-layout-three-columns"></i> Customize Columns</a>
   <span class="text-muted small ms-auto" id="last-refreshed"></span>
 </div>
 
@@ -61,33 +63,33 @@
 
 <div class="card">
   <div class="table-responsive">
-  <table class="table table-hover mb-0 align-middle">
+  <table class="table table-hover mb-0 align-middle" id="sales-live-table">
     <thead>
       <tr>
-        <th>Salesperson</th>
-        <th>Status</th>
-        <th>Qty Issued</th>
-        <th>Qty Sold</th>
-        <th>Qty Returned</th>
-        <th>Qty Free</th>
-        <th>Unaccounted</th>
-        <th>Sales</th>
-        <th>Cash ₹</th>
-        <th>Bank ₹</th>
-        <th>Discount ₹</th>
-        <th>Expected ₹</th>
-        <th>Collected ₹</th>
-        <th>Discrepancy ₹</th>
-        <th>Month Pace</th>
-        <th>Top Products Today</th>
+        <th data-col="salesperson">Salesperson</th>
+        <th data-col="status">Status</th>
+        <th data-col="qty_issued">Qty Issued</th>
+        <th data-col="qty_sold">Qty Sold</th>
+        <th data-col="qty_returned">Qty Returned</th>
+        <th data-col="qty_free">Qty Free</th>
+        <th data-col="unaccounted">Unaccounted</th>
+        <th data-col="sales_count">Sales</th>
+        <th data-col="cash">Cash ₹</th>
+        <th data-col="bank">Bank ₹</th>
+        <th data-col="discount">Discount ₹</th>
+        <th data-col="expected">Expected ₹</th>
+        <th data-col="collected">Collected ₹</th>
+        <th data-col="discrepancy">Discrepancy ₹</th>
+        <th data-col="month_pace">Month Pace</th>
+        <th data-col="top_products">Top Products Today</th>
         <th></th>
       </tr>
     </thead>
     <tbody>
       {% for r in rows %}
       <tr class="{% if r.issue_badge == 'No activity' %}text-muted{% endif %}">
-        <td class="fw-bold">{{ r.employee.EmployeeName }}</td>
-        <td>
+        <td data-col="salesperson" class="fw-bold">{{ r.employee.EmployeeName }}</td>
+        <td data-col="status">
           <span class="badge
             {% if r.issue_badge == 'Reconciled' %}text-bg-success
             {% elif r.issue_badge == 'Pending Review' %}text-bg-danger
@@ -95,19 +97,19 @@
             {% elif r.issue_badge == 'Sales only (no Stock Issue)' %}text-bg-info
             {% else %}text-bg-secondary{% endif %}">{{ r.issue_badge }}</span>
         </td>
-        <td>{{ r.qty_issued|inrn(1) }}</td>
-        <td>{{ r.qty_sold|inrn(1) }}</td>
-        <td>{{ r.qty_returned|inrn(1) }}</td>
-        <td>{{ r.qty_free|inrn(1) }}</td>
-        <td class="{% if r.unaccounted != 0 %}text-danger fw-bold{% endif %}">{{ r.unaccounted|inrn(1) }}</td>
-        <td>{{ r.sales_count }}</td>
-        <td>{{ (r.sales_cash)|inr(2) }}</td>
-        <td>{{ (r.sales_bank)|inr(2) }}</td>
-        <td>{{ (r.discount)|inr(2) }}</td>
-        <td>{{ (r.expected_live)|inr(2) }}</td>
-        <td>{{ (r.collected_live)|inr(2) }}</td>
-        <td class="{% if r.discrepancy_live < 0 %}text-danger fw-bold{% elif r.discrepancy_live > 0 %}text-success{% endif %}">{{ (r.discrepancy_live)|inr(2) }}</td>
-        <td>
+        <td data-col="qty_issued">{{ r.qty_issued|inrn(1) }}</td>
+        <td data-col="qty_sold">{{ r.qty_sold|inrn(1) }}</td>
+        <td data-col="qty_returned">{{ r.qty_returned|inrn(1) }}</td>
+        <td data-col="qty_free">{{ r.qty_free|inrn(1) }}</td>
+        <td data-col="unaccounted" class="{% if r.unaccounted != 0 %}text-danger fw-bold{% endif %}">{{ r.unaccounted|inrn(1) }}</td>
+        <td data-col="sales_count">{{ r.sales_count }}</td>
+        <td data-col="cash">{{ (r.sales_cash)|inr(2) }}</td>
+        <td data-col="bank">{{ (r.sales_bank)|inr(2) }}</td>
+        <td data-col="discount">{{ (r.discount)|inr(2) }}</td>
+        <td data-col="expected">{{ (r.expected_live)|inr(2) }}</td>
+        <td data-col="collected">{{ (r.collected_live)|inr(2) }}</td>
+        <td data-col="discrepancy" class="{% if r.discrepancy_live < 0 %}text-danger fw-bold{% elif r.discrepancy_live > 0 %}text-success{% endif %}">{{ (r.discrepancy_live)|inr(2) }}</td>
+        <td data-col="month_pace">
           {% if r.target_progress %}
           <span class="badge {% if (r.target_progress.qty_pct_mtd or 0) >= 100 %}text-bg-success{% elif (r.target_progress.qty_pct_mtd or 0) >= 75 %}text-bg-warning{% else %}text-bg-danger{% endif %}"
                 title="Qty Sold MTD {{ r.target_progress.mtd.qty_sold|round(2) }} of {{ r.target_progress.prorated_qty|round(2) }} pace">
@@ -115,7 +117,7 @@
           </span>
           {% else %}<span class="text-muted small">no target</span>{% endif %}
         </td>
-        <td class="small text-muted">
+        <td data-col="top_products" class="small text-muted">
           {% for tp in r.top_products %}{{ tp.ProductName }} ({{ tp.qty|round(1) }}){% if not loop.last %}, {% endif %}{% endfor %}
         </td>
         <td class="text-end">
@@ -132,18 +134,23 @@
     {% if rows %}
     <tfoot>
       <tr class="table-light fw-bold">
-        <td colspan="2">Total</td>
-        <td>{{ totals.qty_issued|inrn(1) }}</td>
-        <td>{{ totals.qty_sold|inrn(1) }}</td>
-        <td></td><td></td>
-        <td class="{% if totals.unaccounted != 0 %}text-danger{% endif %}">{{ totals.unaccounted|inrn(1) }}</td>
-        <td>{{ totals.sales_count }}</td>
-        <td></td><td></td>
-        <td>{{ (totals.discount)|inr(2) }}</td>
-        <td>{{ (totals.expected)|inr(2) }}</td>
-        <td>{{ (totals.collected)|inr(2) }}</td>
-        <td class="{% if (totals.collected - totals.expected) < 0 %}text-danger{% endif %}">{{ (totals.collected - totals.expected)|inr(2) }}</td>
-        <td colspan="3"></td>
+        <td data-col="salesperson">Total</td>
+        <td data-col="status"></td>
+        <td data-col="qty_issued">{{ totals.qty_issued|inrn(1) }}</td>
+        <td data-col="qty_sold">{{ totals.qty_sold|inrn(1) }}</td>
+        <td data-col="qty_returned"></td>
+        <td data-col="qty_free"></td>
+        <td data-col="unaccounted" class="{% if totals.unaccounted != 0 %}text-danger{% endif %}">{{ totals.unaccounted|inrn(1) }}</td>
+        <td data-col="sales_count">{{ totals.sales_count }}</td>
+        <td data-col="cash"></td>
+        <td data-col="bank"></td>
+        <td data-col="discount">{{ (totals.discount)|inr(2) }}</td>
+        <td data-col="expected">{{ (totals.expected)|inr(2) }}</td>
+        <td data-col="collected">{{ (totals.collected)|inr(2) }}</td>
+        <td data-col="discrepancy" class="{% if (totals.collected - totals.expected) < 0 %}text-danger{% endif %}">{{ (totals.collected - totals.expected)|inr(2) }}</td>
+        <td data-col="month_pace"></td>
+        <td data-col="top_products"></td>
+        <td></td>
       </tr>
     </tfoot>
     {% endif %}
@@ -170,5 +177,8 @@ document.getElementById('last-refreshed').textContent = 'Last loaded: ' + new Da
 // Only auto-refresh while viewing today - a past date is a static snapshot.
 setTimeout(() => window.location.reload(), 60000);
 {% endif %}
+window.LIST_COLUMNS_TABLE_ID = 'sales-live-table';
+window.LIST_COLUMNS_PREFS = {{ columns|tojson }};
 </script>
+<script src="{{ url_for('static', filename='js/list-columns.js') }}"></script>
 {% endblock %}

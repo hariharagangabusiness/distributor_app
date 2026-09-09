@@ -373,6 +373,30 @@ body {
   .card-body { padding: 1rem; }
 }
 
+/* Wide data tables (Sales/Products/Live Sales Monitor, etc.) still need to scroll
+   horizontally on a phone once there are more columns than fit - but the row's
+   identifying first column (Salesperson/Product/Invoice #...) stays pinned in view
+   while the rest scrolls underneath it, so you never lose track of which row you're
+   looking at. Only kicks in inside .table-responsive, where the scrolling actually
+   happens; a table that already fits doesn't need it and isn't affected. */
+@media (max-width: 767.98px) {
+  .table-responsive table.table thead th:first-child,
+  .table-responsive table.table tbody td:first-child,
+  .table-responsive table.table tfoot td:first-child,
+  .table-responsive table.table tfoot th:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: var(--surface);
+    box-shadow: 2px 0 4px rgba(0,0,0,.08);
+  }
+  /* Tighten up rows so more columns are visible before scrolling is needed at all -
+     the Customize Columns option (where a list page offers one) is the other half of
+     this: hide columns you don't need day-to-day rather than just shrinking them. */
+  .table-responsive table.table { font-size: .82rem; }
+  .table-responsive table.table th, .table-responsive table.table td { padding: .45rem .55rem; }
+}
+
 /* Fixed-pixel-width fields (many list-page search/filter bars and table
    line-item forms set a comfortable default like style="width:260px") would
    otherwise overflow their row instead of shrinking as a desktop window is
