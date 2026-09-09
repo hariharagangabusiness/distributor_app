@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Stock Issue Top-up History{% endblock %}
+{% block page_title %}Stock Issue Top-up History{% endblock %}
+{% block content %}
+<p class="text-muted">For a Stock Issue + product, every time its Qty Issued capacity was topped up during the day
+  (a fresh "Issue" transaction), in order. More than one top-up is why a line's "Qty Sold" can read lower than the
+  true total sold - see the Product Qty Sold report for the full explanation.</p>
+
+<form class="d-flex gap-2 mb-3 flex-wrap align-items-end" method="get">
+  <div>
+    <label class="form-label mb-0 small">Stock Issue</label>
+    <select name="issue_id" class="form-select" style="max-width:320px">
+      <option value="">Select an Issue…</option>
+      {% for i in all_issues %}
+      <option value="{{ i.IssueID }}" {% if i.IssueID == issue_id %}selected{% endif %}>#{{ i.IssueID }} — {{ i.EmployeeName }} — {{ i.IssueDate }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label class="form-label mb-0 small">Product ID</label>
+    <input type="number" name="product_id" class="form-control" style="max-width:140px" value="{{ product_id or '' }}">
+  </div>
+  <button type="submit" class="btn btn-primary">Show</button>
+</form>
+
+{% if issue_id and product_id and not (issue and product) %}
+<div class="alert alert-warning">Issue or product not found.</div>
+{% endif %}
+
+{% if issue and product %}
+<div class="card mb-3"><div class="card-body">
+  <h5>Issue #{{ issue.IssueID }} — {{ issue.EmployeeName }} — {{ issue.IssueDate }}</h5>
+  <div class="text-muted small">Status={{ issue.Status }}, ReviewStatus={{ issue.ReviewStatus }}</div>
+  <div class="mt-1">{{ product.ProductName }} (ProductID={{ product_id }})</div>
+</div></div>
+
+<div class="card">
+  <div class="table-responsive">
+  <table class="table mb-0">
+    <thead><tr><th>Transaction</th><th>Date</th><th>Qty Added</th><th>Running Total</th><th>Notes</th></tr></thead>
+    <tbody>
+      {% set ns = namespace(running=0) %}
+      {% for t in topups %}
+      {% set ns.running = ns.running + t.Qty %}
+      <tr>
+        <td>{{ t.TransactionID }}</td>
+        <td>{{ t.TransactionDate }}</td>
+        <td>+{{ t.Qty }}</td>
+        <td>{{ ns.running }}</td>
+        <td class="text-muted small">{{ t.Notes or '' }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="text-center text-muted py-4">No top-up transactions found.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+
+<div class="mt-3">
+  <strong>{{ topups|length }}</strong> top-up(s) totaling <strong>{{ running_total }}</strong> —
+  current StockIssueLines.QtyIssued = <strong>{{ line.QtyIssued if line else 'N/A' }}</strong>
+</div>
+
+{% if topups|length > 1 %}
+<div class="alert alert-warning mt-2">This line's capacity was added to {{ topups|length }} separate times rather
+  than all at once. Any sale saved while the running credited total had already caught up to whatever was issued so
+  far falls through to a direct warehouse deduction instead, until the next top-up frees up room — this is almost
+  certainly why Qty Sold reads lower than the true total sold: the gap is real stock that left correctly, just not
+  through this line's own bookkeeping.</div>
+{% elif topups %}
+<div class="alert alert-secondary mt-2">Only one top-up found — capacity exhaustion from multiple top-ups is not
+  the explanation here.</div>
+{% endif %}
+{% endif %}
+{% endblock %}

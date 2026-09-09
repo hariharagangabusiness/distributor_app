@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Invoice Lookup{% endblock %}
+{% block page_title %}Invoice Lookup{% endblock %}
+{% block content %}
+<p class="text-muted">Look up a Sale by its invoice number - customer, salesperson, payment split, line items, and
+  any Stock Issue it's credited against.</p>
+
+<form class="d-flex gap-2 mb-3 flex-wrap" method="get">
+  <input type="text" name="invoice" class="form-control" style="max-width:320px" placeholder="e.g. HHG/2026-27/0067" value="{{ invoice_no }}">
+  <button type="submit" class="btn btn-primary">Look up</button>
+</form>
+
+{% if invoice_no and not sale %}
+<div class="alert alert-warning">No sale found with invoice number '{{ invoice_no }}'.</div>
+{% if similar %}
+<div class="card"><div class="card-body">
+  <div class="text-muted small mb-2">Similar invoice numbers found:</div>
+  <ul class="mb-0">
+    {% for s in similar %}
+    <li><a href="{{ url_for('invoice_lookup_report', invoice=s.InvoiceNumber) }}">{{ s.InvoiceNumber }}</a></li>
+    {% endfor %}
+  </ul>
+</div></div>
+{% endif %}
+{% endif %}
+
+{% if sale %}
+<div class="card mb-3"><div class="card-body">
+  <h5>{{ sale.InvoiceNumber }} <span class="badge bg-secondary">{{ sale.Status }}</span></h5>
+  <div class="row g-3 mt-1">
+    <div class="col-md-3"><div class="text-muted small">Date</div><div>{{ sale.SaleDate }}</div></div>
+    <div class="col-md-3"><div class="text-muted small">Customer</div><div>{{ sale.CustomerName }}{% if sale.CustomerPhone %} ({{ sale.CustomerPhone }}){% endif %}</div></div>
+    <div class="col-md-3"><div class="text-muted small">Salesperson</div><div>{{ sale.EmployeeName or '-' }}</div></div>
+    <div class="col-md-3"><div class="text-muted small">Payment Status</div><div>{{ sale.PaymentStatus }}</div></div>
+    <div class="col-md-3"><div class="text-muted small">Total Amount</div><div>{{ (sale.TotalAmount)|inr(2) }}</div></div>
+    <div class="col-md-3"><div class="text-muted small">Amount Received</div><div>{{ (sale.AmountReceived)|inr(2) }}</div></div>
+    <div class="col-md-3"><div class="text-muted small">Cash</div><div>{{ (sale.CashAmount)|inr(2) }}</div></div>
+    <div class="col-md-3"><div class="text-muted small">Bank</div><div>{{ (sale.BankAmount)|inr(2) }}</div></div>
+  </div>
+  {% if sale.Notes %}<div class="mt-2 text-muted small">Notes: {{ sale.Notes }}</div>{% endif %}
+  {% if linked_issues %}
+  <div class="mt-2 small">Credited against Stock Issue(s):
+    {% for li in linked_issues %}<a href="{{ url_for('stock_issue_view', issue_id=li.IssueID) }}">#{{ li.IssueID }}</a>{% if not loop.last %}, {% endif %}{% endfor %}
+  </div>
+  {% endif %}
+</div></div>
+
+<div class="card">
+  <div class="table-responsive">
+  <table class="table mb-0">
+    <thead><tr><th>Product</th><th>Qty</th><th>Rate</th><th>Discount</th><th>Line Total</th></tr></thead>
+    <tbody>
+      {% for l in lines %}
+      <tr>
+        <td>{{ l.ProductName }}</td>
+        <td>{{ l.Qty }} {{ l.Unit }}</td>
+        <td>{{ (l.UnitPrice)|inr(2) }}</td>
+        <td>{{ (l.DiscountAmount or 0)|inr(2) }}</td>
+        <td>{{ ((l.TaxableValue or 0) + (l.CGSTAmount or 0) + (l.SGSTAmount or 0) + (l.IGSTAmount or 0))|inr(2) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

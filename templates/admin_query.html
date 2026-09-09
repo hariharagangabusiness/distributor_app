@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Data Query{% endblock %}
+{% block page_title %}Data Query{% endblock %}
+{% block content %}
+<p class="text-muted">Run a read-only SELECT query straight against the database - the in-browser replacement for
+  writing a one-off script and running it via the terminal. Only SELECT is allowed (enforced both by checking the
+  query text and by running it against a connection that is read-only at the database level, so nothing here can
+  change your data). Results are capped at 500 rows.</p>
+
+<div class="card mb-3"><div class="card-body">
+  <form method="post">
+    <label class="form-label">SQL query</label>
+    <textarea name="sql" class="form-control font-monospace" rows="5" placeholder="SELECT * FROM Sales WHERE InvoiceNumber = 'HHG/2026-27/0067'">{{ sql_text }}</textarea>
+    <div class="d-flex justify-content-between align-items-center mt-2">
+      <div class="text-muted small">Table names: Sales, SalesLines, Customers, Employees, Products, StockIssues,
+        StockIssueLines, SaleStockIssueLinks, InventoryTransactions, DeletedSalesLog, Users, Purchases...</div>
+      <button type="submit" class="btn btn-primary">Run</button>
+    </div>
+  </form>
+</div></div>
+
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% endif %}
+
+{% if columns is not none %}
+<div class="card">
+  <div class="card-body pb-0">
+    <div class="text-muted small mb-2">{{ row_count }} row(s){% if row_count == 500 %} (capped at 500 - narrow your query with WHERE/LIMIT for more){% endif %}</div>
+  </div>
+  <div class="table-responsive">
+  <table class="table table-hover table-sm mb-0">
+    <thead><tr>{% for c in columns %}<th>{{ c }}</th>{% endfor %}</tr></thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>{% for v in r %}<td>{{ v if v is not none else '' }}</td>{% endfor %}</tr>
+      {% else %}
+      <tr><td colspan="{{ columns|length or 1 }}" class="text-center text-muted py-4">No rows returned.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

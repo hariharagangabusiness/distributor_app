@@ -2172,6 +2172,166 @@ def deleted_sales_report():
                             today=today, totals=totals)
 
 
+_SQL_QUERY_BLOCKLIST = re.compile(
+    r"\b(insert|update|delete|drop|alter|create|replace|attach|detach|pragma|vacuum|reindex)\b", re.IGNORECASE)
+
+
+@app.route("/admin/query", methods=["GET", "POST"])
+@admin_required
+def admin_query():
+    """Admin-only ad hoc data lookup, straight from the browser - so a question like
+    "what's in invoice X" or "how many of product Y sold today" can be answered here
+    instead of writing a one-off script and running it via `railway ssh` every time.
+
+    Only a single SELECT statement is allowed. This is enforced two ways: a keyword
+    blocklist rejects anything containing a write/DDL keyword before it's even run, and
+    the query itself executes against a connection opened read-only at the SQLite engine
+    level (file:...?mode=ro) - so even if the blocklist were somehow bypassed, the
+    database file cannot be modified through this page. Results are capped at 500 rows."""
+    sql_text = ""
+    columns = None
+    rows = None
+    error = None
+    row_count = None
+    if request.method == "POST":
+        sql_text = (request.form.get("sql") or "").strip()
+        stripped = sql_text.rstrip(";").strip()
+        if not stripped:
+            error = "Enter a query."
+        elif not re.match(r"(?is)^\s*select\b", stripped):
+            error = "Only SELECT queries are allowed."
+        elif ";" in stripped:
+            error = "Only a single statement is allowed (no semicolons inside the query)."
+        elif _SQL_QUERY_BLOCKLIST.search(stripped):
+            error = "Only read-only SELECT queries are allowed - that keyword isn't permitted."
+        else:
+            import sqlite3
+            try:
+                ro_conn = sqlite3.connect(f"file:{db.DB_PATH}?mode=ro", uri=True, timeout=5)
+                ro_conn.row_factory = sqlite3.Row
+                try:
+                    cur = ro_conn.execute(stripped)
+                    fetched = cur.fetchmany(500)
+                    columns = [d[0] for d in cur.description] if cur.description else []
+                    rows = [list(r) for r in fetched]
+                    row_count = len(rows)
+                finally:
+                    ro_conn.close()
+            except sqlite3.Error as e:
+                error = f"Query error: {e}"
+    return render_template("admin_query.html", sql_text=sql_text, columns=columns, rows=rows,
+                            error=error, row_count=row_count)
+
+
+@app.route("/reports/invoice-lookup")
+@admin_required
+def invoice_lookup_report():
+    """Admin-only: look up one Sale by its InvoiceNumber and show full details -
+    customer, salesperson, payment split, line items, and any Stock Issue it's
+    credited against. The in-browser equivalent of lookup_invoice.py."""
+    invoice_no = (request.args.get("invoice") or "").strip()
+    sale = None
+    lines = None
+    linked_issues = None
+    similar = None
+    if invoice_no:
+        sale = db.query("""SELECT s.*, c.CustomerName, c.Phone AS CustomerPhone, e.EmployeeName
+                         FROM Sales s JOIN Customers c ON c.CustomerID = s.CustomerID
+                         LEFT JOIN Employees e ON e.EmployeeID = s.EmployeeID
+                         WHERE s.InvoiceNumber = ?""", (invoice_no,), one=True)
+        if sale:
+            lines = db.query("""SELECT sl.*, pr.ProductName, pr.Unit FROM SalesLines sl
+                              JOIN Products pr ON pr.ProductID = sl.ProductID WHERE sl.SaleID=?""",
+                             (sale["SaleID"],))
+            linked_issues = db.query("""SELECT DISTINCT sil.IssueID FROM SaleStockIssueLinks ssl
+                                      JOIN StockIssueLines sil ON sil.LineID = ssl.StockIssueLineID
+                                      WHERE ssl.SaleID=?""", (sale["SaleID"],))
+        else:
+            similar = db.query("SELECT InvoiceNumber FROM Sales WHERE InvoiceNumber LIKE ? ORDER BY InvoiceNumber",
+                               (f"%{invoice_no[-8:]}%",)) if len(invoice_no) >= 4 else []
+    return render_template("invoice_lookup_report.html", invoice_no=invoice_no, sale=sale, lines=lines,
+                            linked_issues=linked_issues, similar=similar)
+
+
+@app.route("/reports/product-qty-sold")
+@admin_required
+def product_qty_sold_report():
+    """Admin-only: for a product/date, shows every customer who bought it (ground truth
+    from SalesLines) plus, if any Stock Issue lines exist for it that day, whether their
+    stored QtySold matches - flagging the under-reporting pattern this page was built to
+    replace terminal scripts for (see true_product_qty_sold() and
+    diagnose_stock_issue_topup_history.py)."""
+    today = today_str()
+    product_name = (request.args.get("product") or "").strip()
+    report_date = request.args.get("date") or today
+    product = None
+    candidates = None
+    sale_rows = None
+    stock_issue_lines = None
+    true_total = None
+    if product_name:
+        product = db.query("SELECT ProductID, ProductName, Unit FROM Products WHERE ProductName=?",
+                           (product_name,), one=True)
+        if not product:
+            candidates = db.query("SELECT ProductID, ProductName FROM Products WHERE ProductName LIKE ? LIMIT 20",
+                                  (f"%{product_name}%",))
+        else:
+            sale_rows = db.query("""SELECT c.CustomerName, s.InvoiceNumber, s.SaleID, e.EmployeeName, sl.Qty,
+                                  (sl.TaxableValue + sl.CGSTAmount + sl.SGSTAmount + sl.IGSTAmount) AS LineTotal
+                                  FROM SalesLines sl JOIN Sales s ON s.SaleID = sl.SaleID
+                                  JOIN Customers c ON c.CustomerID = s.CustomerID
+                                  LEFT JOIN Employees e ON e.EmployeeID = s.EmployeeID
+                                  WHERE sl.ProductID=? AND s.SaleDate=? AND s.Status<>'Cancelled'
+                                  ORDER BY c.CustomerName""", (product["ProductID"], report_date))
+            true_total = round(sum(r["Qty"] or 0 for r in sale_rows), 2)
+            stock_issue_lines = db.query("""
+                SELECT sil.LineID, sil.IssueID, sil.QtyIssued, sil.QtySold, si.Status, e.EmployeeName
+                FROM StockIssueLines sil JOIN StockIssues si ON si.IssueID = sil.IssueID
+                JOIN Employees e ON e.EmployeeID = si.EmployeeID
+                WHERE sil.ProductID=? AND si.IssueDate=? ORDER BY si.IssueID""",
+                (product["ProductID"], report_date))
+    return render_template("product_qty_sold_report.html", product_name=product_name, report_date=report_date,
+                            today=today, product=product, candidates=candidates, sale_rows=sale_rows,
+                            stock_issue_lines=stock_issue_lines, true_total=true_total)
+
+
+@app.route("/reports/stock-issue-topup-history")
+@admin_required
+def stock_issue_topup_history_report():
+    """Admin-only: for a Stock Issue + product, lists every 'Issue' InventoryTransactions
+    top-up posted against that line, in order, so you can see whether it was issued in one
+    lump sum or several installments (the in-browser equivalent of
+    diagnose_stock_issue_topup_history.py)."""
+    issue_id = request.args.get("issue_id", type=int)
+    product_id = request.args.get("product_id", type=int)
+    issue = None
+    product = None
+    topups = None
+    line = None
+    running_total = None
+    if issue_id and product_id:
+        issue = db.query("""SELECT si.*, e.EmployeeName FROM StockIssues si
+                          JOIN Employees e ON e.EmployeeID = si.EmployeeID WHERE si.IssueID=?""",
+                         (issue_id,), one=True)
+        product = db.query("SELECT ProductName, Unit FROM Products WHERE ProductID=?", (product_id,), one=True)
+        if issue and product:
+            topups = db.query("""SELECT TransactionID, -QtyChange AS Qty, Notes, TransactionDate
+                               FROM InventoryTransactions
+                               WHERE RefType='StockIssue' AND RefID=? AND ProductID=? AND TransactionType='Issue'
+                               ORDER BY TransactionID""", (issue_id, product_id))
+            running = 0
+            for t in topups:
+                running += t["Qty"]
+            running_total = running
+            line = db.query("SELECT * FROM StockIssueLines WHERE IssueID=? AND ProductID=?",
+                            (issue_id, product_id), one=True)
+    all_issues = db.query("""SELECT si.IssueID, si.IssueDate, e.EmployeeName FROM StockIssues si
+                           JOIN Employees e ON e.EmployeeID = si.EmployeeID ORDER BY si.IssueID DESC LIMIT 200""")
+    return render_template("stock_issue_topup_report.html", issue_id=issue_id, product_id=product_id,
+                            issue=issue, product=product, topups=topups, line=line,
+                            running_total=running_total, all_issues=all_issues)
+
+
 def create_sale(customer_id, sale_date, status, payment_status, payment_due_date, amount_received, notes,
                  place_of_supply_code, lines, reverse_charge=False, invoice_no=None, sale_id=None,
                  post_inventory=True, employee_id=None, cash_amount=None, bank_amount=None,

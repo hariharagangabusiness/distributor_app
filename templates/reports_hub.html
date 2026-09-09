@@ -194,6 +194,46 @@
       </div>
     </div></div>
   </div>
+
+  <div class="col-md-6 col-lg-4">
+    <div class="card h-100 report-card rc-invoicelookup"><div class="card-body">
+      <h6 class="card-title"><i class="bi bi-receipt"></i> Invoice Lookup</h6>
+      <div class="text-muted small mb-2">Look up any invoice by number — customer, salesperson, line items, payment split.</div>
+      <div class="d-flex gap-2 mt-2">
+        <a href="{{ url_for('invoice_lookup_report') }}" class="btn btn-sm btn-outline-secondary ms-auto">Open →</a>
+      </div>
+    </div></div>
+  </div>
+
+  <div class="col-md-6 col-lg-4">
+    <div class="card h-100 report-card rc-productqty"><div class="card-body">
+      <h6 class="card-title"><i class="bi bi-box-seam"></i> Product Qty Sold</h6>
+      <div class="text-muted small mb-2">True total sold for a product/date, and whether any Stock Issue's Qty Sold looks under-reported.</div>
+      <div class="d-flex gap-2 mt-2">
+        <a href="{{ url_for('product_qty_sold_report') }}" class="btn btn-sm btn-outline-secondary ms-auto">Open →</a>
+      </div>
+    </div></div>
+  </div>
+
+  <div class="col-md-6 col-lg-4">
+    <div class="card h-100 report-card rc-topuphistory"><div class="card-body">
+      <h6 class="card-title"><i class="bi bi-clock-history"></i> Stock Issue Top-up History</h6>
+      <div class="text-muted small mb-2">See every incremental top-up posted against a Stock Issue line, in order.</div>
+      <div class="d-flex gap-2 mt-2">
+        <a href="{{ url_for('stock_issue_topup_history_report') }}" class="btn btn-sm btn-outline-secondary ms-auto">Open →</a>
+      </div>
+    </div></div>
+  </div>
+
+  <div class="col-md-6 col-lg-4">
+    <div class="card h-100 report-card rc-dataquery"><div class="card-body">
+      <h6 class="card-title"><i class="bi bi-terminal"></i> Data Query</h6>
+      <div class="text-muted small mb-2">Run any read-only SELECT query against the database, right in the browser.</div>
+      <div class="d-flex gap-2 mt-2">
+        <a href="{{ url_for('admin_query') }}" class="btn btn-sm btn-outline-secondary ms-auto">Open →</a>
+      </div>
+    </div></div>
+  </div>
   {% endif %}
 
   <div class="col-md-6 col-lg-4">

@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Product Qty Sold{% endblock %}
+{% block page_title %}Product Qty Sold{% endblock %}
+{% block content %}
+<p class="text-muted">For a product and date, every customer who bought it (ground truth from the Sales tab), plus
+  any Stock Issue lines that day so a mismatch between "Qty Sold" on a Stock Issue and the real total can be spotted
+  without a terminal script.</p>
+
+<form class="d-flex gap-2 mb-3 flex-wrap" method="get">
+  <input type="text" name="product" class="form-control" style="max-width:320px" placeholder="Product name" value="{{ product_name }}">
+  <input type="date" name="date" class="form-control" style="max-width:180px" value="{{ report_date }}" max="{{ today }}">
+  <button type="submit" class="btn btn-primary">Search</button>
+</form>
+
+{% if candidates is not none %}
+<div class="alert alert-warning">No exact match for '{{ product_name }}'.
+  {% if candidates %}Did you mean:
+  <ul class="mb-0 mt-2">
+    {% for c in candidates %}<li><a href="{{ url_for('product_qty_sold_report', product=c.ProductName, date=report_date) }}">{{ c.ProductName }}</a></li>{% endfor %}
+  </ul>
+  {% else %}No similar product names found either.{% endif %}
+</div>
+{% endif %}
+
+{% if product %}
+<div class="card mb-3"><div class="card-body">
+  <h5>{{ product.ProductName }}</h5>
+  <div class="text-muted small">{{ report_date }}</div>
+  <div class="fs-4 fw-bold mt-2">{{ true_total }} {{ product.Unit or '' }} <span class="fs-6 text-muted fw-normal">sold across {{ sale_rows|length }} invoice(s)</span></div>
+</div></div>
+
+{% if stock_issue_lines %}
+<div class="card mb-3"><div class="card-body">
+  <h6>Stock Issue lines for this product/date</h6>
+  <table class="table table-sm mb-0">
+    <thead><tr><th>Issue</th><th>Salesperson</th><th>Status</th><th>Qty Issued</th><th>Qty Sold (stored)</th><th></th></tr></thead>
+    <tbody>
+      {% for l in stock_issue_lines %}
+      <tr class="{% if (l.QtySold or 0) + 0.01 < true_total %}table-warning{% endif %}">
+        <td><a href="{{ url_for('stock_issue_view', issue_id=l.IssueID) }}">#{{ l.IssueID }}</a></td>
+        <td>{{ l.EmployeeName }}</td>
+        <td>{{ l.Status }}</td>
+        <td>{{ l.QtyIssued }}</td>
+        <td>{{ l.QtySold or 0 }}</td>
+        <td>
+          {% if (l.QtySold or 0) + 0.01 < true_total %}
+          <span class="text-danger small">under-reports true total by {{ (true_total - (l.QtySold or 0))|round(2) }} &mdash;
+          <a href="{{ url_for('stock_issue_topup_history_report', issue_id=l.IssueID, product_id=product.ProductID) }}">check top-up history</a></span>
+          {% else %}
+          <span class="text-success small">matches</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div></div>
+{% endif %}
+
+<div class="card">
+  <div class="table-responsive">
+  <table class="table mb-0">
+    <thead><tr><th>Customer</th><th>Invoice</th><th>Salesperson</th><th>Qty</th><th>Value</th></tr></thead>
+    <tbody>
+      {% for r in sale_rows %}
+      <tr>
+        <td>{{ r.CustomerName }}</td>
+        <td><a href="{{ url_for('invoice_lookup_report', invoice=r.InvoiceNumber) }}">{{ r.InvoiceNumber }}</a></td>
+        <td>{{ r.EmployeeName or '-' }}</td>
+        <td>{{ r.Qty }}</td>
+        <td>{{ (r.LineTotal)|inr(2) }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="text-center text-muted py-4">No sales of this product on this date.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
