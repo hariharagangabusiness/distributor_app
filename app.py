@@ -2926,6 +2926,23 @@ def stock_issues_list():
     return render_template("stock_issues_list.html", issues=issues, totals=totals)
 
 
+def true_product_qty_sold(employee_id, sale_date, product_id):
+    """Ground-truth total quantity of a product sold by an employee on a date, computed
+    directly from SalesLines/Sales - independent of StockIssueLines.QtySold. QtySold only
+    accumulates through create_sale() crediting a Stock Issue line, which under-reports
+    whenever that line's Qty Issued capacity was topped up in multiple installments during
+    the day: any Sales-tab entry saved while the line's running credited total had already
+    caught up to whatever was issued so far falls through to a direct warehouse deduction
+    instead, and never gets added to QtySold even though the stock genuinely left. This
+    function always reflects the real total regardless of that timing (see
+    diagnose_stock_issue_topup_history.py for the diagnostic that uncovered this)."""
+    row = db.query("""SELECT COALESCE(SUM(sl.Qty), 0) q FROM SalesLines sl
+                    JOIN Sales s ON s.SaleID = sl.SaleID
+                    WHERE s.EmployeeID=? AND s.SaleDate=? AND sl.ProductID=? AND s.Status<>'Cancelled'""",
+                   (employee_id, sale_date, product_id), one=True)
+    return row["q"] or 0
+
+
 def stock_issue_post_line(issue_id, product_id, qty, price, txn_date, txn_notes):
     """Issue (deduct stock for) qty of product_id against a Stock Issue, consolidated to one
     StockIssueLines row per product per issue rather than a separate row every time. If this
@@ -3240,6 +3257,18 @@ def stock_issue_reconcile(issue_id):
             msg += "."
             flash(msg, "success")
         return redirect(url_for("stock_issue_view", issue_id=issue_id))
+
+    # Pre-fill each line's Qty Sold with the ground-truth total (SalesLines-based) whenever
+    # it's higher than what's stored on StockIssueLines.QtySold - see true_product_qty_sold()
+    # for why the stored figure can under-report on a fresh (not yet reconciled) issue whose
+    # Qty Issued capacity was topped up in installments. Only done for a fresh reconciliation,
+    # never a re-edit, so an Admin's own already-reconciled figures are never silently changed.
+    lines = [dict(l) for l in lines]
+    for l in lines:
+        l["TrueQtySold"] = true_product_qty_sold(issue["EmployeeID"], issue["IssueDate"], l["ProductID"])
+        l["StoredQtySold"] = l["QtySold"] or 0
+        if not is_reedit and l["TrueQtySold"] > l["StoredQtySold"] + 0.001:
+            l["QtySold"] = l["TrueQtySold"]
 
     y, m = int(issue["IssueDate"][:4]), int(issue["IssueDate"][5:7])
     target_progress = get_employee_month_target_progress(issue["EmployeeID"], y, m)

@@ -67,7 +67,15 @@
         <td>{{ l.ProductName }}</td>
         <td>{{ l.QtyIssued }} {{ l.Unit }}</td>
         <td>{{ (l.UnitPrice)|inr(2) }}</td>
-        <td><input type="number" step="0.01" class="form-control qty-sold-input" name="qty_sold_{{ l.LineID }}" style="width:100px" value="{{ l.QtySold or 0 }}" required></td>
+        <td><input type="number" step="0.01" class="form-control qty-sold-input" name="qty_sold_{{ l.LineID }}" style="width:100px" value="{{ l.QtySold or 0 }}" required>
+          {% if l.TrueQtySold is defined and l.TrueQtySold > (l.StoredQtySold or 0) + 0.01 and not is_reedit %}
+          <div class="small text-warning">auto-corrected from {{ l.StoredQtySold|round(2) }} to the true total sold today ({{ l.TrueQtySold|round(2) }} {{ l.Unit }}) — some sales fell to a direct warehouse deduction when this line's capacity ran out mid-day; the figure above already includes it</div>
+          {% elif l.TrueQtySold is defined and l.TrueQtySold > (l.StoredQtySold or 0) + 0.01 %}
+          <div class="small text-warning">true total sold today is {{ l.TrueQtySold|round(2) }} {{ l.Unit }} — the value above may need updating (not auto-corrected since this issue is already reconciled)</div>
+          {% elif l.TrueQtySold is defined %}
+          <div class="small text-muted">matches actual sales total ({{ l.TrueQtySold|round(2) }} {{ l.Unit }})</div>
+          {% endif %}
+        </td>
         <td><input type="number" step="0.01" class="form-control qty-returned-input" name="qty_returned_{{ l.LineID }}" style="width:100px" value="{{ l.QtyReturned or 0 }}" required></td>
         <td><input type="number" step="0.01" class="form-control qty-free-input" name="qty_free_{{ l.LineID }}" style="width:100px" value="{{ l.QtyFree or 0 }}"></td>
         <td><input type="number" step="0.01" class="form-control discount-input" name="discount_amount_{{ l.LineID }}" style="width:100px" value="{{ l.DiscountAmount or 0 }}">
