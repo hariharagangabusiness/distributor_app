@@ -184,6 +184,16 @@
       </div>
     </div></div>
   </div>
+
+  <div class="col-md-6 col-lg-4">
+    <div class="card h-100 report-card rc-deletedsales"><div class="card-body">
+      <h6 class="card-title"><i class="bi bi-trash"></i> Deleted Sales</h6>
+      <div class="text-muted small mb-2">See what Sales were permanently deleted, when, and by whom.</div>
+      <div class="d-flex gap-2 mt-2">
+        <a href="{{ url_for('deleted_sales_report') }}" class="btn btn-sm btn-outline-secondary ms-auto">Open →</a>
+      </div>
+    </div></div>
+  </div>
   {% endif %}
 
   <div class="col-md-6 col-lg-4">

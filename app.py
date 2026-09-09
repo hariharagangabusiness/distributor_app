@@ -2118,6 +2118,20 @@ def sale_delete(sid):
         impact = sale_delete_impact(sid)
         return render_template("sale_delete_confirm.html", sale=sale, **impact)
 
+    # Snapshot what this Sale looked like before it's gone for good - the only trace left
+    # once the DELETEs below run, and what the 'Deleted Sales' report reads from.
+    current_user = get_current_user()
+    line_count = db.query("SELECT COUNT(*) c FROM SalesLines WHERE SaleID=?", (sid,), one=True)["c"]
+    db.execute("""INSERT INTO DeletedSalesLog (SaleID, InvoiceNumber, CustomerName, SaleDate, EmployeeName,
+                TotalAmount, LineCount, DeletedByUserID, DeletedByUsername)
+                VALUES (?,?,?,?,?,?,?,?,?)""",
+               (sid, sale["InvoiceNumber"], sale["CustomerName"], sale["SaleDate"],
+                db.query("SELECT EmployeeName FROM Employees WHERE EmployeeID=?",
+                         (sale["EmployeeID"],), one=True)["EmployeeName"] if sale["EmployeeID"] else None,
+                sale["TotalAmount"] or 0, line_count,
+                current_user["UserID"] if current_user else None,
+                current_user["Username"] if current_user else None))
+
     # Give back whatever this Sale credited toward a Stock Issue's Qty Sold,
     # and remove the link rows (mirrors the first step of an edit).
     reverse_sale_stock_issue_links(sid)
@@ -2132,6 +2146,30 @@ def sale_delete(sid):
     db.execute("DELETE FROM Sales WHERE SaleID=?", (sid,))
     flash(f"Sale {sale['InvoiceNumber']} deleted permanently, and its stock impact reversed.", "success")
     return redirect(url_for("sales_list"))
+
+
+@app.route("/reports/deleted-sales")
+@admin_required
+def deleted_sales_report():
+    """Admin-only report of every Sale permanently removed via sale_delete(),
+    read from DeletedSalesLog - the snapshot taken right before each
+    deletion, since the Sale itself no longer exists afterward. Defaults
+    to today; date_from/date_to (both inclusive, compared against
+    DeletedAt) narrow the range. Deletions from before DeletedSalesLog
+    existed simply aren't in here - there was nowhere for that data to
+    have been kept."""
+    today = today_str()
+    date_from = request.args.get("date_from") or today
+    date_to = request.args.get("date_to") or today
+    rows = db.query("""SELECT * FROM DeletedSalesLog
+                     WHERE date(DeletedAt) BETWEEN ? AND ?
+                     ORDER BY DeletedAt DESC""", (date_from, date_to))
+    totals = {
+        "count": len(rows),
+        "amount": round(sum(r["TotalAmount"] or 0 for r in rows), 2),
+    }
+    return render_template("deleted_sales_report.html", rows=rows, date_from=date_from, date_to=date_to,
+                            today=today, totals=totals)
 
 
 def create_sale(customer_id, sale_date, status, payment_status, payment_due_date, amount_received, notes,

@@ -722,6 +722,24 @@ CREATE TABLE IF NOT EXISTS TargetIncentiveBuckets (
     FOREIGN KEY (TargetID) REFERENCES Targets(TargetID) ON DELETE CASCADE
 );
 
+-- A snapshot taken right before an Admin permanently deletes a Sale (sale_delete()) - the
+-- Sale/SalesLines rows themselves are gone after that, so this is the only record left of
+-- what existed, who deleted it, and when. Deliberately NOT a foreign key to Sales (the whole
+-- point is this row outlives the Sale it describes).
+CREATE TABLE IF NOT EXISTS DeletedSalesLog (
+    LogID           INTEGER PRIMARY KEY AUTOINCREMENT,
+    SaleID          INTEGER NOT NULL,        -- the deleted Sale's original ID, for reference only
+    InvoiceNumber   TEXT NOT NULL,
+    CustomerName    TEXT,
+    SaleDate        TEXT,
+    EmployeeName    TEXT,                    -- salesperson on the sale, if any
+    TotalAmount     REAL NOT NULL DEFAULT 0,
+    LineCount       INTEGER NOT NULL DEFAULT 0,
+    DeletedByUserID   INTEGER,
+    DeletedByUsername TEXT,
+    DeletedAt       TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- =====================================================================
 -- Indexes
 -- =====================================================================
@@ -736,3 +754,4 @@ CREATE INDEX IF NOT EXISTS idx_stockissueduepayments_issue ON StockIssueDuePayme
 CREATE INDEX IF NOT EXISTS idx_advance_emp ON AdvancePayments(EmployeeID);
 CREATE INDEX IF NOT EXISTS idx_targets_emp_month ON Targets(EmployeeID, TargetYear, TargetMonth);
 CREATE INDEX IF NOT EXISTS idx_target_incentive_buckets_target ON TargetIncentiveBuckets(TargetID);
+CREATE INDEX IF NOT EXISTS idx_deletedsaleslog_deletedat ON DeletedSalesLog(DeletedAt);
