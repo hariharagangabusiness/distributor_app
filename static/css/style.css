@@ -420,3 +420,34 @@ input[style*="width"], select[style*="width"] {
   flex-wrap: wrap;
   row-gap: .5rem;
 }
+
+/* Resizable table columns (see static/js/column-resize.js): a thin
+   draggable handle on the right edge of each sortable <th>, positioned
+   with the header itself and drawn only on hover/drag so it doesn't
+   clutter every table by default. */
+table.table > thead > tr > th {
+  position: relative;
+  white-space: nowrap;
+}
+.col-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 3;
+  touch-action: none;
+}
+.col-resize-handle:hover,
+.col-resize-handle.resizing {
+  background: rgba(13, 110, 253, 0.35);
+}
+table.table.col-resize-active {
+  table-layout: fixed;
+}
+table.table.col-resize-active > thead > tr > th,
+table.table.col-resize-active > tbody > tr > td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
