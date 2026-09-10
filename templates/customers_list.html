@@ -8,7 +8,10 @@
   <a href="{{ url_for('export_module_pdf', module='customers') }}" class="btn btn-outline-secondary"><i class="bi bi-file-earmark-pdf"></i> PDF</a>
   <a href="{{ url_for('customer_form') }}" class="btn btn-brand"><i class="bi bi-plus-lg"></i> Add Customer</a>
 </div>
-<div class="d-flex justify-content-end mb-2">
+<div class="d-flex justify-content-end gap-2 mb-2">
+  {% if current_user and current_user.Role == 'Admin' %}
+  <a href="{{ url_for('customers_merge_duplicates') }}" class="btn btn-sm btn-outline-warning"><i class="bi bi-signpost-split"></i> Merge Duplicates</a>
+  {% endif %}
   <a href="{{ url_for('columns_customize', module='Customer') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-layout-three-columns"></i> Customize Columns</a>
 </div>
 <div class="card">

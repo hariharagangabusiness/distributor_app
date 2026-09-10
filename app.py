@@ -255,6 +255,7 @@ ACCESS_TABS = [
     ("gst", "GST Filing", "Finance"),
     ("pnl", "Profit & Loss", "Finance"),
     ("scheme_claims", "Scheme Claims", "Finance"),
+    ("accounts_receivable", "Accounts Receivable", "Finance"),
     ("vehicles", "Vehicles", "Fleet"),
     ("maintenance", "Maintenance", "Fleet"),
     ("attendance", "Leave & Attendance", "Payroll"),
@@ -292,6 +293,7 @@ TAB_PATH_RULES = [
     ("/reports/stock-issues", "stock_issues_report"),
     ("/reports/sales-live", "sales_live"),
     ("/reports/pnl", "pnl"),
+    ("/reports/accounts-receivable", "accounts_receivable"),
     ("/reports", "reports"),
     ("/inventory", "inventory"),
     ("/suppliers", "suppliers"),
@@ -1221,6 +1223,93 @@ MODULE_COLUMNS = {
 # custom-fields system (CUSTOM_FIELD_MODULE_LABELS) but still have customizable list columns.
 EXTRA_COLUMN_MODULE_LABELS = {"SalesLive": "Live Sales Monitor"}
 
+# Admin-customizable field layout for the New/Edit Sale form (visibility + placement),
+# stored in FormFieldLayout. "SaleFormHeader" fields can be freely reordered/hidden via
+# CSS flexbox order on the form (see sale_form.html); a field marked required in the
+# form's HTML stays required even if hidden, so don't hide Customer/Sale Date/Place of
+# Supply/Line items without also removing "required" from the template - hiding those is
+# not offered as an option below for that reason. "SaleFormLine" columns control which
+# product-line-item table columns are shown (order is fixed - reordering table columns
+# safely needs JS column-swapping, not just CSS, so that's not offered yet).
+FORM_FIELD_MODULES = {
+    "SaleFormHeader": [
+        ("invoice_number", "Invoice Number"),
+        ("customer", "Customer (search/select)"),
+        ("sale_date", "Sale Date"),
+        ("status", "Status"),
+        ("place_of_supply", "Place of Supply (State)"),
+        ("customer_details", "Customer Details (Name/Address/Phone/Zone)"),
+        ("salesperson_warning", "Salesperson-not-linked warning"),
+        ("payment_due_date", "Payment Due Date"),
+        ("payment_status", "Payment Status"),
+        ("cash_bank_amount", "Cash / Bank Amount Received"),
+        ("reverse_charge", "Reverse Charge"),
+        ("salesperson", "Salesperson"),
+        ("notes", "Notes"),
+    ],
+    "SaleFormLine": [
+        ("product", "Product"),
+        ("qty", "Qty"),
+        ("unit_price", "Unit Price"),
+        ("discount_amount", "Discount ₹"),
+    ],
+}
+FORM_FIELD_MODULE_LABELS = {"SaleFormHeader": "New/Edit Sale — Header Fields",
+                             "SaleFormLine": "New/Edit Sale — Product Line Columns"}
+# Fields an Admin can't hide, because the form can't function or validate without them.
+FORM_FIELD_ALWAYS_VISIBLE = {
+    "SaleFormHeader": {"customer", "sale_date", "place_of_supply"},
+    "SaleFormLine": {"product", "qty", "unit_price"},
+}
+
+
+def get_effective_form_fields(module):
+    """Same idea as get_effective_columns(), but for FormFieldLayout (form fields rather
+    than list-view columns). Returns the ordered list of field dicts with saved
+    visibility/order applied; fields in FORM_FIELD_ALWAYS_VISIBLE are forced visible
+    regardless of what's stored."""
+    all_fields = [dict(key=k, label=lbl) for k, lbl in FORM_FIELD_MODULES.get(module, [])]
+    prefs = {r["FieldKey"]: r for r in db.query(
+        "SELECT * FROM FormFieldLayout WHERE ModuleName=?", (module,))}
+    always_visible = FORM_FIELD_ALWAYS_VISIBLE.get(module, set())
+    for i, f in enumerate(all_fields):
+        pref = prefs.get(f["key"])
+        if pref:
+            f["visible"] = bool(pref["Visible"])
+            f["order"] = pref["DisplayOrder"]
+        else:
+            f["visible"] = True
+            f["order"] = i
+        if f["key"] in always_visible:
+            f["visible"] = True
+    all_fields.sort(key=lambda f: f["order"])
+    return all_fields
+
+
+@app.route("/form-fields/<module>/customize", methods=["GET", "POST"])
+@admin_required
+def form_fields_customize(module):
+    if module not in FORM_FIELD_MODULES:
+        flash("Unknown form.", "error")
+        return redirect(url_for("dashboard"))
+    fields = get_effective_form_fields(module)
+    always_visible = FORM_FIELD_ALWAYS_VISIBLE.get(module, set())
+    if request.method == "POST":
+        for f in fields:
+            visible = 1 if (f["key"] in always_visible or request.form.get(f"visible_{f['key']}")) else 0
+            try:
+                order = int(request.form.get(f"order_{f['key']}", 0))
+            except ValueError:
+                order = 0
+            db.execute("""INSERT INTO FormFieldLayout (ModuleName, FieldKey, Visible, DisplayOrder) VALUES (?,?,?,?)
+                        ON CONFLICT(ModuleName, FieldKey) DO UPDATE SET Visible=excluded.Visible, DisplayOrder=excluded.DisplayOrder""",
+                       (module, f["key"], visible, order))
+        flash("Field layout saved.", "success")
+        return redirect(request.form.get("return_to") or url_for("sale_form"))
+    return render_template("form_fields_customize.html", module=module, fields=fields,
+                            always_visible=always_visible,
+                            module_label=FORM_FIELD_MODULE_LABELS.get(module, module))
+
 
 def get_effective_columns(module):
     """Returns the ordered list of column dicts for a module's list view,
@@ -1478,6 +1567,56 @@ def supplier_form(sid=None):
 def customers_list():
     return render_template("customers_list.html", customers=db.query("SELECT * FROM Customers ORDER BY CustomerName"),
                             columns=get_effective_columns("Customer"))
+
+
+@app.route("/customers/search")
+def customers_search():
+    """JSON typeahead used by the New/Edit Sale customer search box: returns up to 15
+    active customers whose name/phone/zone contains the query (case-insensitive), so a
+    salesperson can find and reuse an existing customer instead of retyping their name and
+    accidentally creating a duplicate record."""
+    q = (request.args.get("q") or "").strip()
+    if not q:
+        return jsonify([])
+    like = f"%{q}%"
+    rows = db.query("""SELECT CustomerID, CustomerName, Address, Phone, Zone, StateCode FROM Customers
+                     WHERE IsUnassignedBucket=0 AND Active=1
+                       AND (CustomerName LIKE ? OR Phone LIKE ? OR Zone LIKE ?)
+                     ORDER BY CustomerName LIMIT 15""", (like, like, like))
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route("/customers/merge-duplicates", methods=["GET", "POST"])
+@admin_required
+def customers_merge_duplicates():
+    """Finds groups of Customers whose name matches case/whitespace-insensitively (the
+    exact kind of accidental duplicate resolve_sale_customer() used to create before it
+    started reusing an existing name match - e.g. two "Sai phani kirana" rows) and lets an
+    Admin merge each group into one: every Sale on the duplicate(s) is re-pointed to the
+    chosen primary customer, and the duplicate row(s) are deleted."""
+    if request.method == "POST":
+        primary_id = int(request.form["primary_id"])
+        dup_ids = [int(x) for x in request.form.getlist("dup_id[]") if int(x) != primary_id]
+        if dup_ids:
+            placeholders = ",".join("?" * len(dup_ids))
+            db.execute(f"UPDATE Sales SET CustomerID=? WHERE CustomerID IN ({placeholders})",
+                       (primary_id, *dup_ids))
+            db.execute(f"DELETE FROM Customers WHERE CustomerID IN ({placeholders})", tuple(dup_ids))
+            flash(f"Merged {len(dup_ids)} duplicate(s) into '{db.query('SELECT CustomerName FROM Customers WHERE CustomerID=?', (primary_id,), one=True)['CustomerName']}'.", "success")
+        else:
+            flash("Nothing to merge — pick at least one duplicate to fold into the primary.", "error")
+        return redirect(url_for("customers_merge_duplicates"))
+
+    all_customers = db.query("""SELECT CustomerID, CustomerName, Address, Phone, Zone, Active,
+                              (SELECT COUNT(*) FROM Sales WHERE Sales.CustomerID = Customers.CustomerID) AS SaleCount
+                              FROM Customers WHERE IsUnassignedBucket=0 ORDER BY CustomerName, CustomerID""")
+    groups = {}
+    for c in all_customers:
+        key = " ".join(c["CustomerName"].split()).lower()
+        groups.setdefault(key, []).append(dict(c))
+    duplicate_groups = [g for g in groups.values() if len(g) > 1]
+    duplicate_groups.sort(key=lambda g: g[0]["CustomerName"].lower())
+    return render_template("customers_merge_duplicates.html", duplicate_groups=duplicate_groups)
 
 
 @app.route("/customers/new", methods=["GET", "POST"])
@@ -2630,6 +2769,21 @@ def resolve_sale_customer(f):
         return cid
     if not name:
         raise ValueError("Customer name is required.")
+    # No customer_id was posted (the "-- new customer --" option, or the search box was
+    # typed into without picking a match). Before creating a new row, check for an existing
+    # customer with the same name (case/whitespace-insensitive) and reuse it instead - this
+    # is what was silently creating duplicate customer records (e.g. two "Sai phani kirana"
+    # rows) whenever someone typed a name that already existed rather than selecting it from
+    # the dropdown/search box.
+    existing = db.query(
+        "SELECT CustomerID FROM Customers WHERE LOWER(TRIM(CustomerName))=LOWER(TRIM(?)) AND IsUnassignedBucket=0",
+        (name,), one=True)
+    if existing:
+        cid = existing["CustomerID"]
+        db.execute("UPDATE Customers SET CustomerName=?, Address=COALESCE(NULLIF(?,''), Address), "
+                   "Phone=COALESCE(NULLIF(?,''), Phone), Zone=COALESCE(NULLIF(?,''), Zone) WHERE CustomerID=?",
+                   (name, address, phone, zone, cid))
+        return cid
     return db.execute("""INSERT INTO Customers (CustomerName, Address, Phone, Zone, Active)
                        VALUES (?,?,?,?,1)""", (name, address, phone, zone))
 
@@ -2701,7 +2855,9 @@ def sale_form():
                             custom_fields=custom_fields, custom_values={},
                             cf_record_id=None, custom_attachments={}, sale=None, existing_lines=None,
                             current_customer=None, locked_employee=locked_employee,
-                            show_salesperson_warning=show_salesperson_warning)
+                            show_salesperson_warning=show_salesperson_warning,
+                            header_fields={f["key"]: f for f in get_effective_form_fields("SaleFormHeader")},
+                            line_fields={f["key"]: f for f in get_effective_form_fields("SaleFormLine")})
 
 
 @app.route("/sales/<int:sid>/edit", methods=["GET", "POST"])
@@ -2763,7 +2919,9 @@ def sale_edit(sid):
                             custom_fields=custom_fields, custom_values=custom_values, cf_record_id=sid,
                             custom_attachments={}, sale=existing, existing_lines=existing_lines,
                             current_customer=current_customer, locked_employee=None,
-                            show_salesperson_warning=False)
+                            show_salesperson_warning=False,
+                            header_fields={f["key"]: f for f in get_effective_form_fields("SaleFormHeader")},
+                            line_fields={f["key"]: f for f in get_effective_form_fields("SaleFormLine")})
 
 
 # ---------------------------------------------------------------------
@@ -4759,6 +4917,115 @@ def _year_month_from_request():
 # filing - it doesn't attempt double-entry bookkeeping, depreciation, or
 # accrual adjustments.
 # ---------------------------------------------------------------------
+
+@app.route("/reports/accounts-receivable")
+def accounts_receivable():
+    """Who owes the business how much, in four views (?view=summary|aging|invoices|zone):
+      - summary: one row per customer - invoiced/received/due, all-time (not date-scoped -
+        dues don't expire at a month boundary the way a P&L period does).
+      - aging: same due amount per customer, split into 0-30/31-60/61-90/90+ day buckets by
+        PaymentDueDate (falling back to SaleDate when no due date was set).
+      - invoices: every individual unpaid/partially-paid invoice with its own due amount.
+      - zone: dues rolled up by Customer.Zone and by the salesperson (Employee) on the sale.
+    Only Completed sales count (Draft isn't billed yet, Cancelled never was)."""
+    view = request.args.get("view", "summary")
+    today_iso = date.today().isoformat()
+
+    base_rows = db.query("""
+        SELECT s.SaleID, s.InvoiceNumber, s.SaleDate, s.PaymentDueDate, s.PaymentStatus,
+               s.TotalAmount, s.AmountReceived, (s.TotalAmount - s.AmountReceived) AS Due,
+               c.CustomerID, c.CustomerName, c.Phone, c.Zone,
+               e.EmployeeName
+        FROM Sales s
+        JOIN Customers c ON c.CustomerID = s.CustomerID
+        LEFT JOIN Employees e ON e.EmployeeID = s.EmployeeID
+        WHERE s.Status <> 'Cancelled' AND c.IsUnassignedBucket = 0
+          AND (s.TotalAmount - s.AmountReceived) > 0.005
+        ORDER BY s.PaymentDueDate IS NULL, s.PaymentDueDate, s.SaleDate
+    """)
+
+    total_due = round(sum(r["Due"] for r in base_rows), 2)
+    customer_count = len({r["CustomerID"] for r in base_rows})
+
+    by_customer = {}
+    for r in base_rows:
+        agg = by_customer.setdefault(r["CustomerID"], {
+            "CustomerID": r["CustomerID"], "CustomerName": r["CustomerName"], "Phone": r["Phone"],
+            "Zone": r["Zone"], "invoiced": 0, "received": 0, "due": 0, "invoice_count": 0,
+            "oldest_due_date": None,
+        })
+        agg["invoiced"] += r["TotalAmount"]
+        agg["received"] += r["AmountReceived"]
+        agg["due"] += r["Due"]
+        agg["invoice_count"] += 1
+        d = r["PaymentDueDate"] or r["SaleDate"]
+        if d and (agg["oldest_due_date"] is None or d < agg["oldest_due_date"]):
+            agg["oldest_due_date"] = d
+    customer_summary = sorted(by_customer.values(), key=lambda a: -a["due"])
+    for a in customer_summary:
+        a["invoiced"] = round(a["invoiced"], 2)
+        a["received"] = round(a["received"], 2)
+        a["due"] = round(a["due"], 2)
+
+    def age_days(d):
+        if not d:
+            return 0
+        try:
+            return (date.today() - date.fromisoformat(d[:10])).days
+        except ValueError:
+            return 0
+
+    def bucket_for(days):
+        if days <= 30:
+            return "b0_30"
+        if days <= 60:
+            return "b31_60"
+        if days <= 90:
+            return "b61_90"
+        return "b90_plus"
+
+    aging_by_customer = {}
+    for r in base_rows:
+        agg = aging_by_customer.setdefault(r["CustomerID"], {
+            "CustomerID": r["CustomerID"], "CustomerName": r["CustomerName"], "Zone": r["Zone"],
+            "b0_30": 0, "b31_60": 0, "b61_90": 0, "b90_plus": 0, "total": 0,
+        })
+        d = r["PaymentDueDate"] or r["SaleDate"]
+        agg[bucket_for(age_days(d))] += r["Due"]
+        agg["total"] += r["Due"]
+    aging_rows = sorted(aging_by_customer.values(), key=lambda a: -a["total"])
+    for a in aging_rows:
+        for k in ("b0_30", "b31_60", "b61_90", "b90_plus", "total"):
+            a[k] = round(a[k], 2)
+    aging_totals = {k: round(sum(a[k] for a in aging_rows), 2) for k in ("b0_30", "b31_60", "b61_90", "b90_plus", "total")}
+
+    zone_agg = {}
+    salesperson_agg = {}
+    for r in base_rows:
+        zk = r["Zone"] or "(No Zone)"
+        z = zone_agg.setdefault(zk, {"label": zk, "due": 0, "invoice_count": 0})
+        z["due"] += r["Due"]
+        z["invoice_count"] += 1
+        sk = r["EmployeeName"] or "(Counter / Unassigned)"
+        s = salesperson_agg.setdefault(sk, {"label": sk, "due": 0, "invoice_count": 0})
+        s["due"] += r["Due"]
+        s["invoice_count"] += 1
+    zone_rows = sorted(zone_agg.values(), key=lambda a: -a["due"])
+    salesperson_rows = sorted(salesperson_agg.values(), key=lambda a: -a["due"])
+    for a in zone_rows + salesperson_rows:
+        a["due"] = round(a["due"], 2)
+
+    invoice_rows = [dict(r) for r in base_rows]
+    for r in invoice_rows:
+        r["AgeDays"] = age_days(r["PaymentDueDate"] or r["SaleDate"])
+        r["Due"] = round(r["Due"], 2)
+
+    return render_template("accounts_receivable.html", view=view, today=today_iso,
+                            total_due=total_due, customer_count=customer_count,
+                            customer_summary=customer_summary, aging_rows=aging_rows,
+                            aging_totals=aging_totals, invoice_rows=invoice_rows,
+                            zone_rows=zone_rows, salesperson_rows=salesperson_rows)
+
 
 @app.route("/reports/pnl")
 def pnl_report():

@@ -16,10 +16,16 @@
   invoice was already handed to the customer, reprint it after saving so it matches.
 </div>
 {% endif %}
+{% macro fstyle(key, dict_) %}order:{{ dict_[key].order }};{% if not dict_[key].visible %}display:none !important;{% endif %}{% endmacro %}
 <div class="card"><div class="card-body">
+<div class="d-flex justify-content-end mb-2">
+  {% if current_user and current_user.Role == 'Admin' %}
+  <a href="{{ url_for('form_fields_customize', module='SaleFormHeader') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-layout-three-columns"></i> Customize Fields</a>
+  {% endif %}
+</div>
 <form method="post">
   <div class="row g-3 mb-3">
-    <div class="col-md-3"><label class="form-label">Invoice Number</label>
+    <div class="col-md-3" style="{{ fstyle('invoice_number', header_fields) }}"><label class="form-label">Invoice Number</label>
       {% if sale %}
       <input class="form-control" value="{{ sale.InvoiceNumber }}" disabled>
       <div class="form-text">Invoice numbers can't be changed once issued, to keep the sequence consistent.</div>
@@ -28,70 +34,78 @@
       <div class="form-text">Leave blank to auto-number as {{ company.InvoicePrefix or 'INV' }}/FY/0001.</div>
       {% endif %}
     </div>
-    <div class="col-md-3"><label class="form-label">Customer</label>
-      <select name="customer_id" id="customer_id" class="form-select">
-        <option value="">-- new customer (type name below) --</option>
-        {% for c in customers %}
-        <option value="{{ c.CustomerID }}" data-state="{{ c.StateCode or '' }}" data-name="{{ c.CustomerName }}"
-                data-address="{{ c.Address or '' }}" data-phone="{{ c.Phone or '' }}" data-zone="{{ c.Zone or '' }}"
-                {% if sale and sale.CustomerID == c.CustomerID %}selected{% endif %}>{{ c.CustomerName }}</option>
-        {% endfor %}
-      </select></div>
-    <div class="col-md-2"><label class="form-label">Sale Date *</label>
+    <div class="col-md-3" style="{{ fstyle('customer', header_fields) }}"><label class="form-label">Customer</label>
+      <div class="position-relative">
+        <input type="text" id="customer_search" class="form-control" autocomplete="off"
+               placeholder="Type to search, or type a new name…"
+               value="{{ current_customer.CustomerName if current_customer else '' }}">
+        <input type="hidden" name="customer_id" id="customer_id" value="{{ sale.CustomerID if sale else '' }}">
+        <div id="customer_search_results" class="list-group position-absolute w-100 shadow-sm" style="z-index:1000; max-height:260px; overflow-y:auto; display:none;"></div>
+      </div>
+      <div class="form-text">Search by name, phone, or zone and pick a match to avoid creating a duplicate — or just type a brand-new name.</div>
+    </div>
+    <div class="col-md-2" style="{{ fstyle('sale_date', header_fields) }}"><label class="form-label">Sale Date *</label>
       <input required type="date" name="sale_date" class="form-control" value="{{ sale.SaleDate if sale else today }}"></div>
-    <div class="col-md-2"><label class="form-label">Status</label>
+    <div class="col-md-2" style="{{ fstyle('status', header_fields) }}"><label class="form-label">Status</label>
       <select name="status" class="form-select">
         <option value="Completed" {% if not sale or sale.Status == 'Completed' %}selected{% endif %}>Completed (reduces stock)</option>
         <option value="Draft" {% if sale and sale.Status == 'Draft' %}selected{% endif %}>Draft</option>
       </select></div>
-    <div class="col-md-2"><label class="form-label">Place of Supply (State) *</label>
+    <div class="col-md-2" style="{{ fstyle('place_of_supply', header_fields) }}"><label class="form-label">Place of Supply (State) *</label>
       <select required name="place_of_supply_code" id="place_of_supply_code" class="form-select">
         <option value="">-- select --</option>
         {% for code, name in states %}
         <option value="{{ code }}" {% if sale and sale.PlaceOfSupplyStateCode == code %}selected{% elif not sale and company.StateCode==code %}selected{% endif %}>{{ name }} ({{ code }})</option>
         {% endfor %}
       </select></div>
-  </div>
 
-  <div class="row g-3 mb-3">
-    <div class="col-12"><div class="text-muted small mb-1">Customer details — editable here; saving the sale updates this customer's record too (or creates a new one if "new customer" is selected above).</div></div>
-    <div class="col-md-3"><label class="form-label">Customer Name *</label>
-      <input required name="customer_name" id="customer_name" class="form-control"
-             value="{{ current_customer.CustomerName if current_customer else '' }}"></div>
-    <div class="col-md-3"><label class="form-label">Address</label>
-      <input name="customer_address" id="customer_address" class="form-control"
-             value="{{ current_customer.Address if current_customer else '' }}"></div>
-    <div class="col-md-3"><label class="form-label">Phone</label>
-      <input name="customer_phone" id="customer_phone" class="form-control"
-             value="{{ current_customer.Phone if current_customer else '' }}"></div>
-    <div class="col-md-3"><label class="form-label">Zone</label>
-      <input name="customer_zone" id="customer_zone" class="form-control" placeholder="e.g. North Zone"
-             value="{{ current_customer.Zone if current_customer else '' }}"></div>
-  </div>
+    <div class="col-12" style="{{ fstyle('customer_details', header_fields) }}">
+      <div class="row g-3">
+        <div class="col-12"><div class="text-muted small mb-1">Customer details — editable here; saving the sale updates this customer's record too (or creates a new one if no match was picked above).</div></div>
+        <div class="col-md-3"><label class="form-label">Customer Name *</label>
+          <input required name="customer_name" id="customer_name" class="form-control"
+                 value="{{ current_customer.CustomerName if current_customer else '' }}"></div>
+        <div class="col-md-3"><label class="form-label">Address</label>
+          <input name="customer_address" id="customer_address" class="form-control"
+                 value="{{ current_customer.Address if current_customer else '' }}"></div>
+        <div class="col-md-3"><label class="form-label">Phone</label>
+          <input name="customer_phone" id="customer_phone" class="form-control"
+                 value="{{ current_customer.Phone if current_customer else '' }}"></div>
+        <div class="col-md-3"><label class="form-label">Zone</label>
+          <input name="customer_zone" id="customer_zone" class="form-control" placeholder="e.g. North Zone"
+                 value="{{ current_customer.Zone if current_customer else '' }}"></div>
+      </div>
+    </div>
 
-  {% if show_salesperson_warning %}
-  <div class="alert alert-warning">Your login isn't linked to a salesperson/Employee record yet, so this sale
-    won't auto-credit against a Stock Issue. Ask an Admin to link your account from Manage Users, or pick a
-    Salesperson manually below.</div>
-  {% endif %}
-  <div class="row g-3 mb-3">
-    <div class="col-md-2"><label class="form-label">Payment Due Date</label>
+    <div class="col-12" style="{{ fstyle('salesperson_warning', header_fields) }}">
+      {% if show_salesperson_warning %}
+      <div class="alert alert-warning">Your login isn't linked to a salesperson/Employee record yet, so this sale
+        won't auto-credit against a Stock Issue. Ask an Admin to link your account from Manage Users, or pick a
+        Salesperson manually below.</div>
+      {% endif %}
+    </div>
+
+    <div class="col-md-2" style="{{ fstyle('payment_due_date', header_fields) }}"><label class="form-label">Payment Due Date</label>
       <input type="date" name="payment_due_date" class="form-control" value="{{ sale.PaymentDueDate if sale else '' }}"></div>
-    <div class="col-md-2"><label class="form-label">Payment Status</label>
+    <div class="col-md-2" style="{{ fstyle('payment_status', header_fields) }}"><label class="form-label">Payment Status</label>
       <select name="payment_status" class="form-select">
         <option {% if sale and sale.PaymentStatus == 'Unpaid' %}selected{% endif %}>Unpaid</option>
         <option {% if sale and sale.PaymentStatus == 'Partial' %}selected{% endif %}>Partial</option>
         <option {% if sale and sale.PaymentStatus == 'Paid' %}selected{% endif %}>Paid</option>
       </select></div>
-    <div class="col-md-2"><label class="form-label">Cash ₹</label>
-      <input type="number" step="0.01" name="cash_amount" id="cash_amount" class="form-control"
-             value="{{ sale.CashAmount if sale else 0 }}"></div>
-    <div class="col-md-2"><label class="form-label">Bank/UPI ₹</label>
-      <input type="number" step="0.01" name="bank_amount" id="bank_amount" class="form-control"
-             value="{{ sale.BankAmount if sale else 0 }}"></div>
-    <div class="col-md-2"><label class="form-label">Amount Received (total)</label>
-      <input type="number" step="0.01" name="amount_received" id="amount_received" class="form-control" value="{{ sale.AmountReceived if sale else 0 }}" disabled></div>
-    <div class="col-md-2 d-flex align-items-end">
+    <div class="col-md-4" style="{{ fstyle('cash_bank_amount', header_fields) }}">
+      <div class="row g-2">
+        <div class="col-4"><label class="form-label">Cash ₹</label>
+          <input type="number" step="0.01" name="cash_amount" id="cash_amount" class="form-control"
+                 value="{{ sale.CashAmount if sale else 0 }}"></div>
+        <div class="col-4"><label class="form-label">Bank/UPI ₹</label>
+          <input type="number" step="0.01" name="bank_amount" id="bank_amount" class="form-control"
+                 value="{{ sale.BankAmount if sale else 0 }}"></div>
+        <div class="col-4"><label class="form-label">Received</label>
+          <input type="number" step="0.01" name="amount_received" id="amount_received" class="form-control" value="{{ sale.AmountReceived if sale else 0 }}" disabled></div>
+      </div>
+    </div>
+    <div class="col-md-2 d-flex align-items-end" style="{{ fstyle('reverse_charge', header_fields) }}">
       <div class="form-check">
         <input type="checkbox" class="form-check-input" name="reverse_charge" id="reverse_charge"
                {% if sale %}{% if sale.ReverseCharge %}checked{% endif %}{% else %}checked{% endif %}>
@@ -99,9 +113,7 @@
         <div class="form-text">When checked, GST still shows on the invoice, but Balance Due only counts the product value — the customer pays GST directly to the Government.</div>
       </div>
     </div>
-  </div>
-  <div class="row g-3 mb-3">
-    <div class="col-md-6">
+    <div class="col-md-6" style="{{ fstyle('salesperson', header_fields) }}">
       <label class="form-label">Salesperson {% if not locked_employee %}(optional){% endif %}</label>
       {% if locked_employee %}
       <input class="form-control" value="{{ locked_employee.EmployeeName }}" disabled>
@@ -118,14 +130,25 @@
       <div class="form-text">If this sale is being fulfilled from stock already issued to a salesperson today, select them here — it'll be credited toward that day's Stock Issue automatically instead of double-deducting stock.</div>
       {% endif %}
     </div>
-    <div class="col-md-6"><label class="form-label">Notes</label>
+    <div class="col-md-6" style="{{ fstyle('notes', header_fields) }}"><label class="form-label">Notes</label>
       <input name="notes" class="form-control" value="{{ sale.Notes if sale else '' }}"></div>
   </div>
 
-  <h6>Line Items <span class="text-muted fw-normal">(rate is the taxable value per unit, excl. GST; Discount ₹ is per unit — multiplied by Qty to get the line's total discount)</span></h6>
+  <div class="d-flex justify-content-between align-items-center">
+    <h6>Line Items <span class="text-muted fw-normal">(rate is the taxable value per unit, excl. GST; Discount ₹ is per unit — multiplied by Qty to get the line's total discount)</span></h6>
+    {% if current_user and current_user.Role == 'Admin' %}
+    <a href="{{ url_for('form_fields_customize', module='SaleFormLine') }}" class="btn btn-sm btn-outline-secondary mb-2"><i class="bi bi-layout-three-columns"></i> Customize Columns</a>
+    {% endif %}
+  </div>
   <div class="table-responsive">
   <table class="table" id="lines-table">
-    <thead><tr><th style="width:26%">Product (available stock)</th><th>HSN</th><th>GST%</th><th>Qty</th><th>Rate</th><th>Discount ₹/unit</th><th>Taxable</th><th>Tax</th><th>Line Total</th><th></th></tr></thead>
+    <thead><tr>
+      <th style="width:26%" data-col="product" {% if not line_fields['product'].visible %}hidden{% endif %}>Product (available stock)</th>
+      <th>HSN</th><th>GST%</th>
+      <th data-col="qty" {% if not line_fields['qty'].visible %}hidden{% endif %}>Qty</th>
+      <th data-col="unit_price" {% if not line_fields['unit_price'].visible %}hidden{% endif %}>Rate</th>
+      <th data-col="discount_amount" {% if not line_fields['discount_amount'].visible %}hidden{% endif %}>Discount ₹/unit</th>
+      <th>Taxable</th><th>Tax</th><th>Line Total</th><th></th></tr></thead>
     <tbody id="lines-body"></tbody>
   </table>
   </div>
@@ -155,7 +178,7 @@
 
 <template id="line-template">
   <tr>
-    <td>
+    <td data-col="product" {% if not line_fields['product'].visible %}hidden{% endif %}>
       <select name="product_id[]" class="form-select prod-select" required>
         <option value="">-- select product --</option>
         {% for p in products %}
@@ -166,11 +189,11 @@
     </td>
     <td class="hsn-cell text-muted small">-</td>
     <td class="gst-cell text-muted small">-</td>
-    <td><input type="number" step="0.01" name="qty[]" class="form-control qty-input" style="width:80px" required></td>
-    <td><input type="number" step="0.01" name="unit_price[]" class="form-control price-input" style="width:90px" required>
+    <td data-col="qty" {% if not line_fields['qty'].visible %}hidden{% endif %}><input type="number" step="0.01" name="qty[]" class="form-control qty-input" style="width:80px" required></td>
+    <td data-col="unit_price" {% if not line_fields['unit_price'].visible %}hidden{% endif %}><input type="number" step="0.01" name="unit_price[]" class="form-control price-input" style="width:90px" required>
       <div class="scheme-hint small text-info" style="display:none"></div>
     </td>
-    <td><input type="number" step="0.01" name="discount_amount[]" class="form-control discount-input" style="width:90px" value="0"></td>
+    <td data-col="discount_amount" {% if not line_fields['discount_amount'].visible %}hidden{% endif %}><input type="number" step="0.01" name="discount_amount[]" class="form-control discount-input" style="width:90px" value="0"></td>
     <td class="taxable-cell align-middle">0.00</td>
     <td class="tax-cell align-middle">0.00</td>
     <td class="line-total align-middle fw-bold">0.00</td>
@@ -183,7 +206,7 @@
 const body = document.getElementById('lines-body');
 const tmpl = document.getElementById('line-template');
 const posSelect = document.getElementById('place_of_supply_code');
-const customerSelect = document.getElementById('customer_id');
+const customerIdInput = document.getElementById('customer_id');
 const companyStateCode = "{{ company.StateCode or '' }}";
 const existingLines = [
   {% if existing_lines %}
@@ -213,24 +236,72 @@ const customerAddressInput = document.getElementById('customer_address');
 const customerPhoneInput = document.getElementById('customer_phone');
 const customerZoneInput = document.getElementById('customer_zone');
 
-// Auto-fill Place of Supply and customer details from the selected customer
-customerSelect.addEventListener('change', () => {
-  const opt = customerSelect.options[customerSelect.selectedIndex];
-  const state = opt.dataset.state;
-  if (state) posSelect.value = state;
-  if (opt.value) {
-    customerNameInput.value = opt.dataset.name || '';
-    customerAddressInput.value = opt.dataset.address || '';
-    customerPhoneInput.value = opt.dataset.phone || '';
-    customerZoneInput.value = opt.dataset.zone || '';
-  } else {
-    customerNameInput.value = '';
-    customerAddressInput.value = '';
-    customerPhoneInput.value = '';
-    customerZoneInput.value = '';
-  }
+// Searchable customer picker: typing queries /customers/search (debounced) and shows
+// matches by name/phone/zone; picking one fills the hidden customer_id plus the
+// editable Customer Details fields and Place of Supply, same as the old dropdown did.
+// Leaving it as free text with no match picked creates a new customer on save (or
+// reuses an existing same-name one server-side, as a safety net against duplicates).
+const customerSearchInput = document.getElementById('customer_search');
+const customerResultsBox = document.getElementById('customer_search_results');
+let customerSearchTimer = null;
+
+function selectCustomer(c) {
+  customerIdInput.value = c.CustomerID;
+  customerSearchInput.value = c.CustomerName;
+  customerNameInput.value = c.CustomerName || '';
+  customerAddressInput.value = c.Address || '';
+  customerPhoneInput.value = c.Phone || '';
+  customerZoneInput.value = c.Zone || '';
+  if (c.StateCode) posSelect.value = c.StateCode;
+  hideCustomerResults();
   recalc();
-});
+}
+
+function hideCustomerResults() {
+  customerResultsBox.style.display = 'none';
+  customerResultsBox.innerHTML = '';
+}
+
+function renderCustomerResults(matches) {
+  customerResultsBox.innerHTML = '';
+  if (!matches.length) {
+    customerResultsBox.style.display = 'none';
+    return;
+  }
+  matches.forEach(c => {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'list-group-item list-group-item-action';
+    item.innerHTML = `<strong>${c.CustomerName}</strong>` +
+      (c.Phone ? ` <span class="text-muted small">${c.Phone}</span>` : '') +
+      (c.Zone ? ` <span class="text-muted small">— ${c.Zone}</span>` : '');
+    item.addEventListener('mousedown', (e) => { e.preventDefault(); selectCustomer(c); });
+    customerResultsBox.appendChild(item);
+  });
+  customerResultsBox.style.display = '';
+}
+
+if (customerSearchInput) {
+  customerSearchInput.addEventListener('input', () => {
+    // Any manual edit invalidates a previously-picked match — it becomes a "new
+    // customer" typed name again unless a fresh match is picked from the list.
+    customerIdInput.value = '';
+    const q = customerSearchInput.value.trim();
+    customerNameInput.value = customerSearchInput.value;
+    if (customerSearchTimer) clearTimeout(customerSearchTimer);
+    if (q.length < 2) { hideCustomerResults(); return; }
+    customerSearchTimer = setTimeout(() => {
+      fetch(`{{ url_for('customers_search') }}?q=${encodeURIComponent(q)}`)
+        .then(r => r.json())
+        .then(renderCustomerResults)
+        .catch(() => hideCustomerResults());
+    }, 200);
+  });
+  customerSearchInput.addEventListener('blur', () => setTimeout(hideCustomerResults, 150));
+  customerSearchInput.addEventListener('focus', () => {
+    if (customerSearchInput.value.trim().length >= 2) customerSearchInput.dispatchEvent(new Event('input'));
+  });
+}
 posSelect.addEventListener('change', recalc);
 if (amountReceivedInput) amountReceivedInput.addEventListener('input', recalc);
 if (reverseChargeInput) reverseChargeInput.addEventListener('change', recalc);

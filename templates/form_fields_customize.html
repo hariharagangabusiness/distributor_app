@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Customize Fields — {{ module_label }}{% endblock %}
+{% block page_title %}Customize Fields — {{ module_label }}{% endblock %}
+{% block content %}
+<div class="d-flex gap-2 mb-3">
+  <a href="{{ url_for('form_fields_customize', module='SaleFormHeader') }}" class="btn btn-sm {% if module=='SaleFormHeader' %}btn-brand{% else %}btn-outline-secondary{% endif %}">Header Fields</a>
+  <a href="{{ url_for('form_fields_customize', module='SaleFormLine') }}" class="btn btn-sm {% if module=='SaleFormLine' %}btn-brand{% else %}btn-outline-secondary{% endif %}">Product Line Columns</a>
+</div>
+<div class="card" style="max-width:640px"><div class="card-body">
+<form method="post">
+  <input type="hidden" name="return_to" value="{{ request.referrer or url_for('sale_form') }}">
+  <p class="text-muted small">Choose which fields appear on the New/Edit Sale form and the order they appear in
+    (lower number = shown first). A few fields are always shown because the form can't work without them.
+    {% if module == 'SaleFormLine' %}Product line columns can be hidden here, but their left-to-right order is
+    fixed.{% endif %}</p>
+  <div class="table-responsive">
+  <table class="table align-middle">
+    <thead><tr><th>Show</th><th>Field</th><th style="width:110px">Order</th></tr></thead>
+    <tbody>
+      {% for f in fields %}
+      <tr>
+        <td>
+          <div class="form-check">
+            <input type="checkbox" class="form-check-input" name="visible_{{ f.key }}" id="v_{{ f.key }}"
+                   {% if f.visible %}checked{% endif %} {% if f.key in always_visible %}disabled checked{% endif %}>
+          </div>
+        </td>
+        <td><label for="v_{{ f.key }}">{{ f.label }}{% if f.key in always_visible %} <span class="text-muted small">(required)</span>{% endif %}</label></td>
+        <td><input type="number" class="form-control form-control-sm" name="order_{{ f.key }}" value="{{ f.order }}" {% if module == 'SaleFormLine' %}disabled{% endif %}></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <div class="mt-3 d-flex gap-2">
+    <button class="btn btn-brand" type="submit">Save Layout</button>
+    <a href="{{ url_for('sale_form') }}" class="btn btn-outline-secondary">Back to Sales</a>
+  </div>
+</form>
+</div></div>
+{% endblock %}

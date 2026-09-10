@@ -63,6 +63,9 @@
       {% if can_access('customers') %}
       <li class="nav-item nav-collapsible" data-group="sales"><a class="nav-link {% if request.path.startswith('/customers') %}active{% endif %}" href="{{ url_for('customers_list') }}"><i class="bi bi-people"></i> Customers</a></li>
       {% endif %}
+      {% if can_access('accounts_receivable') %}
+      <li class="nav-item nav-collapsible" data-group="sales"><a class="nav-link {% if request.path.startswith('/reports/accounts-receivable') %}active{% endif %}" href="{{ url_for('accounts_receivable') }}"><i class="bi bi-cash-stack"></i> Accounts Receivable</a></li>
+      {% endif %}
       {% if can_access('sales') %}
       <li class="nav-item nav-collapsible" data-group="sales"><a class="nav-link {% if request.path.startswith('/sales') %}active{% endif %}" href="{{ url_for('sales_list') }}"><i class="bi bi-cart-check"></i> Sales</a></li>
       {% endif %}

@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Merge Duplicate Customers{% endblock %}
+{% block page_title %}Merge Duplicate Customers{% endblock %}
+{% block content %}
+<p class="text-muted">Groups of customers whose name matches (ignoring case and extra spaces) — usually created by
+  typing an existing customer's name on the New Sale page instead of picking them from the search box. Pick which
+  one to keep as the <strong>primary</strong> record; every Sale on the others is moved onto it and the duplicate
+  row(s) are then deleted. This can't be undone, so double-check before merging.</p>
+
+{% if not duplicate_groups %}
+<div class="alert alert-success">No duplicate customer names found.</div>
+{% endif %}
+
+{% for group in duplicate_groups %}
+<div class="card mb-3">
+  <div class="card-header">"{{ group[0].CustomerName }}" — {{ group|length }} matching records</div>
+  <div class="card-body">
+    <form method="post">
+      <div class="table-responsive mb-3">
+      <table class="table align-middle mb-0">
+        <thead><tr><th>Keep as primary</th><th>Customer</th><th>Address</th><th>Phone</th><th>Zone</th><th>Sales on record</th></tr></thead>
+        <tbody>
+          {% for c in group %}
+          <tr>
+            <td><input type="radio" name="primary_id" value="{{ c.CustomerID }}" required {% if loop.first %}checked{% endif %}></td>
+            <td>{{ c.CustomerName }} <span class="text-muted small">(#{{ c.CustomerID }}{% if not c.Active %}, inactive{% endif %})</span></td>
+            <td>{{ c.Address or '-' }}</td>
+            <td>{{ c.Phone or '-' }}</td>
+            <td>{{ c.Zone or '-' }}</td>
+            <td>{{ c.SaleCount }}</td>
+          </tr>
+          <input type="hidden" name="dup_id[]" value="{{ c.CustomerID }}">
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      <button type="submit" class="btn btn-brand btn-sm" onclick="return confirm('Merge these into the selected primary record? This cannot be undone.');">Merge into selected</button>
+    </form>
+  </div>
+</div>
+{% endfor %}
+{% endblock %}

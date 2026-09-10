@@ -432,6 +432,17 @@ CREATE TABLE IF NOT EXISTS ListViewColumns (
     PRIMARY KEY (ModuleName, ColumnKey)
 );
 
+-- Admin-customizable visibility/placement for form fields (as opposed to
+-- ListViewColumns above, which is for list/report tables). Same shape,
+-- separate table so the two customizations never collide on key names.
+CREATE TABLE IF NOT EXISTS FormFieldLayout (
+    ModuleName      TEXT NOT NULL,      -- e.g. 'SaleFormHeader', 'SaleFormLine'
+    FieldKey        TEXT NOT NULL,
+    Visible         INTEGER NOT NULL DEFAULT 1,
+    DisplayOrder    INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (ModuleName, FieldKey)
+);
+
 -- ---------------------------------------------------------------------
 -- Employee Leave & Attendance
 -- ---------------------------------------------------------------------
