@@ -31,7 +31,10 @@
         <td data-col="zone">{{ c.Zone or '-' }}</td>
         <td data-col="credit_limit">{{ (c.CreditLimit)|inr(0) }}</td><td data-col="credit_days">{{ c.CreditDays }} days</td>
         <td data-col="status">{% if c.Active %}<span class="badge badge-ok">Active</span>{% else %}<span class="badge text-bg-secondary">Inactive</span>{% endif %}</td>
-        <td class="text-end"><a href="{{ url_for('customer_form', cid=c.CustomerID) }}" class="btn btn-sm btn-outline-secondary">Edit</a></td>
+        <td class="text-end">
+          <a href="{{ url_for('customer_purchase_history', cid=c.CustomerID) }}" class="btn btn-sm btn-outline-secondary">History</a>
+          <a href="{{ url_for('customer_form', cid=c.CustomerID) }}" class="btn btn-sm btn-outline-secondary">Edit</a>
+        </td>
       </tr>
       {% else %}<tr><td colspan="8" class="text-center text-muted py-4">No customers yet.</td></tr>{% endfor %}
     </tbody>

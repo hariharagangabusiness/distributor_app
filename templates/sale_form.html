@@ -55,7 +55,11 @@
       <select required name="place_of_supply_code" id="place_of_supply_code" class="form-select">
         <option value="">-- select --</option>
         {% for code, name in states %}
-        <option value="{{ code }}" {% if sale and sale.PlaceOfSupplyStateCode == code %}selected{% elif not sale and company.StateCode==code %}selected{% endif %}>{{ name }} ({{ code }})</option>
+        {# New Sale defaults Place of Supply to Telangana ('36') rather than the company's own
+           state - most customers being entered here are being added fresh, and are in
+           Telangana; picking an existing customer from the search box still overrides this
+           with that customer's saved state (see the customerSearch JS below). #}
+        <option value="{{ code }}" {% if sale and sale.PlaceOfSupplyStateCode == code %}selected{% elif not sale and code=='36' %}selected{% endif %}>{{ name }} ({{ code }})</option>
         {% endfor %}
       </select></div>
 

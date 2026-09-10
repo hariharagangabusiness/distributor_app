@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Purchase History — {{ customer.CustomerName }}{% endblock %}
+{% block page_title %}Purchase History — {{ customer.CustomerName }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-end gap-2 mb-3">
+  <a href="{{ url_for('customer_form', cid=customer.CustomerID) }}" class="btn btn-outline-secondary"><i class="bi bi-pencil"></i> Edit Customer</a>
+  <a href="{{ url_for('customers_list') }}" class="btn btn-outline-secondary">Back to Customers</a>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-2 col-6"><div class="stat-card"><div class="stat-value">{{ totals.invoice_count }}</div><div class="stat-label">Invoices</div></div></div>
+  <div class="col-md-2 col-6"><div class="stat-card"><div class="stat-value">{{ (totals.total_taxable)|inr(0) }}</div><div class="stat-label">Taxable Value</div></div></div>
+  <div class="col-md-2 col-6"><div class="stat-card"><div class="stat-value">{{ (totals.total_invoiced)|inr(0) }}</div><div class="stat-label">Invoiced (incl. GST)</div></div></div>
+  <div class="col-md-2 col-6"><div class="stat-card"><div class="stat-value">{{ (totals.total_received)|inr(0) }}</div><div class="stat-label">Received</div></div></div>
+  <div class="col-md-2 col-6"><div class="stat-card"><div class="stat-value text-danger">{{ (totals.total_due)|inr(0) }}</div><div class="stat-label">Due</div></div></div>
+  <div class="col-md-2 col-6"><div class="stat-card"><div class="stat-value" style="font-size:1rem">{{ totals.first_purchase|dmy if totals.first_purchase else '-' }} → {{ totals.last_purchase|dmy if totals.last_purchase else '-' }}</div><div class="stat-label">First → Last Purchase</div></div></div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-header">Customer Details</div>
+  <div class="card-body">
+    <div class="row g-2">
+      <div class="col-md-3"><span class="text-muted small">Phone</span><br>{{ customer.Phone or '-' }}</div>
+      <div class="col-md-3"><span class="text-muted small">Zone</span><br>{{ customer.Zone or '-' }}</div>
+      <div class="col-md-3"><span class="text-muted small">Address</span><br>{{ customer.Address or '-' }}</div>
+      <div class="col-md-3"><span class="text-muted small">GSTIN</span><br>{{ customer.GSTIN or '-' }}</div>
+    </div>
+  </div>
+</div>
+
+{% if top_products %}
+<div class="card mb-3">
+  <div class="card-header">Top Products Bought <span class="text-muted small fw-normal">— click a column heading to sort</span></div>
+  <div class="table-responsive">
+  <table class="table mb-0 table-sm">
+    <thead><tr><th>Product</th><th>Total Qty</th><th>Total Amount</th></tr></thead>
+    <tbody>
+      {% for p in top_products %}
+      <tr><td>{{ p.product }}</td><td>{{ p.qty|round(2) }}</td><td>{{ (p.amount)|inr(2) }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-header">Invoice History ({{ sales|length }}) <span class="text-muted small fw-normal">— click a row to expand its line items</span></div>
+  <div class="table-responsive">
+  <table class="table mb-0 no-sort-table" id="history-table">
+    <thead><tr><th>Invoice #</th><th data-sort-type="date">Date</th><th>Status</th><th>Payment</th>
+      <th>Taxable Value</th><th>Total (incl. GST)</th><th>Received</th><th>Due</th><th class="no-sort"></th></tr></thead>
+    <tbody>
+      {% for s in sales %}
+      <tr style="cursor:pointer" data-bs-toggle="collapse" data-bs-target="#lines-{{ s.SaleID }}">
+        <td>{{ s.InvoiceNumber }}</td>
+        <td>{{ s.SaleDate|dmy }}</td>
+        <td>{{ s.Status }}</td>
+        <td><span class="badge {% if s.PaymentStatus=='Paid' %}text-bg-success{% elif s.PaymentStatus=='Partial' %}text-bg-warning{% else %}text-bg-danger{% endif %}">{{ s.PaymentStatus }}</span></td>
+        <td>{{ (s.TaxableAmount)|inr(2) }}</td>
+        <td>{{ (s.TotalAmount)|inr(2) }}</td>
+        <td>{{ (s.AmountReceived)|inr(2) }}</td>
+        <td class="{% if s.Due > 0.005 %}text-danger fw-bold{% endif %}">{{ (s.Due)|inr(2) }}</td>
+        <td><a href="{{ url_for('sale_view', sid=s.SaleID) }}" class="btn btn-sm btn-outline-secondary" onclick="event.stopPropagation()">View</a></td>
+      </tr>
+      <tr class="collapse" id="lines-{{ s.SaleID }}"><td colspan="9" class="bg-light">
+        <table class="table table-sm mb-0">
+          <thead><tr><th>Product</th><th>Qty</th><th>Unit Price</th><th>Discount ₹</th><th>Line Total</th></tr></thead>
+          <tbody>
+            {% for l in lines_by_sale.get(s.SaleID, []) %}
+            <tr><td>{{ l.ProductName }}</td><td>{{ l.Qty }}</td><td>{{ (l.UnitPrice)|inr(2) }}</td><td>{{ (l.DiscountAmount)|inr(2) }}</td><td>{{ (l.LineTotal)|inr(2) }}</td></tr>
+            {% else %}<tr><td colspan="5" class="text-muted">No line items.</td></tr>{% endfor %}
+          </tbody>
+        </table>
+      </td></tr>
+      {% else %}<tr><td colspan="9" class="text-center text-muted py-4">No purchases from this customer yet.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endblock %}

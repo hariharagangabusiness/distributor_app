@@ -1217,6 +1217,10 @@ MODULE_COLUMNS = {
                   ("bank", "Bank ₹"), ("discount", "Discount ₹"), ("expected", "Expected ₹"),
                   ("collected", "Collected ₹"), ("discrepancy", "Discrepancy ₹"), ("month_pace", "Month Pace"),
                   ("top_products", "Top Products Today")],
+    "StockIssue": [("date", "Date"), ("salesperson", "Salesperson"), ("status", "Status"),
+                   ("month_target", "Month Target"), ("expected", "Expected"), ("collected", "Collected"),
+                   ("discrepancy", "Discrepancy"), ("qty_sold", "Qty Sold"), ("discount", "Discount"),
+                   ("scheme", "Scheme Amount"), ("unaccounted", "Unaccounted")],
 }
 
 # Display-only labels for the Customize Columns page, for modules that aren't part of the
@@ -1646,6 +1650,52 @@ def customer_form(cid=None):
     return render_template("customer_form.html", customer=customer, states=INDIAN_STATES,
                             custom_fields=custom_fields, custom_values=custom_values,
                             cf_record_id=cid, custom_attachments=get_custom_attachments("Customer", cid))
+
+
+@app.route("/customers/<int:cid>/history")
+def customer_purchase_history(cid):
+    """A single customer's full purchase (Sales) history with this business:
+    every invoice, its line items, and running totals - so "what has this
+    customer bought from us, and when" doesn't need a trip to Data Query."""
+    customer = db.query("SELECT * FROM Customers WHERE CustomerID=?", (cid,), one=True)
+    if not customer:
+        flash("Customer not found.", "error")
+        return redirect(url_for("customers_list"))
+
+    sales = db.query("""SELECT s.SaleID, s.InvoiceNumber, s.SaleDate, s.Status, s.PaymentStatus,
+                      s.TaxableAmount, s.TotalAmount, s.AmountReceived,
+                      (s.TaxableAmount - s.AmountReceived) AS Due
+                      FROM Sales s WHERE s.CustomerID=? AND s.Status<>'Cancelled'
+                      ORDER BY s.SaleDate DESC, s.SaleID DESC""", (cid,))
+    sale_ids = [s["SaleID"] for s in sales]
+    lines_by_sale = {}
+    product_totals = {}
+    if sale_ids:
+        placeholders = ",".join("?" * len(sale_ids))
+        lines = db.query(f"""SELECT sl.SaleID, pr.ProductName, sl.Qty, sl.UnitPrice, sl.DiscountAmount, sl.LineTotal
+                          FROM SalesLines sl JOIN Products pr ON pr.ProductID=sl.ProductID
+                          WHERE sl.SaleID IN ({placeholders}) ORDER BY sl.LineID""", tuple(sale_ids))
+        for l in lines:
+            lines_by_sale.setdefault(l["SaleID"], []).append(l)
+            pt = product_totals.setdefault(l["ProductName"], {"product": l["ProductName"], "qty": 0, "amount": 0})
+            pt["qty"] += l["Qty"]
+            pt["amount"] += l["LineTotal"]
+    top_products = sorted(product_totals.values(), key=lambda p: -p["amount"])[:10]
+    for p in top_products:
+        p["amount"] = round(p["amount"], 2)
+
+    totals = {
+        "invoice_count": len(sales),
+        "total_taxable": round(sum(s["TaxableAmount"] for s in sales), 2),
+        "total_invoiced": round(sum(s["TotalAmount"] for s in sales), 2),
+        "total_received": round(sum(s["AmountReceived"] for s in sales), 2),
+        "total_due": round(sum(max(s["Due"], 0) for s in sales), 2),
+        "first_purchase": min((s["SaleDate"] for s in sales), default=None),
+        "last_purchase": max((s["SaleDate"] for s in sales), default=None),
+    }
+
+    return render_template("customer_purchase_history.html", customer=customer, sales=sales,
+                            lines_by_sale=lines_by_sale, top_products=top_products, totals=totals)
 
 
 # ---------------------------------------------------------------------
@@ -3332,7 +3382,8 @@ def stock_issues_list():
         "scheme": sum(i["SchemeTotal"] for i in issues),
         "unaccounted": sum(i["UnaccountedTotal"] for i in issues),
     }
-    return render_template("stock_issues_list.html", issues=issues, totals=totals)
+    return render_template("stock_issues_list.html", issues=issues, totals=totals,
+                            columns=get_effective_columns("StockIssue"))
 
 
 def true_product_qty_sold(employee_id, sale_date, product_id):
