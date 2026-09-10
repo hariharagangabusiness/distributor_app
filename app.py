@@ -4186,49 +4186,78 @@ EXPORT_SPECS = {
                IncentivePerUnit AS "Incentive/Unit",
                MinStock AS "Min Stock", MaxStock AS "Max Stock", HSNCode AS "HSN Code",
                GSTRate AS "GST Rate", CASE Active WHEN 1 THEN 'Active' ELSE 'Inactive' END AS Status
-        FROM Products ORDER BY ProductName"""),
+        FROM Products ORDER BY ProductName""", detail_query="SELECT * FROM Products ORDER BY ProductName"),
     "suppliers": dict(title="Suppliers", admin_only=True, query="""
         SELECT SupplierName AS "Supplier Name", ContactPerson AS "Contact Person", Phone, Email, Address, GSTIN,
                CASE Active WHEN 1 THEN 'Active' ELSE 'Inactive' END AS Status
-        FROM Suppliers ORDER BY SupplierName"""),
+        FROM Suppliers ORDER BY SupplierName""", detail_query="SELECT * FROM Suppliers ORDER BY SupplierName"),
     "customers": dict(title="Customers", admin_only=False, query="""
         SELECT CustomerName AS "Customer Name", ContactPerson AS "Contact Person", Phone, Email, Address, GSTIN,
                State, StateCode AS "State Code", CreditLimit AS "Credit Limit", CreditDays AS "Credit Days",
                CASE Active WHEN 1 THEN 'Active' ELSE 'Inactive' END AS Status
-        FROM Customers WHERE IsUnassignedBucket=0 ORDER BY CustomerName"""),
+        FROM Customers WHERE IsUnassignedBucket=0 ORDER BY CustomerName""",
+        detail_query="SELECT * FROM Customers WHERE IsUnassignedBucket=0 ORDER BY CustomerName"),
     "purchases": dict(title="Purchases", admin_only=True, query="""
         SELECT p.PurchaseDate AS "Purchase Date", s.SupplierName AS Supplier, p.PONumber AS "PO Number",
                p.InvoiceNumber AS "Invoice Number", p.Status, p.PaymentStatus AS "Payment Status",
                p.TaxableAmount AS "Taxable Amount", p.TotalAmount AS "Total Amount"
         FROM Purchases p JOIN Suppliers s ON s.SupplierID=p.SupplierID
-        ORDER BY p.PurchaseDate DESC, p.PurchaseID DESC"""),
+        ORDER BY p.PurchaseDate DESC, p.PurchaseID DESC""", detail_query="""
+        SELECT p.PurchaseDate AS "Purchase Date", s.SupplierName AS Supplier, p.PONumber AS "PO Number",
+               p.InvoiceNumber AS "Invoice Number", p.Status, p.PaymentStatus AS "Payment Status",
+               pr.ProductName AS Product, pl.Qty, pl.UnitCost AS "Unit Cost", pl.HSNCode AS "HSN Code",
+               pl.GSTRate AS "GST Rate %", pl.TaxableValue AS "Taxable Value",
+               (pl.CGSTAmount + pl.SGSTAmount + pl.IGSTAmount) AS "Tax Amount", pl.LineTotal AS "Line Total"
+        FROM PurchaseLines pl JOIN Purchases p ON p.PurchaseID=pl.PurchaseID
+             JOIN Suppliers s ON s.SupplierID=p.SupplierID JOIN Products pr ON pr.ProductID=pl.ProductID
+        ORDER BY p.PurchaseDate DESC, p.PurchaseID DESC, pl.LineID"""),
     "sales": dict(title="Sales", admin_only=False, query="""
         SELECT s.SaleDate AS "Sale Date", c.CustomerName AS Customer, s.InvoiceNumber AS "Invoice Number",
                s.Status, s.PaymentStatus AS "Payment Status", s.TaxableAmount AS "Taxable Amount",
                s.TotalAmount AS "Total Amount", s.AmountReceived AS "Amount Received"
         FROM Sales s JOIN Customers c ON c.CustomerID=s.CustomerID
-        ORDER BY s.SaleDate DESC, s.SaleID DESC"""),
+        ORDER BY s.SaleDate DESC, s.SaleID DESC""", detail_query="""
+        SELECT s.SaleDate AS "Sale Date", c.CustomerName AS Customer, s.InvoiceNumber AS "Invoice Number",
+               s.Status, s.PaymentStatus AS "Payment Status", e.EmployeeName AS Salesperson,
+               pr.ProductName AS "Product Sold", sl.Qty, sl.UnitPrice AS "Unit Price",
+               sl.DiscountAmount AS "Discount ₹", sl.HSNCode AS "HSN Code", sl.GSTRate AS "GST Rate %",
+               sl.TaxableValue AS "Taxable Value", (sl.CGSTAmount + sl.SGSTAmount + sl.IGSTAmount) AS "Tax Amount",
+               sl.LineTotal AS "Line Total", s.AmountReceived AS "Amount Received (whole invoice)"
+        FROM SalesLines sl JOIN Sales s ON s.SaleID=sl.SaleID JOIN Customers c ON c.CustomerID=s.CustomerID
+             JOIN Products pr ON pr.ProductID=sl.ProductID LEFT JOIN Employees e ON e.EmployeeID=s.EmployeeID
+        ORDER BY s.SaleDate DESC, s.SaleID DESC, sl.LineID"""),
     "stock_issues": dict(title="Stock Issues", admin_only=False, query="""
         SELECT si.IssueDate AS "Issue Date", e.EmployeeName AS Salesperson, si.Status,
                si.ExpectedAmount AS "Expected Amount", si.CashCollected AS "Cash Collected",
                si.SchemeAmount AS "Scheme Amount", si.AmountDue AS "Amount Due",
                si.PaymentStatus AS "Payment Status", si.ClaimStatus AS "Claim Status"
         FROM StockIssues si JOIN Employees e ON e.EmployeeID=si.EmployeeID
-        ORDER BY si.IssueDate DESC, si.IssueID DESC"""),
+        ORDER BY si.IssueDate DESC, si.IssueID DESC""", detail_query="""
+        SELECT si.IssueDate AS "Issue Date", e.EmployeeName AS Salesperson, si.Status,
+               pr.ProductName AS Product, sil.QtyIssued AS "Qty Issued", sil.UnitPrice AS "Unit Price",
+               sil.QtySold AS "Qty Sold", sil.QtyReturned AS "Qty Returned", sil.QtyFree AS "Qty Free",
+               sil.DiscountAmount AS "Discount ₹", sil.SchemeClaimAmount AS "Scheme Claim ₹",
+               sil.LineComments AS "Comments"
+        FROM StockIssueLines sil JOIN StockIssues si ON si.IssueID=sil.IssueID
+             JOIN Employees e ON e.EmployeeID=si.EmployeeID JOIN Products pr ON pr.ProductID=sil.ProductID
+        ORDER BY si.IssueDate DESC, si.IssueID DESC, sil.LineID"""),
     "expenses": dict(title="Expenses", admin_only=False, query="""
         SELECT e.ExpenseDate AS "Expense Date", e.Category, v.RegistrationNumber AS Vehicle, e.PaidTo AS "Paid To",
                e.PaymentMode AS "Payment Mode", e.Amount, e.Description
         FROM Expenses e LEFT JOIN Vehicles v ON v.VehicleID=e.VehicleID
-        ORDER BY e.ExpenseDate DESC, e.ExpenseID DESC"""),
+        ORDER BY e.ExpenseDate DESC, e.ExpenseID DESC""", detail_query="""
+        SELECT e.* FROM Expenses e ORDER BY e.ExpenseDate DESC, e.ExpenseID DESC"""),
     "vehicles": dict(title="Vehicles", admin_only=False, query="""
         SELECT RegistrationNumber AS "Registration Number", VehicleType AS "Vehicle Type", Make, Model,
                CurrentOdometer AS "Current Odometer", InsuranceExpiry AS "Insurance Expiry",
                PermitExpiry AS "Permit Expiry", PUCExpiry AS "PUC Expiry", FitnessExpiry AS "Fitness Expiry", Status
-        FROM Vehicles ORDER BY RegistrationNumber"""),
+        FROM Vehicles ORDER BY RegistrationNumber""", detail_query="SELECT * FROM Vehicles ORDER BY RegistrationNumber"),
     "maintenance": dict(title="Maintenance", admin_only=False, query="""
         SELECT v.RegistrationNumber AS Vehicle, vm.ServiceType AS "Service Type", vm.ServiceDate AS "Service Date",
                vm.Odometer, vm.NextDueDate AS "Next Due Date", vm.Cost, vm.ServiceCenter AS "Service Center", vm.Status
         FROM VehicleMaintenance vm JOIN Vehicles v ON v.VehicleID=vm.VehicleID
+        ORDER BY vm.ServiceDate DESC, vm.MaintenanceID DESC""", detail_query="""
+        SELECT v.RegistrationNumber AS Vehicle, vm.* FROM VehicleMaintenance vm JOIN Vehicles v ON v.VehicleID=vm.VehicleID
         ORDER BY vm.ServiceDate DESC, vm.MaintenanceID DESC"""),
     "salary": dict(title="Salary Schedule", admin_only=True, query="""
         SELECT e.EmployeeName AS Employee, sp.SalaryYear AS Year, sp.SalaryMonth AS Month,
@@ -4236,31 +4265,32 @@ EXPORT_SPECS = {
                sp.AdvanceDeducted AS "Advance Deducted", sp.NetPayable AS "Net Payable", sp.Status,
                sp.PaymentDate AS "Payment Date"
         FROM SalaryPayments sp JOIN Employees e ON e.EmployeeID=sp.EmployeeID
+        ORDER BY sp.SalaryYear DESC, sp.SalaryMonth DESC, e.EmployeeName""", detail_query="""
+        SELECT e.EmployeeName AS Employee, sp.* FROM SalaryPayments sp JOIN Employees e ON e.EmployeeID=sp.EmployeeID
         ORDER BY sp.SalaryYear DESC, sp.SalaryMonth DESC, e.EmployeeName"""),
     "employees": dict(title="Employees", admin_only=True, query="""
         SELECT EmployeeName AS "Employee Name", Designation, Phone, JoinDate AS "Join Date",
                MonthlySalary AS "Monthly Salary", Status
-        FROM Employees ORDER BY EmployeeName"""),
+        FROM Employees ORDER BY EmployeeName""", detail_query="SELECT * FROM Employees ORDER BY EmployeeName"),
     "advances": dict(title="Advance Payments", admin_only=True, query="""
         SELECT a.AdvanceDate AS "Advance Date", e.EmployeeName AS Employee, a.Amount, a.Reason,
                a.RepaymentMonths AS "Repayment Months", a.MonthlyDeduction AS "Monthly Deduction",
                a.BalanceRemaining AS "Balance Remaining", a.Status
         FROM AdvancePayments a JOIN Employees e ON e.EmployeeID=a.EmployeeID
+        ORDER BY a.AdvanceDate DESC""", detail_query="""
+        SELECT e.EmployeeName AS Employee, a.* FROM AdvancePayments a JOIN Employees e ON e.EmployeeID=a.EmployeeID
         ORDER BY a.AdvanceDate DESC"""),
     "scheme_claims": dict(title="Scheme Claims", admin_only=True, query="""
         SELECT SchemeName AS "Scheme Name", ClaimDate AS "Claim Date", ApplicableProducts AS "Applicable Products",
                Description, ClaimAmount AS "Claim Amount", Status, ClaimedAt AS "Claimed At",
                ReceivedAt AS "Received At", ReceivedAmount AS "Received Amount", Notes
-        FROM SchemeClaims ORDER BY ClaimDate DESC, ClaimID DESC"""),
+        FROM SchemeClaims ORDER BY ClaimDate DESC, ClaimID DESC""",
+        detail_query="SELECT * FROM SchemeClaims ORDER BY ClaimDate DESC, ClaimID DESC"),
 }
 
 
-def rows_to_xlsx(rows, sheet_title="Report"):
+def _write_xlsx_sheet(ws, rows):
     import openpyxl
-    import io
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = (sheet_title or "Report")[:31]
     if rows:
         headers = list(rows[0].keys())
         ws.append(headers)
@@ -4269,8 +4299,42 @@ def rows_to_xlsx(rows, sheet_title="Report"):
         for i in range(1, len(headers) + 1):
             letter = openpyxl.utils.get_column_letter(i)
             ws.column_dimensions[letter].width = 18
+        # AutoFilter + a frozen header row give every exported sheet Excel's
+        # native column search/sort/filter dropdowns "for free" - e.g. this is
+        # what lets you search/filter the Customer Name column on the
+        # Customers export without any extra UI on our end.
+        ws.auto_filter.ref = ws.dimensions
+        ws.freeze_panes = "A2"
     else:
         ws.append(["No data for this report"])
+
+
+def rows_to_xlsx(rows, sheet_title="Report"):
+    import openpyxl
+    import io
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = (sheet_title or "Report")[:31]
+    _write_xlsx_sheet(ws, rows)
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf
+
+
+def rows_to_xlsx_multi(sheets):
+    """Like rows_to_xlsx(), but writes multiple (title, rows) pairs as
+    separate worksheets in one workbook - used so every "Export to Excel"
+    button can offer a Summary tab (matches the on-screen list/columns) plus
+    a Detail tab (every underlying field, including line items for
+    header+lines records like Sales/Purchases/Stock Issues) in one file."""
+    import openpyxl
+    import io
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    for title, rows in sheets:
+        ws = wb.create_sheet(title=(title or "Sheet")[:31])
+        _write_xlsx_sheet(ws, rows)
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
@@ -4339,6 +4403,14 @@ def _check_export_access(spec):
 
 @app.route("/export/<module>")
 def export_module(module):
+    """Two-tab workbook: "Summary" is the same curated columns this export
+    has always had (matches what's shown on the module's own list page),
+    and "Detail" is the fuller data dump - every underlying field, and for
+    header+lines records (Sales, Purchases, Stock Issues) one row per line
+    item (product, qty, price, discount, etc.) rather than one row per
+    invoice/issue. Both sheets get Excel's native AutoFilter dropdowns on
+    the header row, so e.g. the Customers export's "Detail" sheet can be
+    searched/filtered by Customer Name right inside Excel."""
     spec = EXPORT_SPECS.get(module)
     if not spec:
         flash("Unknown report.", "error")
@@ -4346,8 +4418,12 @@ def export_module(module):
     blocked = _check_export_access(spec)
     if blocked:
         return blocked
-    rows = db.query(spec["query"])
-    buf = rows_to_xlsx(rows, spec["title"])
+    summary_rows = db.query(spec["query"])
+    sheets = [("Summary", summary_rows)]
+    detail_query = spec.get("detail_query")
+    if detail_query:
+        sheets.append(("Detail", db.query(detail_query)))
+    buf = rows_to_xlsx_multi(sheets)
     from flask import send_file
     filename = f"{spec['title'].replace(' ', '_')}_{today_str()}.xlsx"
     return send_file(buf, as_attachment=True, download_name=filename,

@@ -14,6 +14,10 @@
   {% endif %}
   <a href="{{ url_for('columns_customize', module='Customer') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-layout-three-columns"></i> Customize Columns</a>
 </div>
+<div class="mb-3">
+  <input type="text" id="customer-list-search" class="form-control" style="max-width:340px"
+         placeholder="Search by name, contact, phone, or zone…">
+</div>
 <div class="card">
   <div class="table-responsive">
   <table class="table table-hover mb-0 align-middle" id="tbl-customer">
@@ -41,4 +45,17 @@ window.LIST_COLUMNS_TABLE_ID = 'tbl-customer';
 window.LIST_COLUMNS_PREFS = {{ columns|tojson }};
 </script>
 <script src="{{ url_for('static', filename='js/list-columns.js') }}"></script>
+<script>
+(function () {
+  const input = document.getElementById('customer-list-search');
+  const table = document.getElementById('tbl-customer');
+  if (!input || !table) return;
+  input.addEventListener('input', () => {
+    const q = input.value.trim().toLowerCase();
+    table.querySelectorAll('tbody tr').forEach(row => {
+      row.style.display = !q || row.textContent.toLowerCase().includes(q) ? '' : 'none';
+    });
+  });
+})();
+</script>
 {% endblock %}
