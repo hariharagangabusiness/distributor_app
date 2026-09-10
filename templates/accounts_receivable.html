@@ -4,7 +4,7 @@
 {% block content %}
 
 <div class="row g-3 mb-3">
-  <div class="col-md-4 col-6"><div class="stat-card"><div class="stat-value text-danger">{{ (total_due)|inr(0) }}</div><div class="stat-label">Total Due (all customers)</div></div></div>
+  <div class="col-md-4 col-6"><div class="stat-card"><div class="stat-value text-danger">{{ (total_due)|inr(0) }}</div><div class="stat-label">Total Due (Taxable Amount − Received, all customers)</div></div></div>
   <div class="col-md-4 col-6"><div class="stat-card"><div class="stat-value">{{ customer_count }}</div><div class="stat-label">Customers with a balance</div></div></div>
   <div class="col-md-4 col-6"><div class="stat-card"><div class="stat-value">{{ invoice_rows|length }}</div><div class="stat-label">Unpaid / partially-paid invoices</div></div></div>
 </div>
@@ -13,15 +13,16 @@
   <li class="nav-item"><a class="nav-link {% if view=='summary' %}active{% endif %}" href="{{ url_for('accounts_receivable', view='summary') }}">Customer Summary</a></li>
   <li class="nav-item"><a class="nav-link {% if view=='aging' %}active{% endif %}" href="{{ url_for('accounts_receivable', view='aging') }}">Aging</a></li>
   <li class="nav-item"><a class="nav-link {% if view=='invoices' %}active{% endif %}" href="{{ url_for('accounts_receivable', view='invoices') }}">Invoice-wise</a></li>
-  <li class="nav-item"><a class="nav-link {% if view=='zone' %}active{% endif %}" href="{{ url_for('accounts_receivable', view='zone') }}">Zone / Salesperson</a></li>
+  <li class="nav-item"><a class="nav-link {% if view=='zone' %}active{% endif %}" href="{{ url_for('accounts_receivable', view='zone') }}">Zone-wise</a></li>
+  <li class="nav-item"><a class="nav-link {% if view=='salesperson' %}active{% endif %}" href="{{ url_for('accounts_receivable', view='salesperson') }}">Salesperson-wise</a></li>
 </ul>
 
 {% if view == 'summary' %}
 <div class="card">
-  <div class="card-header">Customer-wise Due Summary ({{ customer_summary|length }})</div>
+  <div class="card-header">Customer-wise Due Summary ({{ customer_summary|length }}) <span class="text-muted small fw-normal">— click a column heading to sort</span></div>
   <div class="table-responsive">
-  <table class="table mb-0" id="ar-summary-table">
-    <thead><tr><th>Customer</th><th>Phone</th><th>Zone</th><th># Invoices</th><th>Invoiced</th><th>Received</th><th>Due</th><th>Oldest Due Since</th></tr></thead>
+  <table class="table mb-0 sortable-table" id="ar-summary-table">
+    <thead><tr><th>Customer</th><th>Phone</th><th>Zone</th><th># Invoices</th><th>Taxable Value</th><th>Invoiced (incl. GST)</th><th>Received</th><th>Due</th><th data-sort-type="date">Oldest Due Since</th></tr></thead>
     <tbody>
       {% for c in customer_summary %}
       <tr>
@@ -29,12 +30,13 @@
         <td>{{ c.Phone or '-' }}</td>
         <td>{{ c.Zone or '-' }}</td>
         <td>{{ c.invoice_count }}</td>
+        <td>{{ (c.taxable)|inr(2) }}</td>
         <td>{{ (c.invoiced)|inr(2) }}</td>
         <td>{{ (c.received)|inr(2) }}</td>
         <td class="text-danger fw-bold">{{ (c.due)|inr(2) }}</td>
         <td>{{ c.oldest_due_date|dmy if c.oldest_due_date else '-' }}</td>
       </tr>
-      {% else %}<tr><td colspan="8" class="text-center text-muted py-4">No outstanding dues — everything's collected.</td></tr>{% endfor %}
+      {% else %}<tr><td colspan="9" class="text-center text-muted py-4">No outstanding dues — everything's collected.</td></tr>{% endfor %}
     </tbody>
   </table>
   </div>
@@ -43,9 +45,9 @@
 
 {% if view == 'aging' %}
 <div class="card mb-3">
-  <div class="card-header">Aging Buckets — by days overdue from Payment Due Date (or Sale Date if none was set)</div>
+  <div class="card-header">Aging Buckets — by days overdue from Payment Due Date (or Sale Date if none was set) <span class="text-muted small fw-normal">— click a column heading to sort</span></div>
   <div class="table-responsive">
-  <table class="table mb-0">
+  <table class="table mb-0 sortable-table">
     <thead><tr><th>Customer</th><th>Zone</th><th>0-30 days</th><th>31-60 days</th><th>61-90 days</th><th>90+ days</th><th>Total Due</th></tr></thead>
     <tbody>
       {% for a in aging_rows %}
@@ -79,10 +81,10 @@
 
 {% if view == 'invoices' %}
 <div class="card">
-  <div class="card-header">Invoice-wise Due Detail ({{ invoice_rows|length }})</div>
+  <div class="card-header">Invoice-wise Due Detail ({{ invoice_rows|length }}) <span class="text-muted small fw-normal">— click a column heading to sort</span></div>
   <div class="table-responsive">
-  <table class="table mb-0">
-    <thead><tr><th>Invoice #</th><th>Customer</th><th>Sale Date</th><th>Due Date</th><th>Age (days)</th><th>Status</th><th>Total</th><th>Received</th><th>Due</th><th></th></tr></thead>
+  <table class="table mb-0 sortable-table">
+    <thead><tr><th>Invoice #</th><th>Customer</th><th data-sort-type="date">Sale Date</th><th data-sort-type="date">Due Date</th><th>Age (days)</th><th>Status</th><th>Taxable Value</th><th>Total (incl. GST)</th><th>Received</th><th>Due</th><th class="no-sort"></th></tr></thead>
     <tbody>
       {% for r in invoice_rows %}
       <tr>
@@ -92,12 +94,13 @@
         <td>{{ r.PaymentDueDate|dmy if r.PaymentDueDate else '-' }}</td>
         <td class="{% if r.AgeDays > 90 %}text-danger fw-bold{% elif r.AgeDays > 30 %}text-warning{% endif %}">{{ r.AgeDays }}</td>
         <td><span class="badge {% if r.PaymentStatus=='Partial' %}text-bg-warning{% else %}text-bg-danger{% endif %}">{{ r.PaymentStatus }}</span></td>
+        <td>{{ (r.TaxableAmount)|inr(2) }}</td>
         <td>{{ (r.TotalAmount)|inr(2) }}</td>
         <td>{{ (r.AmountReceived)|inr(2) }}</td>
         <td class="text-danger fw-bold">{{ (r.Due)|inr(2) }}</td>
         <td><a href="{{ url_for('sale_view', sid=r.SaleID) }}" class="btn btn-sm btn-outline-secondary">View</a></td>
       </tr>
-      {% else %}<tr><td colspan="10" class="text-center text-muted py-4">No unpaid or partially-paid invoices.</td></tr>{% endfor %}
+      {% else %}<tr><td colspan="11" class="text-center text-muted py-4">No unpaid or partially-paid invoices.</td></tr>{% endfor %}
     </tbody>
   </table>
   </div>
@@ -105,36 +108,47 @@
 {% endif %}
 
 {% if view == 'zone' %}
-<div class="row g-3">
-  <div class="col-md-6">
-    <div class="card">
-      <div class="card-header">Due by Zone</div>
-      <div class="table-responsive">
-      <table class="table mb-0">
-        <thead><tr><th>Zone</th><th># Invoices</th><th>Due</th></tr></thead>
-        <tbody>
-          {% for z in zone_rows %}
-          <tr><td>{{ z.label }}</td><td>{{ z.invoice_count }}</td><td class="text-danger fw-bold">{{ (z.due)|inr(2) }}</td></tr>
-          {% else %}<tr><td colspan="3" class="text-center text-muted py-4">No outstanding dues.</td></tr>{% endfor %}
-        </tbody>
-      </table>
-      </div>
-    </div>
+{% for g in zone_wise %}
+<div class="card mb-3">
+  <div class="card-header d-flex justify-content-between">
+    <span>{{ g.zone }} <span class="text-muted small fw-normal">({{ g.customers|length }} customer(s), {{ g.invoice_count }} invoice(s))</span></span>
+    <span class="text-danger fw-bold">{{ (g.due)|inr(2) }}</span>
   </div>
-  <div class="col-md-6">
-    <div class="card">
-      <div class="card-header">Due by Salesperson</div>
-      <div class="table-responsive">
-      <table class="table mb-0">
-        <thead><tr><th>Salesperson</th><th># Invoices</th><th>Due</th></tr></thead>
-        <tbody>
-          {% for s in salesperson_rows %}
-          <tr><td>{{ s.label }}</td><td>{{ s.invoice_count }}</td><td class="text-danger fw-bold">{{ (s.due)|inr(2) }}</td></tr>
-          {% else %}<tr><td colspan="3" class="text-center text-muted py-4">No outstanding dues.</td></tr>{% endfor %}
-        </tbody>
-      </table>
-      </div>
-    </div>
+  <div class="table-responsive">
+  <table class="table mb-0 sortable-table">
+    <thead><tr><th>Customer</th><th>Phone</th><th># Invoices</th><th>Taxable Value</th><th>Received</th><th>Due</th></tr></thead>
+    <tbody>
+      {% for c in g.customers %}
+      <tr>
+        <td>{{ c.CustomerName }}</td>
+        <td>{{ c.Phone or '-' }}</td>
+        <td>{{ c.invoice_count }}</td>
+        <td>{{ (c.taxable)|inr(2) }}</td>
+        <td>{{ (c.received)|inr(2) }}</td>
+        <td class="text-danger fw-bold">{{ (c.due)|inr(2) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% else %}
+<div class="alert alert-success">No outstanding dues.</div>
+{% endfor %}
+{% endif %}
+
+{% if view == 'salesperson' %}
+<div class="card">
+  <div class="card-header">Due by Salesperson <span class="text-muted small fw-normal">— click a column heading to sort</span></div>
+  <div class="table-responsive">
+  <table class="table mb-0 sortable-table">
+    <thead><tr><th>Salesperson</th><th># Invoices</th><th>Due</th></tr></thead>
+    <tbody>
+      {% for s in salesperson_rows %}
+      <tr><td>{{ s.label }}</td><td>{{ s.invoice_count }}</td><td class="text-danger fw-bold">{{ (s.due)|inr(2) }}</td></tr>
+      {% else %}<tr><td colspan="3" class="text-center text-muted py-4">No outstanding dues.</td></tr>{% endfor %}
+    </tbody>
+  </table>
   </div>
 </div>
 {% endif %}

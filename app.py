@@ -4996,27 +4996,34 @@ def _year_month_from_request():
 
 @app.route("/reports/accounts-receivable")
 def accounts_receivable():
-    """Who owes the business how much, in four views (?view=summary|aging|invoices|zone):
+    """Who owes the business how much, in five views (?view=summary|aging|invoices|zone|salesperson):
       - summary: one row per customer - invoiced/received/due, all-time (not date-scoped -
         dues don't expire at a month boundary the way a P&L period does).
       - aging: same due amount per customer, split into 0-30/31-60/61-90/90+ day buckets by
         PaymentDueDate (falling back to SaleDate when no due date was set).
       - invoices: every individual unpaid/partially-paid invoice with its own due amount.
-      - zone: dues rolled up by Customer.Zone and by the salesperson (Employee) on the sale.
-    Only Completed sales count (Draft isn't billed yet, Cancelled never was)."""
+      - zone: dues rolled up by Customer.Zone, with every customer in that zone listed underneath
+        and a zone subtotal (a drill-down, not just a zone-level total row).
+      - salesperson: dues rolled up by the salesperson (Employee) on the sale.
+    Only Completed sales count (Draft isn't billed yet, Cancelled never was).
+
+    Due is TaxableAmount - AmountReceived (the product value only), not TotalAmount (which
+    includes GST) - AmountReceived. This matches how Balance Due already works on the Sale
+    form's Reverse Charge calculation: GST collected on an invoice isn't money the business
+    keeps as revenue owed to it, so it doesn't belong in what's chased as "due" here."""
     view = request.args.get("view", "summary")
     today_iso = date.today().isoformat()
 
     base_rows = db.query("""
         SELECT s.SaleID, s.InvoiceNumber, s.SaleDate, s.PaymentDueDate, s.PaymentStatus,
-               s.TotalAmount, s.AmountReceived, (s.TotalAmount - s.AmountReceived) AS Due,
+               s.TotalAmount, s.TaxableAmount, s.AmountReceived, (s.TaxableAmount - s.AmountReceived) AS Due,
                c.CustomerID, c.CustomerName, c.Phone, c.Zone,
                e.EmployeeName
         FROM Sales s
         JOIN Customers c ON c.CustomerID = s.CustomerID
         LEFT JOIN Employees e ON e.EmployeeID = s.EmployeeID
         WHERE s.Status <> 'Cancelled' AND c.IsUnassignedBucket = 0
-          AND (s.TotalAmount - s.AmountReceived) > 0.005
+          AND (s.TaxableAmount - s.AmountReceived) > 0.005
         ORDER BY s.PaymentDueDate IS NULL, s.PaymentDueDate, s.SaleDate
     """)
 
@@ -5027,10 +5034,11 @@ def accounts_receivable():
     for r in base_rows:
         agg = by_customer.setdefault(r["CustomerID"], {
             "CustomerID": r["CustomerID"], "CustomerName": r["CustomerName"], "Phone": r["Phone"],
-            "Zone": r["Zone"], "invoiced": 0, "received": 0, "due": 0, "invoice_count": 0,
+            "Zone": r["Zone"], "invoiced": 0, "taxable": 0, "received": 0, "due": 0, "invoice_count": 0,
             "oldest_due_date": None,
         })
         agg["invoiced"] += r["TotalAmount"]
+        agg["taxable"] += r["TaxableAmount"]
         agg["received"] += r["AmountReceived"]
         agg["due"] += r["Due"]
         agg["invoice_count"] += 1
@@ -5040,6 +5048,7 @@ def accounts_receivable():
     customer_summary = sorted(by_customer.values(), key=lambda a: -a["due"])
     for a in customer_summary:
         a["invoiced"] = round(a["invoiced"], 2)
+        a["taxable"] = round(a["taxable"], 2)
         a["received"] = round(a["received"], 2)
         a["due"] = round(a["due"], 2)
 
@@ -5075,21 +5084,32 @@ def accounts_receivable():
             a[k] = round(a[k], 2)
     aging_totals = {k: round(sum(a[k] for a in aging_rows), 2) for k in ("b0_30", "b31_60", "b61_90", "b90_plus", "total")}
 
-    zone_agg = {}
     salesperson_agg = {}
     for r in base_rows:
-        zk = r["Zone"] or "(No Zone)"
-        z = zone_agg.setdefault(zk, {"label": zk, "due": 0, "invoice_count": 0})
-        z["due"] += r["Due"]
-        z["invoice_count"] += 1
         sk = r["EmployeeName"] or "(Counter / Unassigned)"
         s = salesperson_agg.setdefault(sk, {"label": sk, "due": 0, "invoice_count": 0})
         s["due"] += r["Due"]
         s["invoice_count"] += 1
-    zone_rows = sorted(zone_agg.values(), key=lambda a: -a["due"])
     salesperson_rows = sorted(salesperson_agg.values(), key=lambda a: -a["due"])
-    for a in zone_rows + salesperson_rows:
+    for a in salesperson_rows:
         a["due"] = round(a["due"], 2)
+
+    # Zone-wise: every zone, with the customers who owe money in that zone listed underneath
+    # and a zone subtotal - a drill-down, not just a single rolled-up total row per zone.
+    zone_groups = {}
+    for a in customer_summary:
+        zk = a["Zone"] or "(No Zone)"
+        zone_groups.setdefault(zk, {"zone": zk, "customers": [], "due": 0, "invoice_count": 0})
+    for a in customer_summary:
+        zk = a["Zone"] or "(No Zone)"
+        g = zone_groups[zk]
+        g["customers"].append(a)
+        g["due"] += a["due"]
+        g["invoice_count"] += a["invoice_count"]
+    zone_wise = sorted(zone_groups.values(), key=lambda g: -g["due"])
+    for g in zone_wise:
+        g["due"] = round(g["due"], 2)
+        g["customers"].sort(key=lambda a: -a["due"])
 
     invoice_rows = [dict(r) for r in base_rows]
     for r in invoice_rows:
@@ -5100,7 +5120,7 @@ def accounts_receivable():
                             total_due=total_due, customer_count=customer_count,
                             customer_summary=customer_summary, aging_rows=aging_rows,
                             aging_totals=aging_totals, invoice_rows=invoice_rows,
-                            zone_rows=zone_rows, salesperson_rows=salesperson_rows)
+                            zone_wise=zone_wise, salesperson_rows=salesperson_rows)
 
 
 @app.route("/reports/pnl")
