@@ -38,7 +38,7 @@
             </form>
           </td>
           <td>{% if u.Active %}<span class="badge badge-ok">Active</span>{% else %}<span class="badge text-bg-secondary">Deactivated</span>{% endif %}</td>
-          <td class="text-muted small">{{ u.LastLoginAt or 'Never' }}</td>
+          <td class="text-muted small">{{ u.LastLoginAt|dmy if u.LastLoginAt else 'Never' }}</td>
           <td class="text-end">
             <a href="{{ url_for('user_reset_password', uid=u.UserID) }}" class="btn btn-sm btn-outline-secondary">Reset Password</a>
             <form method="post" action="{{ url_for('user_toggle', uid=u.UserID) }}" class="d-inline"

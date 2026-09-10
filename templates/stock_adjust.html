@@ -41,7 +41,7 @@
         <tbody>
         {% for h in history %}
           <tr>
-            <td>{{ h.TransactionDate }}</td>
+            <td>{{ h.TransactionDate|dmy }}</td>
             <td>{{ h.TransactionType }}</td>
             <td class="{{ 'text-success' if h.QtyChange > 0 else 'text-danger' }}">{{ '%+.2f'|format(h.QtyChange) }}</td>
             <td>{{ h.Notes or '' }}</td>

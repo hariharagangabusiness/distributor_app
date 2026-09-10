@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Stock Issue{% endblock %}
-{% block page_title %}Stock Issue — {{ issue.EmployeeName }}, {{ issue.IssueDate }}{% endblock %}
+{% block page_title %}Stock Issue — {{ issue.EmployeeName }}, {{ issue.IssueDate|dmy }}{% endblock %}
 {% block content %}
 {% if issue.ReviewStatus == 'Pending' %}
 <div class="alert alert-warning d-flex justify-content-between align-items-center">
@@ -29,7 +29,7 @@
 <div class="card mb-3"><div class="card-body">
   <div class="row">
     <div class="col-md-3"><strong>Salesperson:</strong> {{ issue.EmployeeName }}<br>{{ issue.Phone or '' }}</div>
-    <div class="col-md-3"><strong>Issue Date:</strong> {{ issue.IssueDate }}<br><strong>Status:</strong>
+    <div class="col-md-3"><strong>Issue Date:</strong> {{ issue.IssueDate|dmy }}<br><strong>Status:</strong>
       <span class="badge {% if issue.Status == 'Reconciled' %}text-bg-success{% else %}text-bg-warning{% endif %}">{{ issue.Status }}</span></div>
     <div class="col-md-3">
       {% if issue.Status == 'Reconciled' %}
@@ -86,7 +86,7 @@
       <div class="col-md-4"><button type="submit" class="btn btn-outline-secondary w-100">Mark Claimed</button></div>
     </form>
     {% elif issue.ClaimStatus == 'Claimed' %}
-    <div class="text-muted small mb-1">Claimed {{ (issue.ClaimedAmount or 0)|inr(2) }} on {{ issue.ClaimedAt[:10] if issue.ClaimedAt else '' }}</div>
+    <div class="text-muted small mb-1">Claimed {{ (issue.ClaimedAmount or 0)|inr(2) }} on {{ issue.ClaimedAt[:10]|dmy if issue.ClaimedAt else '' }}</div>
     <form method="post" action="{{ url_for('stock_issue_claim', issue_id=issue.IssueID) }}" class="row g-2 mt-1">
       <input type="hidden" name="action" value="received">
       <div class="col-md-3"><input type="number" step="0.01" name="received_amount" class="form-control" value="{{ '%.2f'|format(issue.ClaimedAmount or issue.SchemeAmount) }}"></div>

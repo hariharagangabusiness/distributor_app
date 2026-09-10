@@ -91,7 +91,7 @@
     <tbody>
       {% for d in daywise %}
       <tr>
-        <td>{{ d.date }}</td>
+        <td>{{ d.date|dmy }}</td>
         <td>{{ d.qty|inrn(2) }}</td>
         <td>{{ d.cum_actual|inrn(2) }}</td>
         <td>{{ d.cum_target|inrn(2) }}</td>

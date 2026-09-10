@@ -30,7 +30,7 @@
       <tr>
         <td>{{ u.Period }}</td>
         <td><a href="{{ url_for('gst_gstr2b_download', upload_id=u.UploadID) }}">{{ u.FileName }}</a></td>
-        <td class="small text-muted">{{ u.UploadedAt }}</td>
+        <td class="small text-muted">{{ u.UploadedAt|dmy }}</td>
         <td>{% if u.ParseStatus == 'Parsed' %}<span class="badge text-bg-success">Parsed</span>{% else %}<span class="badge text-bg-danger" title="{{ u.ParseMessage }}">Failed</span>{% endif %}</td>
         <td>{{ (u.ITCIntegrated)|inr(2) }}</td>
         <td>{{ (u.ITCCentral)|inr(2) }}</td>

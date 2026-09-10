@@ -69,7 +69,7 @@
     <tbody>
       {% for inv in summary.invoices %}
       <tr>
-        <td>{{ inv.sale.SaleDate }}</td>
+        <td>{{ inv.sale.SaleDate|dmy }}</td>
         <td><a href="{{ url_for('sale_view', sid=inv.sale.SaleID) }}">{{ inv.sale.InvoiceNumber }}</a></td>
         <td>{{ inv.sale.CustomerName }}</td>
         <td>{{ 'B2B' if inv.is_b2b else 'B2C' }}</td>

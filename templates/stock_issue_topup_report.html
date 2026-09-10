@@ -12,7 +12,7 @@
     <select name="issue_id" class="form-select" style="max-width:320px">
       <option value="">Select an Issue…</option>
       {% for i in all_issues %}
-      <option value="{{ i.IssueID }}" {% if i.IssueID == issue_id %}selected{% endif %}>#{{ i.IssueID }} — {{ i.EmployeeName }} — {{ i.IssueDate }}</option>
+      <option value="{{ i.IssueID }}" {% if i.IssueID == issue_id %}selected{% endif %}>#{{ i.IssueID }} — {{ i.EmployeeName }} — {{ i.IssueDate|dmy }}</option>
       {% endfor %}
     </select>
   </div>
@@ -29,7 +29,7 @@
 
 {% if issue and product %}
 <div class="card mb-3"><div class="card-body">
-  <h5>Issue #{{ issue.IssueID }} — {{ issue.EmployeeName }} — {{ issue.IssueDate }}</h5>
+  <h5>Issue #{{ issue.IssueID }} — {{ issue.EmployeeName }} — {{ issue.IssueDate|dmy }}</h5>
   <div class="text-muted small">Status={{ issue.Status }}, ReviewStatus={{ issue.ReviewStatus }}</div>
   <div class="mt-1">{{ product.ProductName }} (ProductID={{ product_id }})</div>
 </div></div>
@@ -44,7 +44,7 @@
       {% set ns.running = ns.running + t.Qty %}
       <tr>
         <td>{{ t.TransactionID }}</td>
-        <td>{{ t.TransactionDate }}</td>
+        <td>{{ t.TransactionDate|dmy }}</td>
         <td>+{{ t.Qty }}</td>
         <td>{{ ns.running }}</td>
         <td class="text-muted small">{{ t.Notes or '' }}</td>

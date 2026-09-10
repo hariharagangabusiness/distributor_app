@@ -47,7 +47,7 @@
   <div class="divider"></div>
   <div>
     Invoice #: {{ sale.InvoiceNumber }}<br>
-    Date: {{ sale.SaleDate }}<br>
+    Date: {{ sale.SaleDate|dmy }}<br>
     Customer: {{ sale.CustomerName }}{% if sale.Phone %} ({{ sale.Phone }}){% endif %}<br>
     {% if sale.EmployeeName %}Salesperson: {{ sale.EmployeeName }}<br>{% endif %}
   </div>

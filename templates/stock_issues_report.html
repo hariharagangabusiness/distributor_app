@@ -27,7 +27,7 @@
     <tbody>
       {% for i in due_issues %}
       <tr>
-        <td>{{ i.IssueDate }}</td><td>{{ i.EmployeeName }}</td>
+        <td>{{ i.IssueDate|dmy }}</td><td>{{ i.EmployeeName }}</td>
         <td>{{ (i.ExpectedAmount or 0)|inr(2) }}</td>
         <td>{{ (i.CashCollected or 0)|inr(2) }}</td>
         <td class="text-danger fw-bold">{{ (i.AmountDue or 0)|inr(2) }}</td>
@@ -48,7 +48,7 @@
     <tbody>
       {% for i in claim_pending %}
       <tr>
-        <td>{{ i.IssueDate }}</td><td>{{ i.EmployeeName }}</td>
+        <td>{{ i.IssueDate|dmy }}</td><td>{{ i.EmployeeName }}</td>
         <td>{{ (i.SchemeAmount or 0)|inr(2) }}</td>
         <td><span class="badge {% if i.ClaimStatus=='Claimed' %}text-bg-warning{% else %}text-bg-secondary{% endif %}">{{ i.ClaimStatus }}</span></td>
         <td><a href="{{ url_for('stock_issue_view', issue_id=i.IssueID) }}" class="btn btn-sm btn-outline-secondary">View</a></td>
@@ -67,7 +67,7 @@
     <tbody>
       {% for l in free_lines %}
       <tr>
-        <td>{{ l.IssueDate }}</td><td>{{ l.EmployeeName }}</td><td>{{ l.ProductName }}</td>
+        <td>{{ l.IssueDate|dmy }}</td><td>{{ l.EmployeeName }}</td><td>{{ l.ProductName }}</td>
         <td>{{ l.QtyFree or 0 }}</td><td>{{ (l.DiscountAmount or 0)|inr(2) }}</td>
         <td>{{ (l.SchemeClaimAmount or 0)|inr(2) }}</td>
         <td class="text-muted small">{{ l.LineComments or '' }}</td>
@@ -92,7 +92,7 @@
     <tbody>
       {% for d in daywise %}
       <tr>
-        <td>{{ d.date }}</td>
+        <td>{{ d.date|dmy }}</td>
         <td>{{ (d.cost)|inr(2) }}</td>
         <td>{{ (d.expected)|inr(2) }}</td>
         <td>{{ (d.collected)|inr(2) }}</td>

@@ -46,7 +46,7 @@
       <tr class="{% if d.due_date < today %}text-muted{% elif (d.due_date - today).days <= 3 %}table-danger{% elif (d.due_date - today).days <= 7 %}table-warning{% endif %}">
         <td>{{ d.return_type }}</td>
         <td>{{ d.period }}</td>
-        <td>{{ d.due_date.strftime('%d %b %Y') }}{% if d.due_date < today %} <span class="badge text-bg-secondary">past</span>{% endif %}</td>
+        <td>{{ d.due_date.strftime('%d-%m-%Y') }}{% if d.due_date < today %} <span class="badge text-bg-secondary">past</span>{% endif %}</td>
         <td class="small text-muted">{{ d.description }}</td>
       </tr>
       {% endfor %}

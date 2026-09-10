@@ -32,6 +32,18 @@ def _p(text, style=NORMAL):
     return Paragraph(str(text) if text is not None else "", style)
 
 
+def _dmy(iso_date):
+    """Reformats a stored ISO 'YYYY-MM-DD' date for display as DD-MM-YYYY. Storage stays
+    ISO - this only affects what's printed on the PDF."""
+    if not iso_date:
+        return iso_date
+    try:
+        from datetime import datetime
+        return datetime.strptime(str(iso_date)[:10], "%Y-%m-%d").strftime("%d-%m-%Y")
+    except ValueError:
+        return iso_date
+
+
 def build_invoice_pdf(sale, lines, company, amount_words):
     buf = BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=14 * mm, bottomMargin=14 * mm,
@@ -51,7 +63,7 @@ def build_invoice_pdf(sale, lines, company, amount_words):
     ]
     meta_block = [
         _p(f"Invoice No: <b>{sale['InvoiceNumber']}</b>", NORMAL),
-        _p(f"Invoice Date: <b>{sale['SaleDate']}</b>", NORMAL),
+        _p(f"Invoice Date: <b>{_dmy(sale['SaleDate'])}</b>", NORMAL),
         _p(f"Place of Supply: {sale['PlaceOfSupplyState'] or '-'} ({sale['PlaceOfSupplyStateCode'] or '-'})", NORMAL),
         _p(f"Reverse Charge Applicable: {'Yes' if sale['ReverseCharge'] else 'No'}", NORMAL),
         _p(f"Tax Type: {'IGST (Inter-State)' if sale['IsInterState'] else 'CGST + SGST (Intra-State)'}", NORMAL),

@@ -61,6 +61,37 @@ def inrn_filter(value, decimals=0):
     return indian_number_format(value, decimals)
 
 
+def format_date_dmy(value):
+    """Reformats a date/datetime for display as DD-MM-YYYY (DD-MM-YYYY HH:MM for a
+    value that carries a time component). Storage and every <input type="date"> value
+    stay ISO YYYY-MM-DD underneath - HTML5 date inputs require that format and it sorts
+    correctly - this only changes what's rendered as plain text. Accepts a date/datetime
+    object, an ISO string ('YYYY-MM-DD' or 'YYYY-MM-DD HH:MM:SS'), or None/''/already-
+    non-ISO text, which all pass through unchanged rather than raising, since a table
+    row's date column is sometimes blank or (rarely) already formatted."""
+    if value is None or value == "":
+        return value
+    if isinstance(value, datetime):
+        return value.strftime("%d-%m-%Y %H:%M") if (value.hour or value.minute) else value.strftime("%d-%m-%Y")
+    if isinstance(value, date):
+        return value.strftime("%d-%m-%Y")
+    if isinstance(value, str):
+        s = value.strip()
+        for fmt, out in (("%Y-%m-%d %H:%M:%S", "%d-%m-%Y %H:%M"), ("%Y-%m-%dT%H:%M:%S", "%d-%m-%Y %H:%M"),
+                         ("%Y-%m-%d %H:%M", "%d-%m-%Y %H:%M"), ("%Y-%m-%d", "%d-%m-%Y")):
+            try:
+                return datetime.strptime(s, fmt).strftime(out)
+            except ValueError:
+                continue
+        return value
+    return value
+
+
+@app.template_filter("dmy")
+def dmy_filter(value):
+    return format_date_dmy(value)
+
+
 def parse_form_number(value, field_label):
     """Turns a form field's text into a float, tolerating the way people
     naturally type numbers (Indian-style thousands separators like
@@ -814,7 +845,7 @@ def active_advances():
 
 @app.context_processor
 def inject_current_date():
-    return dict(current_date=date.today().strftime("%d %b %Y"))
+    return dict(current_date=date.today().strftime("%d-%m-%Y"))
 
 
 @app.context_processor

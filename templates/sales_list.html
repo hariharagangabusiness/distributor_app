@@ -37,11 +37,11 @@
       <tr>
         <td data-col="invoice_number">{{ s.InvoiceNumber }}</td>
         <td data-col="customer">{{ s.CustomerName }}{% if s.IsUnassignedBucket %} <span class="badge text-bg-warning">Unassigned</span>{% endif %}</td>
-        <td data-col="date">{{ s.SaleDate }}</td><td data-col="status">{{ s.Status }}</td>
+        <td data-col="date">{{ s.SaleDate|dmy }}</td><td data-col="status">{{ s.Status }}</td>
         <td data-col="payment">{% if s.PaymentStatus=='Paid' %}<span class="badge badge-ok">Paid</span>
             {% elif s.PaymentStatus=='Partial' %}<span class="badge badge-over">Partial</span>
             {% else %}<span class="badge badge-low">Unpaid</span>{% endif %}</td>
-        <td data-col="due_date">{{ s.PaymentDueDate or '-' }}</td>
+        <td data-col="due_date">{{ s.PaymentDueDate|dmy if s.PaymentDueDate else '-' }}</td>
         <td data-col="total">{{ (s.TotalAmount)|inr(2) }}{% if s.ReverseCharge %} <span class="badge text-bg-info" title="Reverse Charge — product value only counted below">RC</span>{% endif %}</td>
         <td data-col="balance" class="{% if sale_balance_due(s) > 0 %}text-danger fw-bold{% endif %}">{{ (sale_balance_due(s))|inr(2) }}</td>
         <td data-col="salesperson">{{ s.EmployeeName or '-' }}</td>

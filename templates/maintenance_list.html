@@ -16,7 +16,7 @@
   <div class="card-header"><i class="bi bi-exclamation-triangle text-warning"></i> Due within 30 days</div>
   <div class="card-body">
     {% for m in due %}
-    <div class="alert-tile badge-over"><span>{{ m.RegistrationNumber }} — {{ m.ServiceType }}</span><span>Due {{ m.NextDueDate }}</span></div>
+    <div class="alert-tile badge-over"><span>{{ m.RegistrationNumber }} — {{ m.ServiceType }}</span><span>Due {{ m.NextDueDate|dmy }}</span></div>
     {% endfor %}
   </div>
 </div>
@@ -31,8 +31,8 @@
     <tbody>
       {% for r in records %}
       <tr>
-        <td data-col="vehicle">{{ r.RegistrationNumber }}</td><td data-col="service_type">{{ r.ServiceType }}</td><td data-col="date">{{ r.ServiceDate }}</td>
-        <td data-col="odometer">{{ r.Odometer|round(0) if r.Odometer else '-' }}</td><td data-col="next_due_date">{{ r.NextDueDate or '-' }}</td>
+        <td data-col="vehicle">{{ r.RegistrationNumber }}</td><td data-col="service_type">{{ r.ServiceType }}</td><td data-col="date">{{ r.ServiceDate|dmy }}</td>
+        <td data-col="odometer">{{ r.Odometer|round(0) if r.Odometer else '-' }}</td><td data-col="next_due_date">{{ r.NextDueDate|dmy if r.NextDueDate else '-' }}</td>
         <td data-col="cost">{{ (r.Cost)|inr(2) }}</td><td data-col="service_center">{{ r.ServiceCenter or '-' }}</td>
       </tr>
       {% else %}<tr><td colspan="7" class="text-center text-muted py-4">No maintenance records yet.</td></tr>{% endfor %}

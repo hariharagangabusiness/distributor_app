@@ -68,6 +68,18 @@ def _p(text, style=NORMAL):
     return Paragraph(str(text) if text is not None else "", style)
 
 
+def _dmy(iso_date):
+    """Reformats a stored ISO 'YYYY-MM-DD' date for display as DD-MM-YYYY. Storage stays
+    ISO - this only affects what's printed on the PDF."""
+    if not iso_date:
+        return iso_date
+    try:
+        from datetime import datetime
+        return datetime.strptime(str(iso_date)[:10], "%Y-%m-%d").strftime("%d-%m-%Y")
+    except ValueError:
+        return iso_date
+
+
 def build_payslip_pdf(payment, employee, company, month_name, amount_words,
                        days_in_month=None, days_worked=None, leave_days_total=0,
                        leave_details=None, attendance_recorded=False):
@@ -108,7 +120,7 @@ def build_payslip_pdf(payment, employee, company, month_name, amount_words,
         _p("Pay Period:", LABEL), _p(f"{month_name} {payment['SalaryYear']}", NORMAL),
         _p("Bank Account:", LABEL), _p(employee["BankAccount"] or "-", NORMAL),
         _p("Payment Status:", LABEL),
-        _p(f"{payment['Status']}" + (f" on {payment['PaymentDate']} ({payment['PaymentMode']})" if payment["Status"] == "Paid" and payment["PaymentDate"] else ""), NORMAL),
+        _p(f"{payment['Status']}" + (f" on {_dmy(payment['PaymentDate'])} ({payment['PaymentMode']})" if payment["Status"] == "Paid" and payment["PaymentDate"] else ""), NORMAL),
     ]
     detail_tbl = Table([[emp_block, pay_block]], colWidths=[91 * mm, 91 * mm])
     detail_tbl.setStyle(TableStyle([

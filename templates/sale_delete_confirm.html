@@ -5,7 +5,7 @@
 <div class="card mb-3"><div class="card-body">
   <div class="row">
     <div class="col-md-4"><strong>Customer:</strong> {{ sale.CustomerName }}</div>
-    <div class="col-md-4"><strong>Date:</strong> {{ sale.SaleDate }}</div>
+    <div class="col-md-4"><strong>Date:</strong> {{ sale.SaleDate|dmy }}</div>
     <div class="col-md-4"><strong>Total:</strong> {{ (sale.TotalAmount)|inr(2) }}
       &nbsp;<span class="text-muted">(Received {{ (sale.AmountReceived)|inr(2) }})</span></div>
   </div>
@@ -34,14 +34,14 @@
       <ul>
         {% for r in issue_credit %}
         <li>{{ r.qty|round(2) }} {{ r.Unit }} of <strong>{{ r.ProductName }}</strong> on
-          <a href="{{ url_for('stock_issue_view', issue_id=r.IssueID) }}" target="_blank">{{ r.EmployeeName or 'that' }}'s Stock Issue for {{ r.IssueDate }}</a></li>
+          <a href="{{ url_for('stock_issue_view', issue_id=r.IssueID) }}" target="_blank">{{ r.EmployeeName or 'that' }}'s Stock Issue for {{ r.IssueDate|dmy }}</a></li>
         {% endfor %}
       </ul>
     </li>
     {% endif %}
     {% if reconciliation_linked %}
     <li>This sale was <strong>auto-created from reconciling</strong>
-      <a href="{{ url_for('stock_issue_view', issue_id=reconciliation_linked.IssueID) }}" target="_blank">the Stock Issue for {{ reconciliation_linked.IssueDate }}</a> —
+      <a href="{{ url_for('stock_issue_view', issue_id=reconciliation_linked.IssueID) }}" target="_blank">the Stock Issue for {{ reconciliation_linked.IssueDate|dmy }}</a> —
       that Stock Issue will be unlinked from it (its own cash/bank/discrepancy figures are not affected, only the link to this Sale).</li>
     {% endif %}
     {% if custom_field_count %}
@@ -56,7 +56,7 @@
 <div class="alert alert-warning">
   <strong>Also worth knowing:</strong> GST returns (GSTR-1/3B) and the Profit &amp; Loss report are computed live
   from the Sales table, not stored as fixed figures — deleting this sale will change those reports' numbers for
-  {{ sale.SaleDate }} going forward. It will <strong>not</strong> retroactively correct anything you may have
+  {{ sale.SaleDate|dmy }} going forward. It will <strong>not</strong> retroactively correct anything you may have
   already filed with the tax department using the old figures, so double-check that before continuing if this
   sale is from a period you've already filed.
 </div>

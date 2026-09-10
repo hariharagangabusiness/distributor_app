@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Add More Products{% endblock %}
-{% block page_title %}Add More Products — {{ issue.EmployeeName }}, {{ issue.IssueDate }}{% endblock %}
+{% block page_title %}Add More Products — {{ issue.EmployeeName }}, {{ issue.IssueDate|dmy }}{% endblock %}
 {% block content %}
 <div class="alert alert-info">Adding lines here appends them to this same Stock Issue (for a salesperson who got
   re-stocked more than once today) instead of creating a separate issue. These new lines are deducted from stock

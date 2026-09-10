@@ -19,7 +19,7 @@
       {% for e in employees %}
       <tr>
         <td data-col="name">{{ e.EmployeeName }}</td><td data-col="designation">{{ e.Designation or '-' }}</td><td data-col="phone">{{ e.Phone or '-' }}</td>
-        <td data-col="join_date">{{ e.JoinDate or '-' }}</td><td data-col="monthly_salary">{{ (e.MonthlySalary)|inr(2) }}</td>
+        <td data-col="join_date">{{ e.JoinDate|dmy if e.JoinDate else '-' }}</td><td data-col="monthly_salary">{{ (e.MonthlySalary)|inr(2) }}</td>
         <td data-col="status">{% if e.Status=='Active' %}<span class="badge badge-ok">Active</span>{% else %}<span class="badge text-bg-secondary">{{ e.Status }}</span>{% endif %}</td>
         <td class="text-end"><a href="{{ url_for('employee_form', eid=e.EmployeeID) }}" class="btn btn-sm btn-outline-secondary">Edit</a></td>
       </tr>

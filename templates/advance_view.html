@@ -19,7 +19,7 @@
   </div>
   <div class="card-body">
     <div class="row g-3">
-      <div class="col-md-3"><span class="text-muted small">Date</span><br>{{ advance.AdvanceDate }}</div>
+      <div class="col-md-3"><span class="text-muted small">Date</span><br>{{ advance.AdvanceDate|dmy }}</div>
       <div class="col-md-3"><span class="text-muted small">Amount</span><br>{{ (advance.Amount)|inr(2) }}</div>
       <div class="col-md-3"><span class="text-muted small">Repay (months)</span><br>{{ advance.RepaymentMonths }}</div>
       <div class="col-md-3"><span class="text-muted small">Monthly Deduction</span><br>{{ (advance.MonthlyDeduction)|inr(2) }}</div>

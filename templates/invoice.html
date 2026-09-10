@@ -59,7 +59,7 @@
       </td>
       <td style="width:40%">
         <strong>Invoice No:</strong> {{ sale.InvoiceNumber }}<br>
-        <strong>Invoice Date:</strong> {{ sale.SaleDate }}<br>
+        <strong>Invoice Date:</strong> {{ sale.SaleDate|dmy }}<br>
         <strong>Place of Supply:</strong> {{ sale.PlaceOfSupplyState or '-' }} ({{ sale.PlaceOfSupplyStateCode or '-' }})<br>
         <strong>Reverse Charge:</strong> {{ 'Yes' if sale.ReverseCharge else 'No' }}<br>
         <strong>Tax Type:</strong> {{ 'IGST (Inter-State)' if sale.IsInterState else 'CGST + SGST (Intra-State)' }}

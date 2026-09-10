@@ -22,7 +22,7 @@
       <li class="list-group-item d-flex justify-content-between align-items-center px-0">
         <div>
           <a href="{{ url_for('attachment_download', attachment_id=a.AttachmentID) }}"><i class="bi bi-file-earmark"></i> {{ a.FileName }}</a>
-          <span class="text-muted small ms-2">{{ (a.FileSize / 1024) | round(1) }} KB &middot; {{ a.UploadedAt }}</span>
+          <span class="text-muted small ms-2">{{ (a.FileSize / 1024) | round(1) }} KB &middot; {{ a.UploadedAt|dmy }}</span>
         </div>
         {% if current_user and current_user.Role == 'Admin' %}
         <form method="post" action="{{ url_for('attachment_delete', attachment_id=a.AttachmentID) }}" onsubmit="return confirm('Delete this attachment?');">

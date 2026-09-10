@@ -23,14 +23,14 @@
 </div>
 
 <div class="card">
-  <div class="card-header"><i class="bi bi-calendar3 text-secondary"></i> Day-wise Sales ({{ date_from }} to {{ date_to }})</div>
+  <div class="card-header"><i class="bi bi-calendar3 text-secondary"></i> Day-wise Sales ({{ date_from|dmy }} to {{ date_to|dmy }})</div>
   <div class="table-responsive">
   <table class="table mb-0">
     <thead><tr><th>Date</th><th>Invoices</th><th>Total Sales</th><th>Received</th><th>Balance Due</th></tr></thead>
     <tbody>
       {% for d in daywise %}
       <tr>
-        <td>{{ d.date }}</td>
+        <td>{{ d.date|dmy }}</td>
         <td>{{ d.invoice_count }}</td>
         <td>{{ (d.total)|inr(2) }}</td>
         <td>{{ (d.received)|inr(2) }}</td>

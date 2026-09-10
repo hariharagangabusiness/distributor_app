@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Reconcile Stock Issue{% endblock %}
-{% block page_title %}{% if is_reedit %}Edit Reconciliation{% else %}Reconcile{% endif %} — {{ issue.EmployeeName }}, {{ issue.IssueDate }}{% endblock %}
+{% block page_title %}{% if is_reedit %}Edit Reconciliation{% else %}Reconcile{% endif %} — {{ issue.EmployeeName }}, {{ issue.IssueDate|dmy }}{% endblock %}
 {% block content %}
 {% if is_reedit %}
 <div class="alert alert-warning">Editing an already-reconciled stock issue (Admin only). Saving replaces the previous

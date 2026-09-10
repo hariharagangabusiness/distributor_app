@@ -53,10 +53,10 @@
     <tbody>
       {% for r in rows %}
       <tr>
-        <td>{{ r.DeletedAt }}</td>
+        <td>{{ r.DeletedAt|dmy }}</td>
         <td>{{ r.InvoiceNumber }}</td>
         <td>{{ r.CustomerName or '-' }}</td>
-        <td>{{ r.SaleDate or '-' }}</td>
+        <td>{{ r.SaleDate|dmy if r.SaleDate else '-' }}</td>
         <td>{{ r.EmployeeName or '-' }}</td>
         <td>{{ r.LineCount }}</td>
         <td>{{ (r.TotalAmount)|inr(2) }}</td>

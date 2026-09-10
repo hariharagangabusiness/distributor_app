@@ -39,7 +39,7 @@
           <tr><td class="text-muted">Pay Period</td><td>{{ month_name }} {{ payment.SalaryYear }}</td></tr>
           <tr><td class="text-muted">Bank Account</td><td>{{ employee.BankAccount or '-' }}</td></tr>
           <tr><td class="text-muted">Payment Status</td>
-            <td>{% if payment.Status=='Paid' %}<span class="badge badge-ok">Paid {{ payment.PaymentDate }} ({{ payment.PaymentMode }})</span>{% else %}<span class="badge badge-low">Pending</span>{% endif %}</td></tr>
+            <td>{% if payment.Status=='Paid' %}<span class="badge badge-ok">Paid {{ payment.PaymentDate|dmy }} ({{ payment.PaymentMode }})</span>{% else %}<span class="badge badge-low">Pending</span>{% endif %}</td></tr>
         </table>
       </div>
     </div>

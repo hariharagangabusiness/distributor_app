@@ -46,7 +46,7 @@
       {% for c in claims %}
       <tr>
         <td>{{ c.SchemeName }}{% if c.Description %}<br><span class="text-muted small">{{ c.Description }}</span>{% endif %}</td>
-        <td>{{ c.ClaimDate }}</td>
+        <td>{{ c.ClaimDate|dmy }}</td>
         <td>{{ c.ApplicableProducts or '-' }}</td>
         <td>{{ (c.ClaimAmount)|inr(2) }}</td>
         <td>

@@ -28,7 +28,7 @@
 <div class="card mb-3"><div class="card-body">
   <h5>{{ sale.InvoiceNumber }} <span class="badge bg-secondary">{{ sale.Status }}</span></h5>
   <div class="row g-3 mt-1">
-    <div class="col-md-3"><div class="text-muted small">Date</div><div>{{ sale.SaleDate }}</div></div>
+    <div class="col-md-3"><div class="text-muted small">Date</div><div>{{ sale.SaleDate|dmy }}</div></div>
     <div class="col-md-3"><div class="text-muted small">Customer</div><div>{{ sale.CustomerName }}{% if sale.CustomerPhone %} ({{ sale.CustomerPhone }}){% endif %}</div></div>
     <div class="col-md-3"><div class="text-muted small">Salesperson</div><div>{{ sale.EmployeeName or '-' }}</div></div>
     <div class="col-md-3"><div class="text-muted small">Payment Status</div><div>{{ sale.PaymentStatus }}</div></div>

@@ -131,7 +131,7 @@
       {% for m in maintenance %}
       <div class="alert-tile badge-over">
         <span>{{ m.RegistrationNumber }} — {{ m.ServiceType }}</span>
-        <span>Due {{ m.NextDueDate }}</span>
+        <span>Due {{ m.NextDueDate|dmy }}</span>
       </div>
       {% endfor %}
     {% else %}<p class="text-muted mb-0">No maintenance due in the next 7 days.</p>{% endif %}
@@ -147,7 +147,7 @@
       {% for d in docs %}
       <div class="alert-tile badge-low">
         <span>{{ d.RegistrationNumber }} — {{ d.DocType }}</span>
-        <span>Expires {{ d.ExpiryDate }}</span>
+        <span>Expires {{ d.ExpiryDate|dmy }}</span>
       </div>
       {% endfor %}
     {% else %}<p class="text-muted mb-0">No documents expiring in the next 30 days.</p>{% endif %}
@@ -201,7 +201,7 @@
       {% for d in gst_due %}
       <div class="alert-tile badge-low">
         <span>{{ d.return_type }} ({{ d.period }})</span>
-        <span>Due {{ d.due_date.strftime('%d %b %Y') }}</span>
+        <span>Due {{ d.due_date.strftime('%d-%m-%Y') }}</span>
       </div>
       {% endfor %}
     {% else %}<p class="text-muted mb-0">Nothing due in the next 14 days.</p>{% endif %}

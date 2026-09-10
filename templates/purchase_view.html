@@ -6,7 +6,7 @@
   <div class="row">
     <div class="col-md-4"><strong>Supplier:</strong> {{ purchase.SupplierName }}<br>{{ purchase.Phone or '' }}<br>{{ purchase.Address or '' }}
       {% if purchase.SupplierGSTIN %}<br><span class="text-muted small">GSTIN: {{ purchase.SupplierGSTIN }}</span>{% endif %}</div>
-    <div class="col-md-4"><strong>Date:</strong> {{ purchase.PurchaseDate }}<br><strong>Invoice #:</strong> {{ purchase.InvoiceNumber or '-' }}
+    <div class="col-md-4"><strong>Date:</strong> {{ purchase.PurchaseDate|dmy }}<br><strong>Invoice #:</strong> {{ purchase.InvoiceNumber or '-' }}
       <br><span class="text-muted small">{{ 'Inter-state (IGST)' if purchase.IsInterState else 'Intra-state (CGST+SGST)' }}{% if purchase.ReverseCharge %} · Reverse Charge{% endif %}{% if not purchase.ITCEligible %} · <span class="text-danger">ITC not claimed</span>{% endif %}</span></div>
     <div class="col-md-4 d-flex justify-content-between">
       <div><strong>Status:</strong> {{ purchase.Status }}<br><strong>Payment:</strong> {{ purchase.PaymentStatus }} (Paid {{ (purchase.AmountPaid)|inr(2) }})</div>

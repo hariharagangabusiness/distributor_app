@@ -19,7 +19,7 @@
     <tbody>
       {% for a in advances %}
       <tr>
-        <td data-col="employee">{{ a.EmployeeName }}</td><td data-col="date">{{ a.AdvanceDate }}</td><td data-col="amount">{{ (a.Amount)|inr(2) }}</td>
+        <td data-col="employee">{{ a.EmployeeName }}</td><td data-col="date">{{ a.AdvanceDate|dmy }}</td><td data-col="amount">{{ (a.Amount)|inr(2) }}</td>
         <td data-col="reason">{{ a.Reason or '-' }}</td><td data-col="repay_months">{{ a.RepaymentMonths }}</td><td data-col="monthly_deduction">{{ (a.MonthlyDeduction)|inr(2) }}</td>
         <td data-col="balance">{{ (a.BalanceRemaining)|inr(2) }}</td>
         <td data-col="status">{% if a.Status=='Active' %}<span class="badge badge-over">Active</span>{% else %}<span class="badge badge-ok">Closed</span>{% endif %}</td>

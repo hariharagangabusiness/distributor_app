@@ -18,7 +18,7 @@
     <tbody>
       {% for e in expenses %}
       <tr>
-        <td data-col="date">{{ e.ExpenseDate }}</td><td data-col="category">{{ e.Category }}</td><td data-col="vehicle">{{ e.RegistrationNumber or '-' }}</td>
+        <td data-col="date">{{ e.ExpenseDate|dmy }}</td><td data-col="category">{{ e.Category }}</td><td data-col="vehicle">{{ e.RegistrationNumber or '-' }}</td>
         <td data-col="paid_to">{{ e.PaidTo or '-' }}</td><td data-col="mode">{{ e.PaymentMode or '-' }}</td><td data-col="amount">{{ (e.Amount)|inr(2) }}</td>
         <td class="text-end"><a href="{{ url_for('expense_form', eid=e.ExpenseID) }}" class="btn btn-sm btn-outline-secondary">Edit</a></td>
       </tr>

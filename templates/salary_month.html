@@ -48,7 +48,7 @@
           {% if r.LOPDays %}<br><span class="text-muted small">of {{ (r.GrossSalary)|inr(2) }} gross, {{ r.LOPDays|round(2) }} LOP day(s)</span>{% endif %}
         </td><td data-col="advance_deducted">{{ (r.AdvanceDeducted)|inr(2) }}</td>
         <td data-col="net_payable"><strong>{{ (r.NetPayable)|inr(2) }}</strong></td>
-        <td data-col="status">{% if r.Status=='Paid' %}<span class="badge badge-ok">Paid {{ r.PaymentDate }}</span>{% else %}<span class="badge badge-low">Pending</span>{% endif %}</td>
+        <td data-col="status">{% if r.Status=='Paid' %}<span class="badge badge-ok">Paid {{ r.PaymentDate|dmy }}</span>{% else %}<span class="badge badge-low">Pending</span>{% endif %}</td>
         <td class="text-end">
           <div class="d-flex gap-1 justify-content-end flex-wrap">
             <a href="{{ url_for('payslip_view', pid=r.PaymentID) }}" class="btn btn-sm btn-outline-secondary" title="View / Download Payslip"><i class="bi bi-file-earmark-text"></i> Payslip</a>
