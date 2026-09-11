@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Invoice {{ sale.InvoiceNumber }}</title>
 <style>
   * { box-sizing: border-box; }
@@ -11,11 +12,12 @@
   table { width: 100%; border-collapse: collapse; }
   .meta-table td { vertical-align: top; padding: 10px 14px; border: 1px solid #333; }
   .bill-to { border: 1px solid #333; border-top: none; padding: 10px 14px; margin-bottom: 14px; }
-  .items-table { margin-bottom: 10px; }
-  .items-table th, .items-table td { border: 1px solid #666; padding: 5px 6px; font-size: 12px; }
+  .items-table-scroll { overflow-x: auto; margin-bottom: 10px; }
+  .items-table { margin-bottom: 0; }
+  .items-table th, .items-table td { border: 1px solid #666; padding: 5px 6px; font-size: 12px; white-space: nowrap; }
   .items-table th { background: #eef2f0; }
   .items-table td.num, .items-table th.num { text-align: right; }
-  .totals-table { width: 300px; margin-left: auto; margin-bottom: 14px; }
+  .totals-table { width: 300px; max-width: 100%; margin-left: auto; margin-bottom: 14px; }
   .totals-table td { border: 1px solid #666; padding: 5px 8px; }
   .totals-table td:last-child { text-align: right; }
   .totals-table tr.grand td { font-weight: bold; font-size: 14px; }
@@ -32,6 +34,12 @@
     body { background: #fff; padding: 0; }
     .sheet { border: none; padding: 0; max-width: none; }
     .no-print { display: none; }
+  }
+  @media (max-width: 575.98px) {
+    body { padding: 10px; }
+    .sheet { padding: 14px 12px; }
+    .bottom-row { flex-direction: column; gap: 14px; }
+    .sign-box { text-align: left; }
   }
 </style>
 </head>
@@ -75,6 +83,7 @@
     GSTIN: {{ sale.CustomerGSTIN or 'Unregistered' }} &nbsp; State: {{ sale.CustomerState or '-' }} ({{ sale.CustomerStateCode or '-' }})
   </div>
 
+  <div class="items-table-scroll">
   <table class="items-table">
     <thead>
       <tr>
@@ -109,6 +118,7 @@
       {% endfor %}
     </tbody>
   </table>
+  </div>
 
   <table class="totals-table">
     <tr><td>Taxable Amount</td><td>{{ (sale.TaxableAmount)|inr(2) }}</td></tr>
