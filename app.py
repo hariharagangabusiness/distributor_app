@@ -4041,6 +4041,19 @@ def sales_live_report():
                                   GROUP BY s.EmployeeID""", (date_str,))
     discount_by_emp = {r["EmployeeID"]: r["discount"] for r in discount_agg_rows}
 
+    # Ground-truth total Qty Sold per employee for the day, the same way true_product_qty_sold()
+    # is ground truth per-product on the Reconcile/view pages - StockIssueLines.QtySold (what
+    # line_agg_rows above sums) under-reports whenever a Sale fell through to a direct warehouse
+    # deduction (its line's running credited total had already caught up to what was issued so
+    # far when that Sale was saved - see true_product_qty_sold()'s docstring). Qty Sold and
+    # Unaccounted below are corrected against this so "Unaccounted" doesn't look inflated by
+    # units that were, in fact, genuinely sold and invoiced.
+    true_qty_sold_rows = db.query("""SELECT s.EmployeeID, COALESCE(SUM(sl.Qty),0) qty_sold
+                                   FROM Sales s JOIN SalesLines sl ON sl.SaleID = s.SaleID
+                                   WHERE s.SaleDate=? AND s.Status<>'Cancelled' AND s.EmployeeID IS NOT NULL
+                                   GROUP BY s.EmployeeID""", (date_str,))
+    true_qty_sold_by_emp = {r["EmployeeID"]: r["qty_sold"] for r in true_qty_sold_rows}
+
     # Cash/Bank already folded into a Reconciled Stock Issue's own CashAmount/BankAmount via
     # the credited Sales that Reconcile's form is now pre-filled from (see
     # stock_issue_reconcile()) - excluded below from the plain per-Sale sum so Collected isn't
@@ -4113,15 +4126,21 @@ def sales_live_report():
             issue_badge = "Issued"
         else:
             issue_badge = "Sales only (no Stock Issue)"
+        qty_issued_live = round(la["qty_issued"], 2) if la else 0
+        qty_returned_live = round(la["qty_returned"], 2) if la else 0
+        qty_free_live = round(la["qty_free"], 2) if la else 0
+        # Ground truth (see true_qty_sold_by_emp above) is always >= the raw stored sum - max()
+        # here is just defensive, matching the same pattern discount_live already uses.
+        qty_sold_live = round(max(la["qty_sold"] if la else 0, true_qty_sold_by_emp.get(e["EmployeeID"], 0)), 2)
         rows.append({
             "employee": e,
             "issue_badge": issue_badge,
             "issue_ids": [i["IssueID"] for i in emp_issues],
-            "qty_issued": round(la["qty_issued"], 2) if la else 0,
-            "qty_sold": round(la["qty_sold"], 2) if la else 0,
-            "qty_returned": round(la["qty_returned"], 2) if la else 0,
-            "qty_free": round(la["qty_free"], 2) if la else 0,
-            "unaccounted": round(la["unaccounted"], 2) if la else 0,
+            "qty_issued": qty_issued_live,
+            "qty_sold": qty_sold_live,
+            "qty_returned": qty_returned_live,
+            "qty_free": qty_free_live,
+            "unaccounted": round(qty_issued_live - qty_sold_live - qty_returned_live - qty_free_live, 2),
             "sales_count": sa["n"] if sa else 0,
             "sales_total": round(sa["total"], 2) if sa else 0,
             "sales_cash": round(sales_cash, 2),
