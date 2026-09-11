@@ -61,17 +61,17 @@
       {% endfor %}
     </tbody>
     <tfoot>
-      <tr><th colspan="{{ 6 if sale.IsInterState else 7 }}" class="text-end">Taxable Amount</th><th>{{ (sale.TaxableAmount)|inr(2) }}</th></tr>
+      <tr><th colspan="{{ 6 if sale.IsInterState else 7 }}" class="text-end">Taxable Amount</th><th class="text-end">{{ (sale.TaxableAmount)|inr(2) }}</th></tr>
       {% if sale.IsInterState %}
-      <tr><th colspan="6" class="text-end">IGST</th><th>{{ (sale.IGSTAmount)|inr(2) }}</th></tr>
+      <tr><th colspan="6" class="text-end">IGST</th><th class="text-end">{{ (sale.IGSTAmount)|inr(2) }}</th></tr>
       {% else %}
-      <tr><th colspan="7" class="text-end">CGST</th><th>{{ (sale.CGSTAmount)|inr(2) }}</th></tr>
-      <tr><th colspan="7" class="text-end">SGST</th><th>{{ (sale.SGSTAmount)|inr(2) }}</th></tr>
+      <tr><th colspan="7" class="text-end">CGST</th><th class="text-end">{{ (sale.CGSTAmount)|inr(2) }}</th></tr>
+      <tr><th colspan="7" class="text-end">SGST</th><th class="text-end">{{ (sale.SGSTAmount)|inr(2) }}</th></tr>
       {% endif %}
-      <tr><th colspan="{{ 6 if sale.IsInterState else 7 }}" class="text-end">Round Off</th><th>{{ (sale.RoundOff)|inr(2) }}</th></tr>
-      <tr><th colspan="{{ 6 if sale.IsInterState else 7 }}" class="text-end">Grand Total</th><th>{{ (sale.TotalAmount)|inr(2) }}</th></tr>
+      <tr><th colspan="{{ 6 if sale.IsInterState else 7 }}" class="text-end">Round Off</th><th class="text-end">{{ (sale.RoundOff)|inr(2) }}</th></tr>
+      <tr><th colspan="{{ 6 if sale.IsInterState else 7 }}" class="text-end">Grand Total</th><th class="text-end">{{ (sale.TotalAmount)|inr(2) }}</th></tr>
       {% if balance_due and balance_due > 0 %}
-      <tr><th colspan="{{ 6 if sale.IsInterState else 7 }}" class="text-end text-danger">Balance Due</th><th class="text-danger">{{ (balance_due)|inr(2) }}</th></tr>
+      <tr><th colspan="{{ 6 if sale.IsInterState else 7 }}" class="text-end text-danger">Balance Due</th><th class="text-end text-danger">{{ (balance_due)|inr(2) }}</th></tr>
       {% endif %}
     </tfoot>
   </table>

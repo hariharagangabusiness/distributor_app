@@ -427,7 +427,6 @@ input[style*="width"], select[style*="width"] {
    clutter every table by default. */
 table.table > thead > tr > th {
   position: relative;
-  white-space: nowrap;
 }
 .col-resize-handle {
   position: absolute;
@@ -450,4 +449,5 @@ table.table.col-resize-active > thead > tr > th,
 table.table.col-resize-active > tbody > tr > td {
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }

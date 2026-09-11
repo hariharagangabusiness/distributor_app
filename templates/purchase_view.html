@@ -27,9 +27,9 @@
       {% endfor %}
     </tbody>
     <tfoot>
-      <tr><th colspan="5" class="text-end">Taxable Amount</th><th colspan="4"></th><th>{{ (purchase.TaxableAmount)|inr(2) }}</th></tr>
-      <tr><th colspan="9" class="text-end">CGST + SGST + IGST</th><th>{{ (purchase.CGSTAmount + purchase.SGSTAmount + purchase.IGSTAmount)|inr(2) }}</th></tr>
-      <tr><th colspan="9" class="text-end">Grand Total</th><th>{{ (purchase.TotalAmount)|inr(2) }}</th></tr>
+      <tr><th colspan="5" class="text-end">Taxable Amount</th><th colspan="4"></th><th class="text-end">{{ (purchase.TaxableAmount)|inr(2) }}</th></tr>
+      <tr><th colspan="9" class="text-end">CGST + SGST + IGST</th><th class="text-end">{{ (purchase.CGSTAmount + purchase.SGSTAmount + purchase.IGSTAmount)|inr(2) }}</th></tr>
+      <tr><th colspan="9" class="text-end">Grand Total</th><th class="text-end">{{ (purchase.TotalAmount)|inr(2) }}</th></tr>
     </tfoot>
   </table>
   </div>
