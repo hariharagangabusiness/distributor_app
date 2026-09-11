@@ -380,10 +380,16 @@ body {
    looking at. Only kicks in inside .table-responsive, where the scrolling actually
    happens; a table that already fits doesn't need it and isn't affected. */
 @media (max-width: 767.98px) {
+  /* :not([colspan]) excludes a totals row's wide label cell (e.g. "Taxable
+     Amount" spanning most of an invoice table) - sticking a cell that wide
+     would visually cover the actual amount sitting right next to it once
+     scrolled, hiding it behind the sticky cell instead of revealing it. A
+     plain single-column first cell (a normal data row, or a short "Total"
+     label) still gets pinned as before. */
   .table-responsive table.table thead th:first-child,
   .table-responsive table.table tbody td:first-child,
-  .table-responsive table.table tfoot td:first-child,
-  .table-responsive table.table tfoot th:first-child {
+  .table-responsive table.table tfoot td:first-child:not([colspan]),
+  .table-responsive table.table tfoot th:first-child:not([colspan]) {
     position: sticky;
     left: 0;
     z-index: 2;
@@ -395,6 +401,24 @@ body {
      this: hide columns you don't need day-to-day rather than just shrinking them. */
   .table-responsive table.table { font-size: .82rem; }
   .table-responsive table.table th, .table-responsive table.table td { padding: .45rem .55rem; }
+}
+
+/* The trailing action buttons (View/Edit/Delete...) or a totals row's final
+   amount are the one thing on a wide table you always need to see, at ANY
+   window width - not just on a phone. :not([data-col]) reliably picks out
+   that last "extra" column app-wide: every list page's Customize-Columns-
+   aware header cell carries a data-col attribute, so this only ever matches
+   the un-customizable actions column at the end (or a totals row's plain
+   value cell, which has no data-col either) - never a real data column. */
+.table-responsive table.table thead tr th:last-child:not([data-col]),
+.table-responsive table.table tbody tr td:last-child:not([data-col]):not([colspan]),
+.table-responsive table.table tfoot tr th:last-child:not([data-col]),
+.table-responsive table.table tfoot tr td:last-child:not([data-col]) {
+  position: sticky;
+  right: 0;
+  z-index: 2;
+  background: var(--surface);
+  box-shadow: -2px 0 4px rgba(0,0,0,.08);
 }
 
 /* Fixed-pixel-width fields (many list-page search/filter bars and table
