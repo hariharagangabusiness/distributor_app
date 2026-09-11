@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Location Tracking{% endblock %}
+{% block page_title %}Location Tracking — {{ date_str }}{% endblock %}
+{% block content %}
+<p class="text-muted">Each dot is a location captured from a Staff/Supervisor/Manager's own phone or browser while
+  the app was open, every 30 minutes between 9 AM-8 PM, Tuesday to Sunday. This only works while that person has the
+  app open and has allowed location access — it can't track anyone once their tab or browser is closed.</p>
+
+<div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+  <form method="get" class="d-flex align-items-center gap-2 flex-wrap">
+    <label class="form-label mb-0">Date</label>
+    <input type="date" name="date" class="form-control form-control-sm" style="width:160px" value="{{ date_str }}" max="{{ today }}" onchange="this.form.submit()">
+    <label class="form-label mb-0 ms-2">Person</label>
+    <select name="employee_id" class="form-select form-select-sm" style="width:220px" onchange="this.form.submit()">
+      <option value="">All tracked people</option>
+      {% for u in tracked_users %}
+      <option value="{{ u.EmployeeID }}" {% if employee_id == u.EmployeeID %}selected{% endif %} {% if not u.EmployeeID %}disabled{% endif %}>
+        {{ u.FullName or u.Username }} ({{ u.Role }})
+      </option>
+      {% endfor %}
+    </select>
+  </form>
+  {% if tracking_active_now %}
+  <span class="badge text-bg-success"><i class="bi bi-broadcast"></i> Tracking active now</span>
+  {% elif date_str == today %}
+  <span class="badge text-bg-secondary">Outside working hours (9 AM–8 PM, Tue–Sun)</span>
+  {% endif %}
+  <span class="text-muted small ms-auto">{{ point_count }} point(s) recorded for this day</span>
+</div>
+
+<div class="card">
+  <div class="card-body p-0">
+    <div id="location-map" style="height: 65vh; width: 100%; border-radius: .5rem;"></div>
+  </div>
+</div>
+
+{% if not by_user %}
+<div class="alert alert-secondary mt-3">No location points recorded for this day yet.</div>
+{% endif %}
+
+{% endblock %}
+{% block scripts %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+(function () {
+  var byUser = {{ by_user|tojson }};
+  var colors = ['#2f80ed', '#eb5757', '#27ae60', '#f2994a', '#9b51e0', '#c9971e', '#00b8d9', '#d35400', '#607d8b', '#e84393'];
+
+  var map = L.map('location-map');
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap contributors',
+  }).addTo(map);
+
+  var allLatLngs = [];
+  var i = 0;
+  Object.keys(byUser).forEach(function (userId) {
+    var entry = byUser[userId];
+    var color = colors[i % colors.length];
+    i++;
+    var latlngs = entry.points.map(function (p) { return [p.lat, p.lng]; });
+    allLatLngs = allLatLngs.concat(latlngs);
+
+    if (latlngs.length > 1) {
+      L.polyline(latlngs, { color: color, weight: 3, opacity: 0.6 }).addTo(map);
+    }
+    entry.points.forEach(function (p, idx) {
+      var marker = L.circleMarker([p.lat, p.lng], {
+        radius: idx === entry.points.length - 1 ? 8 : 5,
+        color: color,
+        fillColor: color,
+        fillOpacity: idx === entry.points.length - 1 ? 1 : 0.7,
+        weight: idx === entry.points.length - 1 ? 3 : 1,
+      }).addTo(map);
+      marker.bindPopup(
+        '<strong>' + entry.name + '</strong><br>' + p.time +
+        (p.accuracy ? '<br><span class="text-muted">±' + Math.round(p.accuracy) + 'm</span>' : '')
+      );
+    });
+  });
+
+  if (allLatLngs.length) {
+    map.fitBounds(allLatLngs, { padding: [30, 30] });
+  } else {
+    // No points yet today - default view centered roughly on India so the
+    // map isn't just a blank grey square with no context.
+    map.setView([20.5937, 78.9629], 5);
+  }
+})();
+</script>
+{% endblock %}

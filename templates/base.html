@@ -81,6 +81,9 @@
       {% if can_access('targets') %}
       <li class="nav-item nav-collapsible" data-group="sales"><a class="nav-link {% if request.path.startswith('/targets') %}active{% endif %}" href="{{ url_for('targets_view') }}"><i class="bi bi-bullseye"></i> Targets</a></li>
       {% endif %}
+      {% if can_access('location_tracking') %}
+      <li class="nav-item nav-collapsible" data-group="sales"><a class="nav-link {% if request.path.startswith('/location-tracking') %}active{% endif %}" href="{{ url_for('location_tracking_view') }}"><i class="bi bi-geo-alt"></i> Location Tracking</a></li>
+      {% endif %}
       {% endif %}
 
       {% if can_access('expenses') or can_access('gst') or can_access('pnl') or can_access('scheme_claims') %}
@@ -163,7 +166,7 @@
     {% set page_section = 'inventory' %}
   {% elif path.startswith('/suppliers') or path.startswith('/purchases') %}
     {% set page_section = 'purchasing' %}
-  {% elif path.startswith('/customers') or path.startswith('/sales') or path.startswith('/stock-issues') or path.startswith('/targets') %}
+  {% elif path.startswith('/customers') or path.startswith('/sales') or path.startswith('/stock-issues') or path.startswith('/targets') or path.startswith('/location-tracking') %}
     {% set page_section = 'sales' %}
   {% elif path.startswith('/expenses') or path.startswith('/gst') or path.startswith('/scheme-claims') %}
     {% set page_section = 'finance' %}
@@ -316,5 +319,11 @@
 {% block scripts %}{% endblock %}
 <script src="{{ url_for('static', filename='js/table-sort.js') }}"></script>
 <script src="{{ url_for('static', filename='js/column-resize.js') }}"></script>
+{% if current_user and current_user.Role in ('Staff', 'Supervisor', 'Manager') %}
+<script>
+window.LOCATION_TRACKING_ENABLED = true;
+</script>
+<script src="{{ url_for('static', filename='js/location-tracking.js') }}"></script>
+{% endif %}
 </body>
 </html>

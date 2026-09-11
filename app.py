@@ -251,6 +251,7 @@ ACCESS_TABS = [
     ("stock_issues", "Stock Issues", "Sales"),
     ("stock_issues_report", "Stock Issue Schemes & Dues", "Sales"),
     ("targets", "Targets", "Sales"),
+    ("location_tracking", "Location Tracking", "Sales"),
     ("expenses", "Operating Expenses", "Finance"),
     ("gst", "GST Filing", "Finance"),
     ("pnl", "Profit & Loss", "Finance"),
@@ -302,6 +303,7 @@ TAB_PATH_RULES = [
     ("/sales", "sales"),
     ("/stock-issues", "stock_issues"),
     ("/targets", "targets"),
+    ("/location-tracking", "location_tracking"),
     ("/expenses", "expenses"),
     ("/gst", "gst"),
     ("/scheme-claims", "scheme_claims"),
@@ -352,7 +354,8 @@ TAB_HOME_ENDPOINT = {
     "inventory": "inventory_list", "suppliers": "suppliers_list", "purchases": "purchases_list",
     "customers": "customers_list", "sales": "sales_list", "sales_live": "sales_live_report",
     "stock_issues": "stock_issues_list", "stock_issues_report": "stock_issues_report",
-    "targets": "targets_view", "expenses": "expenses_list", "gst": "gst_dashboard",
+    "targets": "targets_view", "location_tracking": "location_tracking_view",
+    "expenses": "expenses_list", "gst": "gst_dashboard",
     "pnl": "pnl_report", "scheme_claims": "scheme_claims_list", "vehicles": "vehicles_list",
     "maintenance": "maintenance_list", "attendance": "attendance_month", "employees": "employees_list",
     "salary": "salary_month", "advances": "advances_list", "settings": "settings_form",
@@ -4144,6 +4147,95 @@ def sales_live_report():
     return render_template("sales_live_report.html", date_str=date_str, today=today_str(),
                             rows=rows, other_sales=other_sales, totals=totals,
                             columns=get_effective_columns("SalesLive"))
+
+
+# ---------------------------------------------------------------------
+# Field Location Tracking - captures a Staff/Supervisor/Manager's device
+# location every 30 min while they have the app open, during working hours,
+# so their movement through the day can be reviewed on a map. This only
+# works while the browser tab is open and the user has granted location
+# permission - there is no way for a website to track location once the tab
+# is closed or the phone is locked, so this is a best-effort "while working
+# in the app" trail, not a full-time GPS tracker.
+# ---------------------------------------------------------------------
+
+LOCATION_TRACKED_ROLES = {"Staff", "Supervisor", "Manager"}
+LOCATION_WORK_START_HOUR = 9    # 9 AM
+LOCATION_WORK_END_HOUR = 20     # 8 PM
+LOCATION_CLOSED_WEEKDAY = 0     # Python weekday(): Monday=0 - the one day off (Tue-Sun open)
+
+
+def _within_location_tracking_hours(dt):
+    return dt.weekday() != LOCATION_CLOSED_WEEKDAY and LOCATION_WORK_START_HOUR <= dt.hour < LOCATION_WORK_END_HOUR
+
+
+@app.route("/api/location-ping", methods=["POST"])
+def api_location_ping():
+    """Called every ~30 min by the location-tracking JS (see base.html) from
+    any tracked-role user's open browser tab. Re-checks role and working
+    hours server-side using the server clock - a device's local clock isn't
+    trusted for the actual gate, only used client-side to decide when to
+    bother trying."""
+    user = get_current_user()
+    if not user or user["Role"] not in LOCATION_TRACKED_ROLES:
+        return jsonify(ok=False, reason="not-tracked"), 200
+    now = datetime.now()
+    if not _within_location_tracking_hours(now):
+        return jsonify(ok=False, reason="outside-hours"), 200
+    data = request.get_json(silent=True) or {}
+    try:
+        lat = float(data.get("lat"))
+        lng = float(data.get("lng"))
+    except (TypeError, ValueError):
+        return jsonify(ok=False, reason="bad-coords"), 200
+    accuracy = data.get("accuracy")
+    try:
+        accuracy = float(accuracy) if accuracy is not None else None
+    except (TypeError, ValueError):
+        accuracy = None
+    db.execute(
+        "INSERT INTO LocationLogs (UserID, EmployeeID, Role, Latitude, Longitude, Accuracy, RecordedAt, RecordedDate) "
+        "VALUES (?,?,?,?,?,?,?,?)",
+        (user["UserID"], user["EmployeeID"], user["Role"], lat, lng, accuracy,
+         now.strftime("%Y-%m-%d %H:%M:%S"), now.strftime("%Y-%m-%d")))
+    return jsonify(ok=True)
+
+
+@app.route("/location-tracking")
+def location_tracking_view():
+    date_str = request.args.get("date") or today_str()
+    employee_id = request.args.get("employee_id", type=int)
+
+    tracked_users = db.query(
+        "SELECT u.UserID, u.FullName, u.Username, u.Role, u.EmployeeID, e.EmployeeName "
+        "FROM Users u LEFT JOIN Employees e ON e.EmployeeID = u.EmployeeID "
+        "WHERE u.Role IN ('Staff','Supervisor','Manager') AND u.Active=1 ORDER BY u.FullName")
+
+    params = [date_str]
+    emp_filter_sql = ""
+    if employee_id:
+        emp_filter_sql = " AND l.UserID IN (SELECT UserID FROM Users WHERE EmployeeID=?)"
+        params.append(employee_id)
+    points = db.query(
+        "SELECT l.*, u.FullName, u.Username FROM LocationLogs l JOIN Users u ON u.UserID = l.UserID "
+        "WHERE l.RecordedDate=?" + emp_filter_sql + " ORDER BY u.FullName, l.RecordedAt", tuple(params))
+
+    by_user = {}
+    for p in points:
+        by_user.setdefault(p["UserID"], {"name": p["FullName"] or p["Username"], "points": []})
+        by_user[p["UserID"]]["points"].append({
+            "lat": p["Latitude"], "lng": p["Longitude"], "accuracy": p["Accuracy"],
+            "time": p["RecordedAt"][11:16] if len(p["RecordedAt"]) >= 16 else p["RecordedAt"],
+        })
+
+    is_today = date_str == today_str()
+    now = datetime.now()
+    tracking_active_now = is_today and _within_location_tracking_hours(now)
+
+    return render_template("location_tracking.html", date_str=date_str, today=today_str(),
+                            tracked_users=tracked_users, employee_id=employee_id,
+                            by_user=by_user, point_count=len(points),
+                            tracking_active_now=tracking_active_now)
 
 
 # ---------------------------------------------------------------------

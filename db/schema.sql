@@ -444,6 +444,24 @@ CREATE TABLE IF NOT EXISTS FormFieldLayout (
 );
 
 -- ---------------------------------------------------------------------
+-- Field Location Tracking
+-- ---------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS LocationLogs (
+    LogID           INTEGER PRIMARY KEY AUTOINCREMENT,
+    UserID          INTEGER NOT NULL,
+    EmployeeID      INTEGER,               -- the salesperson this user is linked to, if any
+    Role            TEXT NOT NULL,
+    Latitude        REAL NOT NULL,
+    Longitude       REAL NOT NULL,
+    Accuracy        REAL,                  -- meters, as reported by the device's GPS/network location
+    RecordedAt      TEXT NOT NULL,         -- server timestamp, 'YYYY-MM-DD HH:MM:SS'
+    RecordedDate    TEXT NOT NULL,         -- 'YYYY-MM-DD', for fast per-day filtering
+    FOREIGN KEY (UserID) REFERENCES Users(UserID),
+    FOREIGN KEY (EmployeeID) REFERENCES Employees(EmployeeID)
+);
+
+-- ---------------------------------------------------------------------
 -- Employee Leave & Attendance
 -- ---------------------------------------------------------------------
 
@@ -767,3 +785,5 @@ CREATE INDEX IF NOT EXISTS idx_advance_emp ON AdvancePayments(EmployeeID);
 CREATE INDEX IF NOT EXISTS idx_targets_emp_month ON Targets(EmployeeID, TargetYear, TargetMonth);
 CREATE INDEX IF NOT EXISTS idx_target_incentive_buckets_target ON TargetIncentiveBuckets(TargetID);
 CREATE INDEX IF NOT EXISTS idx_deletedsaleslog_deletedat ON DeletedSalesLog(DeletedAt);
+CREATE INDEX IF NOT EXISTS idx_locationlogs_user_date ON LocationLogs(UserID, RecordedDate);
+CREATE INDEX IF NOT EXISTS idx_locationlogs_date ON LocationLogs(RecordedDate);
