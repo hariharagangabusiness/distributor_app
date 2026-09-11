@@ -125,6 +125,9 @@
           <a href="{{ url_for('stock_issue_view', issue_id=r.issue_ids[0]) }}" class="btn btn-sm btn-outline-secondary">Issue</a>
           {% endif %}
           <a href="{{ url_for('sales_list', employee_id=r.employee.EmployeeID, date=date_str) }}" class="btn btn-sm btn-outline-secondary">Sales</a>
+          {% if can_access('location_tracking') %}
+          <a href="{{ url_for('location_tracking_view', employee_id=r.employee.EmployeeID, date=date_str) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-geo-alt"></i> Live Location</a>
+          {% endif %}
         </td>
       </tr>
       {% else %}

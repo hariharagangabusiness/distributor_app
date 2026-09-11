@@ -403,24 +403,6 @@ body {
   .table-responsive table.table th, .table-responsive table.table td { padding: .45rem .55rem; }
 }
 
-/* The trailing action buttons (View/Edit/Delete...) or a totals row's final
-   amount are the one thing on a wide table you always need to see, at ANY
-   window width - not just on a phone. :not([data-col]) reliably picks out
-   that last "extra" column app-wide: every list page's Customize-Columns-
-   aware header cell carries a data-col attribute, so this only ever matches
-   the un-customizable actions column at the end (or a totals row's plain
-   value cell, which has no data-col either) - never a real data column. */
-.table-responsive table.table thead tr th:last-child:not([data-col]),
-.table-responsive table.table tbody tr td:last-child:not([data-col]):not([colspan]),
-.table-responsive table.table tfoot tr th:last-child:not([data-col]),
-.table-responsive table.table tfoot tr td:last-child:not([data-col]) {
-  position: sticky;
-  right: 0;
-  z-index: 2;
-  background: var(--surface);
-  box-shadow: -2px 0 4px rgba(0,0,0,.08);
-}
-
 /* Fixed-pixel-width fields (many list-page search/filter bars and table
    line-item forms set a comfortable default like style="width:260px") would
    otherwise overflow their row instead of shrinking as a desktop window is
