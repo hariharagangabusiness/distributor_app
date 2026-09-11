@@ -2256,6 +2256,8 @@ def auto_create_stock_issue_for_sale(employee_id, sale_date, line_data):
                 VALUES (?,?,?,?,?)""",
                (employee_id, sale_date, "Issued", "Pending",
                 "Auto-created from a Sales-tab entry — pending Manager/Admin review"))
+    log_stock_issue_change(issue_id, "Created", None, None,
+                            "Auto-created from a Sales-tab entry (pending review)")
     for prod_id, qty, price, *_rest in line_data:
         stock_issue_post_line(issue_id, prod_id, qty, price, sale_date,
                                "Auto-issued to cover a Sales-tab entry (pending review)")
@@ -3424,6 +3426,20 @@ def true_product_discount_sold(employee_id, sale_date, product_id):
     return row["q"] or 0
 
 
+def log_stock_issue_change(issue_id, action, field_name=None, old_value=None, new_value=None):
+    """Records one row of Stock Issue history - who (the currently signed-in
+    login, if any - a system-triggered auto-create still runs inside a
+    salesperson's own request, so their login is what's captured), what
+    changed, and the actual before/after value. Shown on the issue's own
+    detail page (see stock_issue_view())."""
+    user = get_current_user()
+    db.execute(
+        "INSERT INTO StockIssueAuditLog (IssueID, UserID, Username, Action, FieldName, OldValue, NewValue, CreatedAt) "
+        "VALUES (?,?,?,?,?,?,?,?)",
+        (issue_id, user["UserID"] if user else None, user["Username"] if user else None,
+         action, field_name, old_value, new_value, _now_ist().strftime("%Y-%m-%d %H:%M:%S")))
+
+
 def stock_issue_post_line(issue_id, product_id, qty, price, txn_date, txn_notes):
     """Issue (deduct stock for) qty of product_id against a Stock Issue, consolidated to one
     StockIssueLines row per product per issue rather than a separate row every time. If this
@@ -3435,15 +3451,21 @@ def stock_issue_post_line(issue_id, product_id, qty, price, txn_date, txn_notes)
     qty being added, so stock deduction and the audit trail are unaffected by the consolidation."""
     existing = db.query("SELECT LineID, QtyIssued, UnitPrice FROM StockIssueLines WHERE IssueID=? AND ProductID=?",
                         (issue_id, product_id), one=True)
+    prod = db.query("SELECT ProductName FROM Products WHERE ProductID=?", (product_id,), one=True)
+    prod_name = prod["ProductName"] if prod else f"Product #{product_id}"
     if existing:
-        new_qty = (existing["QtyIssued"] or 0) + qty
+        old_qty = existing["QtyIssued"] or 0
+        new_qty = old_qty + qty
         new_price = round((((existing["QtyIssued"] or 0) * (existing["UnitPrice"] or 0)) + (qty * price)) / new_qty, 4) \
             if new_qty else price
         db.execute("UPDATE StockIssueLines SET QtyIssued=?, UnitPrice=? WHERE LineID=?",
                    (new_qty, new_price, existing["LineID"]))
+        log_stock_issue_change(issue_id, "Line Updated", f"Qty Issued ({prod_name})",
+                                f"{old_qty:g}", f"{new_qty:g}")
     else:
         db.execute("""INSERT INTO StockIssueLines (IssueID, ProductID, QtyIssued, UnitPrice)
                     VALUES (?,?,?,?)""", (issue_id, product_id, qty, price))
+        log_stock_issue_change(issue_id, "Line Added", prod_name, None, f"{qty:g} @ ₹{price:g}")
     db.execute("""INSERT INTO InventoryTransactions (ProductID, TransactionDate, TransactionType,
                 QtyChange, RefType, RefID, Notes) VALUES (?,?,?,?,?,?,?)""",
                (product_id, txn_date, "Issue", -qty, "StockIssue", issue_id, txn_notes))
@@ -3465,6 +3487,7 @@ def stock_issue_form():
 
         issue_id = db.execute("""INSERT INTO StockIssues (EmployeeID, IssueDate, Status, Notes)
                     VALUES (?,?,?,?)""", (employee_id, issue_date, "Issued", f.get("notes", "")))
+        log_stock_issue_change(issue_id, "Created")
         for prod_id, qty, price in lines:
             # Consolidates same-product lines within this one submission too (e.g. the same
             # product picked on two rows), not just across a later "Add More Products" top-up.
@@ -3558,11 +3581,12 @@ def stock_issue_view(issue_id):
     sales_cash_total = round(sum(cs["CashAmount"] or 0 for cs in credited_sales_full), 2)
     sales_bank_total = round(sum(cs["BankAmount"] or 0 for cs in credited_sales_full), 2)
     sales_discount_total = round(sum(cs["Discount"] or 0 for cs in credited_sales_full), 2)
+    audit_log = db.query("SELECT * FROM StockIssueAuditLog WHERE IssueID=? ORDER BY LogID", (issue_id,))
     return render_template("stock_issue_view.html", issue=issue, lines=lines, today=today_str(),
                             money_locked=stock_issue_money_locked(issue), line_totals=line_totals,
                             target_progress=target_progress, credited_sales_full=credited_sales_full,
                             sales_cash_total=sales_cash_total, sales_bank_total=sales_bank_total,
-                            sales_discount_total=sales_discount_total)
+                            sales_discount_total=sales_discount_total, audit_log=audit_log)
 
 
 @app.route("/stock-issues/<int:issue_id>/approve", methods=["POST"])

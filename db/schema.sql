@@ -444,6 +444,27 @@ CREATE TABLE IF NOT EXISTS FormFieldLayout (
 );
 
 -- ---------------------------------------------------------------------
+-- Stock Issue change log - who created/edited each Stock Issue's product
+-- lines and when, with the actual before/after value for each change.
+-- Deliberately does NOT cover Reconcile/Approve/Delete - those already have
+-- their own visible trail (Status/ReviewStatus badges, the Reconciled
+-- fields themselves) and weren't asked for here.
+-- ---------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS StockIssueAuditLog (
+    LogID           INTEGER PRIMARY KEY AUTOINCREMENT,
+    IssueID         INTEGER NOT NULL,
+    UserID          INTEGER,
+    Username        TEXT,               -- captured at log time so history reads correctly even if the login is later renamed/deleted
+    Action          TEXT NOT NULL,      -- 'Created' / 'Line Added' / 'Line Updated'
+    FieldName       TEXT,
+    OldValue        TEXT,
+    NewValue        TEXT,
+    CreatedAt       TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (IssueID) REFERENCES StockIssues(IssueID)
+);
+
+-- ---------------------------------------------------------------------
 -- Field Location Tracking
 -- ---------------------------------------------------------------------
 
@@ -787,3 +808,4 @@ CREATE INDEX IF NOT EXISTS idx_target_incentive_buckets_target ON TargetIncentiv
 CREATE INDEX IF NOT EXISTS idx_deletedsaleslog_deletedat ON DeletedSalesLog(DeletedAt);
 CREATE INDEX IF NOT EXISTS idx_locationlogs_user_date ON LocationLogs(UserID, RecordedDate);
 CREATE INDEX IF NOT EXISTS idx_locationlogs_date ON LocationLogs(RecordedDate);
+CREATE INDEX IF NOT EXISTS idx_stockissueauditlog_issue ON StockIssueAuditLog(IssueID, CreatedAt);

@@ -214,4 +214,29 @@
 })();
 </script>
 {% endif %}
+
+{% if audit_log %}
+<div class="card mt-3">
+  <div class="card-body">
+    <h6 class="mb-3"><i class="bi bi-clock-history"></i> Activity</h6>
+    <div class="table-responsive">
+    <table class="table table-sm mb-0 no-resize-table">
+      <thead><tr><th>When</th><th>By</th><th>Action</th><th>Field</th><th>From</th><th>To</th></tr></thead>
+      <tbody>
+        {% for a in audit_log %}
+        <tr>
+          <td class="text-muted small">{{ a.CreatedAt }}</td>
+          <td>{{ a.Username or '—' }}</td>
+          <td>{{ a.Action }}</td>
+          <td>{{ a.FieldName or '-' }}</td>
+          <td class="text-muted">{{ a.OldValue or '-' }}</td>
+          <td>{{ a.NewValue or '-' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+</div>
+{% endif %}
 {% endblock %}
