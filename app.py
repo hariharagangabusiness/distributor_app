@@ -6,6 +6,7 @@ import calendar
 import mimetypes
 from functools import wraps
 from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_from_directory, session, g
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -4163,6 +4164,11 @@ LOCATION_TRACKED_ROLES = {"Staff", "Supervisor", "Manager"}
 LOCATION_WORK_START_HOUR = 9    # 9 AM
 LOCATION_WORK_END_HOUR = 20     # 8 PM
 LOCATION_CLOSED_WEEKDAY = 0     # Python weekday(): Monday=0 - the one day off (Tue-Sun open)
+LOCATION_TZ = ZoneInfo("Asia/Kolkata")  # business hours are IST regardless of the server's own OS clock/timezone
+
+
+def _now_ist():
+    return datetime.now(LOCATION_TZ)
 
 
 def _within_location_tracking_hours(dt):
@@ -4179,7 +4185,7 @@ def api_location_ping():
     user = get_current_user()
     if not user or user["Role"] not in LOCATION_TRACKED_ROLES:
         return jsonify(ok=False, reason="not-tracked"), 200
-    now = datetime.now()
+    now = _now_ist()
     if not _within_location_tracking_hours(now):
         return jsonify(ok=False, reason="outside-hours"), 200
     data = request.get_json(silent=True) or {}
@@ -4229,8 +4235,7 @@ def location_tracking_view():
         })
 
     is_today = date_str == today_str()
-    now = datetime.now()
-    tracking_active_now = is_today and _within_location_tracking_hours(now)
+    tracking_active_now = is_today and _within_location_tracking_hours(_now_ist())
 
     return render_template("location_tracking.html", date_str=date_str, today=today_str(),
                             tracked_users=tracked_users, employee_id=employee_id,
