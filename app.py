@@ -1157,6 +1157,32 @@ def zone_add():
     return redirect(url_for("zones_admin"))
 
 
+@app.route("/settings/zones/<int:zone_id>/rename", methods=["POST"])
+@admin_required
+def zone_rename(zone_id):
+    new_name = request.form.get("zone_name", "").strip()
+    if not new_name:
+        flash("Zone name is required.", "error")
+        return redirect(url_for("zones_admin"))
+    z = db.query("SELECT * FROM Zones WHERE ZoneID=?", (zone_id,), one=True)
+    if not z:
+        flash("Zone not found.", "error")
+        return redirect(url_for("zones_admin"))
+    old_name = z["ZoneName"]
+    if new_name == old_name:
+        return redirect(url_for("zones_admin"))
+    try:
+        db.execute("UPDATE Zones SET ZoneName=? WHERE ZoneID=?", (new_name, zone_id))
+    except Exception:
+        flash(f"Could not rename — '{new_name}' may already exist.", "error")
+        return redirect(url_for("zones_admin"))
+    # Keep existing customer records in sync with the renamed zone, since
+    # Customers.Zone stores the text value directly rather than a foreign key.
+    db.execute("UPDATE Customers SET Zone=? WHERE Zone=?", (new_name, old_name))
+    flash(f"Zone renamed from '{old_name}' to '{new_name}' (existing customers updated).", "success")
+    return redirect(url_for("zones_admin"))
+
+
 @app.route("/settings/zones/<int:zone_id>/toggle", methods=["POST"])
 @admin_required
 def zone_toggle(zone_id):

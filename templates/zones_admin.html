@@ -28,7 +28,12 @@
       <tbody>
         {% for z in zones %}
         <tr>
-          <td>{{ z.ZoneName }}</td>
+          <td style="min-width:220px;">
+            <form method="post" action="{{ url_for('zone_rename', zone_id=z.ZoneID) }}" class="d-flex gap-2">
+              <input name="zone_name" class="form-control form-control-sm" value="{{ z.ZoneName }}" required>
+              <button class="btn btn-sm btn-outline-primary" type="submit">Save</button>
+            </form>
+          </td>
           <td>{% if z.Active %}<span class="badge badge-ok">Active</span>{% else %}<span class="badge text-bg-secondary">Hidden</span>{% endif %}</td>
           <td class="text-end">
             <form method="post" action="{{ url_for('zone_toggle', zone_id=z.ZoneID) }}" class="d-inline">
