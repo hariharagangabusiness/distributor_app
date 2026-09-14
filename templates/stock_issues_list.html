@@ -43,7 +43,7 @@
         <td data-col="unaccounted" class="{% if i.UnaccountedTotal != 0 %}text-danger fw-bold{% endif %}">{{ i.UnaccountedTotal|inrn(2) }}</td>
         <td>
           <a href="{{ url_for('stock_issue_view', issue_id=i.IssueID) }}" class="btn btn-sm btn-outline-secondary">View</a>
-          {% if i.Status != 'Reconciled' and i.ReviewStatus != 'Pending' %}
+          {% if i.Status != 'Reconciled' and i.ReviewStatus != 'Pending' and current_user and current_user.Role == 'Admin' %}
           <a href="{{ url_for('stock_issue_reconcile', issue_id=i.IssueID) }}" class="btn btn-sm btn-brand">Reconcile</a>
           {% endif %}
         </td>

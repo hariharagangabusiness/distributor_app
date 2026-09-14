@@ -3733,11 +3733,14 @@ def stock_issue_reconcile(issue_id):
         return redirect(url_for("stock_issue_view", issue_id=issue_id))
     is_reedit = issue["Status"] == "Reconciled"
     money_locked = False
+    # Reconciling a Stock Issue (fresh or re-editing an already-reconciled one) is now
+    # Admin-only - Staff/Supervisor/Manager can still view/approve/create Stock Issues,
+    # but the reconcile step itself is restricted per explicit request.
+    current = get_current_user()
+    if not current or current["Role"] != "Admin":
+        flash("Only Admin accounts can reconcile a Stock Issue.", "error")
+        return redirect(url_for("stock_issue_view", issue_id=issue_id))
     if is_reedit:
-        current = get_current_user()
-        if not current or current["Role"] != "Admin":
-            flash("Only Admin accounts can edit an already-reconciled stock issue.", "error")
-            return redirect(url_for("stock_issue_view", issue_id=issue_id))
         # A due payment or scheme claim already recorded no longer blocks re-editing outright -
         # the Admin instead chooses, right on this form, whether to keep that history (just
         # recompute the figures on top) or clear it and start fresh (same reversal-then-redo
