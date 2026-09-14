@@ -3003,12 +3003,13 @@ def sale_form():
     current_user_row = get_current_user()
     show_salesperson_warning = bool(current_user_row and current_user_row["Role"] in ("Staff", "Supervisor")
                                      and not locked_employee_id)
+    zones = db.query("SELECT * FROM Zones WHERE Active=1 ORDER BY DisplayOrder, ZoneID")
     return render_template("sale_form.html", customers=customers, products=products, employees=employees,
                             today=today_str(), states=INDIAN_STATES, company=company, suggested_invoice=None,
                             custom_fields=custom_fields, custom_values={},
                             cf_record_id=None, custom_attachments={}, sale=None, existing_lines=None,
                             current_customer=None, locked_employee=locked_employee,
-                            show_salesperson_warning=show_salesperson_warning,
+                            show_salesperson_warning=show_salesperson_warning, zones=zones,
                             header_fields={f["key"]: f for f in get_effective_form_fields("SaleFormHeader")},
                             line_fields={f["key"]: f for f in get_effective_form_fields("SaleFormLine")})
 
@@ -3067,12 +3068,15 @@ def sale_edit(sid):
     custom_fields = get_custom_field_defs("Sale")
     custom_values = get_custom_values("Sale", sid)
     current_customer = db.query("SELECT * FROM Customers WHERE CustomerID=?", (existing["CustomerID"],), one=True)
+    zones = db.query("SELECT * FROM Zones WHERE Active=1 ORDER BY DisplayOrder, ZoneID")
+    if current_customer and current_customer["Zone"] and current_customer["Zone"] not in {z["ZoneName"] for z in zones}:
+        zones = list(zones) + [{"ZoneID": None, "ZoneName": current_customer["Zone"]}]
     return render_template("sale_form.html", customers=customers, products=products, employees=employees,
                             today=existing["SaleDate"], states=INDIAN_STATES, company=company, suggested_invoice=None,
                             custom_fields=custom_fields, custom_values=custom_values, cf_record_id=sid,
                             custom_attachments={}, sale=existing, existing_lines=existing_lines,
                             current_customer=current_customer, locked_employee=None,
-                            show_salesperson_warning=False,
+                            show_salesperson_warning=False, zones=zones,
                             header_fields={f["key"]: f for f in get_effective_form_fields("SaleFormHeader")},
                             line_fields={f["key"]: f for f in get_effective_form_fields("SaleFormLine")})
 

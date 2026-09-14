@@ -75,9 +75,14 @@
         <div class="col-md-3"><label class="form-label">Phone</label>
           <input name="customer_phone" id="customer_phone" class="form-control"
                  value="{{ current_customer.Phone if current_customer else '' }}"></div>
-        <div class="col-md-3"><label class="form-label">Zone</label>
-          <input name="customer_zone" id="customer_zone" class="form-control" placeholder="e.g. North Zone"
-                 value="{{ current_customer.Zone if current_customer else '' }}"></div>
+        <div class="col-md-3"><label class="form-label">Zone *</label>
+          <select required name="customer_zone" id="customer_zone" class="form-select">
+            <option value="">-- select --</option>
+            {% for z in zones %}
+            <option value="{{ z.ZoneName }}" {% if current_customer and current_customer.Zone == z.ZoneName %}selected{% endif %}>{{ z.ZoneName }}</option>
+            {% endfor %}
+          </select>
+          <div class="form-text"><a href="{{ url_for('zones_admin') }}" target="_blank">Manage zones</a></div></div>
       </div>
     </div>
 
@@ -258,7 +263,18 @@ function selectCustomer(c) {
   customerNameInput.value = c.CustomerName || '';
   customerAddressInput.value = c.Address || '';
   customerPhoneInput.value = c.Phone || '';
-  customerZoneInput.value = c.Zone || '';
+  if (c.Zone) {
+    const hasOption = Array.prototype.some.call(customerZoneInput.options, o => o.value === c.Zone);
+    if (!hasOption) {
+      const opt = document.createElement('option');
+      opt.value = c.Zone;
+      opt.textContent = c.Zone;
+      customerZoneInput.appendChild(opt);
+    }
+    customerZoneInput.value = c.Zone;
+  } else {
+    customerZoneInput.value = '';
+  }
   if (c.StateCode) posSelect.value = c.StateCode;
   hideCustomerResults();
   recalc();
