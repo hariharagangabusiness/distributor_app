@@ -1129,6 +1129,51 @@ def custom_field_delete(field_id):
     return redirect(url_for("custom_fields_admin", module=module))
 
 
+# ---------------------------------------------------------------------
+# Zones: admin-managed list of sales-territory names used as the Customer
+# form's Zone dropdown (requires migrate_zones.py to have been run once).
+# ---------------------------------------------------------------------
+
+@app.route("/settings/zones")
+@admin_required
+def zones_admin():
+    zones = db.query("SELECT * FROM Zones ORDER BY DisplayOrder, ZoneID")
+    return render_template("zones_admin.html", zones=zones)
+
+
+@app.route("/settings/zones/add", methods=["POST"])
+@admin_required
+def zone_add():
+    name = request.form.get("zone_name", "").strip()
+    if not name:
+        flash("Zone name is required.", "error")
+        return redirect(url_for("zones_admin"))
+    max_order = db.query("SELECT COALESCE(MAX(DisplayOrder),0) AS mo FROM Zones", one=True)["mo"]
+    try:
+        db.execute("INSERT INTO Zones (ZoneName, Active, DisplayOrder) VALUES (?,1,?)", (name, max_order + 1))
+        flash(f"Zone '{name}' added.", "success")
+    except Exception:
+        flash(f"Could not add zone — '{name}' may already exist.", "error")
+    return redirect(url_for("zones_admin"))
+
+
+@app.route("/settings/zones/<int:zone_id>/toggle", methods=["POST"])
+@admin_required
+def zone_toggle(zone_id):
+    z = db.query("SELECT * FROM Zones WHERE ZoneID=?", (zone_id,), one=True)
+    if z:
+        db.execute("UPDATE Zones SET Active=? WHERE ZoneID=?", (0 if z["Active"] else 1, zone_id))
+    return redirect(url_for("zones_admin"))
+
+
+@app.route("/settings/zones/<int:zone_id>/delete", methods=["POST"])
+@admin_required
+def zone_delete(zone_id):
+    db.execute("DELETE FROM Zones WHERE ZoneID=?", (zone_id,))
+    flash("Zone deleted. Any customers already set to that zone keep the text value on their record.", "success")
+    return redirect(url_for("zones_admin"))
+
+
 # =======================================================================
 # DASHBOARD WIDGET CUSTOMIZATION
 # =======================================================================
@@ -1196,7 +1241,7 @@ MODULE_COLUMNS = {
                  ("invoice_number", "Invoice #"), ("status", "Status"), ("payment", "Payment"),
                  ("total", "Total")],
     "Sale": [("invoice_number", "Invoice #"), ("customer", "Customer"), ("date", "Date"),
-             ("status", "Status"), ("payment", "Payment"), ("due_date", "Due Date"), ("total", "Total"),
+             ("status", "Status"), ("payment", "Payment"), ("due_date", "Due Date"), ("total", "Taxable Amt"),
              ("balance", "Balance"), ("salesperson", "Salesperson")],
     "Expense": [("date", "Date"), ("category", "Category"), ("vehicle", "Vehicle"),
                 ("paid_to", "Paid To"), ("mode", "Mode"), ("amount", "Amount")],
@@ -1633,6 +1678,13 @@ def customer_form(cid=None):
     customer = db.query("SELECT * FROM Customers WHERE CustomerID=?", (cid,), one=True) if cid else None
     if request.method == "POST":
         f = request.form
+        if not f.get("zone", "").strip():
+            flash("Zone is required.", "error")
+            return render_template("customer_form.html", customer=customer, states=INDIAN_STATES,
+                                    custom_fields=get_custom_field_defs("Customer"),
+                                    custom_values=get_custom_values("Customer", cid) if cid else {},
+                                    cf_record_id=cid, custom_attachments=get_custom_attachments("Customer", cid),
+                                    zones=db.query("SELECT * FROM Zones WHERE Active=1 ORDER BY DisplayOrder, ZoneID"))
         state_code = f.get("state_code", "")
         state_name = STATE_NAME_BY_CODE.get(state_code, "")
         args = (f["customer_name"], f["contact_person"], f["phone"], f["email"], f["address"], f.get("zone", ""),
@@ -1651,9 +1703,17 @@ def customer_form(cid=None):
         return redirect(url_for("customers_list"))
     custom_fields = get_custom_field_defs("Customer")
     custom_values = get_custom_values("Customer", cid) if cid else {}
+    zones = db.query("SELECT * FROM Zones WHERE Active=1 ORDER BY DisplayOrder, ZoneID")
+    # A customer whose already-saved Zone doesn't match any (active) Zones entry -
+    # e.g. it was hidden/deleted from the list, or predates the Zones table on an
+    # install where the seed migration hasn't been run yet - still needs to show up
+    # as a selectable option so the dropdown doesn't silently drop their current value.
+    if customer and customer["Zone"] and customer["Zone"] not in {z["ZoneName"] for z in zones}:
+        zones = list(zones) + [{"ZoneID": None, "ZoneName": customer["Zone"]}]
     return render_template("customer_form.html", customer=customer, states=INDIAN_STATES,
                             custom_fields=custom_fields, custom_values=custom_values,
-                            cf_record_id=cid, custom_attachments=get_custom_attachments("Customer", cid))
+                            cf_record_id=cid, custom_attachments=get_custom_attachments("Customer", cid),
+                            zones=zones)
 
 
 @app.route("/customers/<int:cid>/history")
@@ -1758,8 +1818,19 @@ def customers_import_upload():
                         state_code = code
                         break
 
-            existing = db.query("SELECT * FROM Customers WHERE CustomerName=? COLLATE NOCASE",
-                                (row["customer_name"],), one=True)
+            # Match key preference: GSTIN (most specific, unique to a business) first,
+            # then Phone, then fall back to Customer Name - matches how a duplicate is
+            # most reliably identified in practice for this business.
+            existing = None
+            if row["gstin"]:
+                existing = db.query("SELECT * FROM Customers WHERE GSTIN=? COLLATE NOCASE",
+                                    (row["gstin"],), one=True)
+            if not existing and row["phone"]:
+                existing = db.query("SELECT * FROM Customers WHERE Phone=? AND IsUnassignedBucket=0",
+                                    (row["phone"],), one=True)
+            if not existing:
+                existing = db.query("SELECT * FROM Customers WHERE CustomerName=? COLLATE NOCASE",
+                                    (row["customer_name"],), one=True)
             args = (row["customer_name"], row["contact_person"], row["phone"], row["email"], row["address"],
                     row["gstin"], state_name, state_code, row["credit_limit"], row["credit_days"])
             if existing:
@@ -4414,7 +4485,11 @@ EXPORT_SPECS = {
                pr.ProductName AS "Product Sold", sl.Qty, sl.UnitPrice AS "Unit Price",
                sl.DiscountAmount AS "Discount ₹", sl.HSNCode AS "HSN Code", sl.GSTRate AS "GST Rate %",
                sl.TaxableValue AS "Taxable Value", (sl.CGSTAmount + sl.SGSTAmount + sl.IGSTAmount) AS "Tax Amount",
-               sl.LineTotal AS "Line Total", s.AmountReceived AS "Amount Received (whole invoice)"
+               sl.LineTotal AS "Line Total", s.AmountReceived AS "Amount Received (whole invoice)",
+               c.ContactPerson AS "Customer Contact Person", c.Phone AS "Customer Phone",
+               c.Email AS "Customer Email", c.Address AS "Customer Address", c.Zone AS "Customer Zone",
+               c.GSTIN AS "Customer GSTIN", c.State AS "Customer State", c.StateCode AS "Customer State Code",
+               c.CreditLimit AS "Customer Credit Limit", c.CreditDays AS "Customer Credit Days"
         FROM SalesLines sl JOIN Sales s ON s.SaleID=sl.SaleID JOIN Customers c ON c.CustomerID=s.CustomerID
              JOIN Products pr ON pr.ProductID=sl.ProductID LEFT JOIN Employees e ON e.EmployeeID=s.EmployeeID
         ORDER BY s.SaleDate DESC, s.SaleID DESC, sl.LineID"""),

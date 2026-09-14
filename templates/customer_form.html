@@ -20,8 +20,16 @@
       <input name="phone" class="form-control" value="{{ customer.Phone if customer else '' }}"></div>
     <div class="col-md-6"><label class="form-label">Email</label>
       <input name="email" class="form-control" value="{{ customer.Email if customer else '' }}"></div>
-    <div class="col-md-6"><label class="form-label">Zone</label>
-      <input name="zone" class="form-control" placeholder="e.g. North Zone" value="{{ customer.Zone if customer else '' }}"></div>
+    <div class="col-md-6"><label class="form-label">Zone *</label>
+      <select required name="zone" class="form-select">
+        <option value="">-- select --</option>
+        {% for z in zones %}
+        <option value="{{ z.ZoneName }}" {% if customer and customer.Zone == z.ZoneName %}selected{% endif %}>{{ z.ZoneName }}</option>
+        {% endfor %}
+      </select>
+      {% if current_user and current_user.Role == 'Admin' %}
+      <div class="form-text"><a href="{{ url_for('zones_admin') }}">Manage zones</a></div>
+      {% endif %}</div>
     <div class="col-md-6"><label class="form-label">State (for GST place of supply) *</label>
       <select required name="state_code" class="form-select">
         <option value="">-- select --</option>

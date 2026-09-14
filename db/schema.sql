@@ -791,6 +791,13 @@ CREATE TABLE IF NOT EXISTS DeletedSalesLog (
     DeletedAt       TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS Zones (
+    ZoneID          INTEGER PRIMARY KEY AUTOINCREMENT,
+    ZoneName        TEXT NOT NULL UNIQUE,
+    Active          INTEGER NOT NULL DEFAULT 1,
+    DisplayOrder    INTEGER NOT NULL DEFAULT 0
+);
+
 -- =====================================================================
 -- Indexes
 -- =====================================================================
