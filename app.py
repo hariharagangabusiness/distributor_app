@@ -3840,6 +3840,7 @@ def stock_issue_delete(issue_id):
     db.execute("DELETE FROM InventoryTransactions WHERE RefType='StockIssue' AND RefID=?", (issue_id,))
     db.execute("DELETE FROM StockIssueDuePayments WHERE IssueID=?", (issue_id,))
     db.execute("DELETE FROM StockIssueLines WHERE IssueID=?", (issue_id,))
+    db.execute("DELETE FROM StockIssueAuditLog WHERE IssueID=?", (issue_id,))
     sale_note = ""
     if issue["SaleID"]:
         # The linked "Unassigned" Sale (if it hasn't already been reassigned away) is deleted
