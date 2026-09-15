@@ -1522,7 +1522,10 @@ def inventory_list():
         products = [p for p in products if p["MaxStock"] > 0 and p["CurrentStock"] >= p["MaxStock"]]
     suppliers = db.query("SELECT * FROM Suppliers WHERE Active=1 ORDER BY SupplierName")
     columns = get_effective_columns("Product")
-    return render_template("inventory_list.html", products=products, q=q, filt=filt, suppliers=suppliers, columns=columns)
+    pending_review_count = db.query(
+        "SELECT COUNT(*) c FROM DirectSaleReviews WHERE Status='Pending'", one=True)["c"]
+    return render_template("inventory_list.html", products=products, q=q, filt=filt, suppliers=suppliers,
+                            columns=columns, pending_review_count=pending_review_count)
 
 
 @app.route("/inventory/new", methods=["GET", "POST"])
@@ -1786,6 +1789,71 @@ def inventory_reconciliation_detail(pid):
                             total_units_sold=total_units_sold, sold_via_issue=sold_via_issue,
                             should_be_sold=should_be_sold, sales_gap=sales_gap,
                             direct_sale_rows=direct_sale_rows, direct_sale_total=direct_sale_total)
+
+
+# ---------------------------------------------------------------------
+# Direct Sale Review queue - every "Sale"-type InventoryTransactions row
+# (stock deducted straight from the warehouse, beyond what was issued to a
+# salesperson) is parked here for an Admin to confirm it isn't a duplicate
+# deduction. Stock is NOT held back for review - it deducts immediately as
+# before; this is a non-blocking audit layer on top. See
+# migrate_direct_sale_reviews.py for the backfill of historical rows.
+# ---------------------------------------------------------------------
+
+@app.route("/inventory/direct-sale-review")
+@admin_required
+def direct_sale_review_list():
+    status_filter = request.args.get("status", "Pending")
+    q = (request.args.get("q") or "").strip()
+
+    where = []
+    params = []
+    if status_filter in ("Pending", "Confirmed", "Flagged"):
+        where.append("dsr.Status = ?")
+        params.append(status_filter)
+    if q:
+        where.append("""(p.ProductName LIKE ? OR c.CustomerName LIKE ? OR e.EmployeeName LIKE ?
+                       OR s.InvoiceNumber LIKE ?)""")
+        like = f"%{q}%"
+        params.extend([like, like, like, like])
+    where_sql = ("WHERE " + " AND ".join(where)) if where else ""
+
+    rows = db.query(f"""
+        SELECT dsr.*, it.TransactionDate, it.QtyChange, it.RefID AS SaleID,
+               p.ProductName, s.InvoiceNumber, s.SaleDate, c.CustomerName,
+               e.EmployeeName
+        FROM DirectSaleReviews dsr
+        JOIN InventoryTransactions it ON it.TransactionID = dsr.TransactionID
+        JOIN Products p ON p.ProductID = dsr.ProductID
+        LEFT JOIN Sales s ON s.SaleID = it.RefID AND it.RefType = 'Sale'
+        LEFT JOIN Customers c ON c.CustomerID = s.CustomerID
+        LEFT JOIN Employees e ON e.EmployeeID = s.EmployeeID
+        {where_sql}
+        ORDER BY dsr.CreatedAt DESC, dsr.ReviewID DESC
+    """, params)
+
+    counts = {r["Status"]: r["c"] for r in db.query(
+        "SELECT Status, COUNT(*) c FROM DirectSaleReviews GROUP BY Status")}
+
+    return render_template("direct_sale_review_list.html", rows=rows, status_filter=status_filter,
+                            q=q, counts=counts)
+
+
+@app.route("/inventory/direct-sale-review/<int:review_id>/mark", methods=["POST"])
+@admin_required
+def direct_sale_review_mark(review_id):
+    new_status = request.form.get("status")
+    if new_status not in ("Confirmed", "Flagged", "Pending"):
+        flash("Invalid review status.", "error")
+        return redirect(url_for("direct_sale_review_list"))
+    current = get_current_user()
+    notes = (request.form.get("notes") or "").strip()
+    db.execute("""UPDATE DirectSaleReviews SET Status=?, ReviewedByUserID=?, ReviewedByUsername=?,
+                ReviewedAt=datetime('now'), Notes=? WHERE ReviewID=?""",
+               (new_status, current["UserID"] if current else None,
+                current["Username"] if current else None, notes or None, review_id))
+    flash(f"Marked as {new_status}.", "success")
+    return redirect(url_for("direct_sale_review_list", status=request.form.get("return_status", "Pending")))
 
 
 # ---------------------------------------------------------------------
@@ -2654,7 +2722,11 @@ def sale_delete(sid):
     # Give back whatever this Sale credited toward a Stock Issue's Qty Sold,
     # and remove the link rows (mirrors the first step of an edit).
     reverse_sale_stock_issue_links(sid)
-    # Reverse this Sale's own warehouse stock deduction, if any.
+    # Reverse this Sale's own warehouse stock deduction, if any. Delete any
+    # DirectSaleReviews rows for those transactions first - PRAGMA foreign_keys=ON
+    # would otherwise block deleting the InventoryTransactions row they reference.
+    db.execute("""DELETE FROM DirectSaleReviews WHERE TransactionID IN
+                (SELECT TransactionID FROM InventoryTransactions WHERE RefType='Sale' AND RefID=?)""", (sid,))
     db.execute("DELETE FROM InventoryTransactions WHERE RefType='Sale' AND RefID=?", (sid,))
     # If this is the reconciliation-created 'Unassigned' sale a Stock Issue still
     # points at, unlink it first - StockIssues.SaleID has no ON DELETE CASCADE, so
@@ -3013,6 +3085,11 @@ def create_sale(customer_id, sale_date, status, payment_status, payment_due_date
                     round(taxable_total, 2), round(cgst_total, 2), round(sgst_total, 2), round(igst_total, 2),
                     round_off, 1 if reverse_charge else 0, employee_id, cash_amount, bank_amount, sale_id))
         db.execute("DELETE FROM SalesLines WHERE SaleID=?", (sale_id,))
+        # Delete any DirectSaleReviews rows for this Sale's old warehouse-deduction
+        # transactions first - PRAGMA foreign_keys=ON would otherwise block deleting
+        # the InventoryTransactions rows they reference.
+        db.execute("""DELETE FROM DirectSaleReviews WHERE TransactionID IN
+                    (SELECT TransactionID FROM InventoryTransactions WHERE RefType='Sale' AND RefID=?)""", (sale_id,))
         db.execute("DELETE FROM InventoryTransactions WHERE RefType='Sale' AND RefID=?", (sale_id,))
         # Undo whatever this Sale previously credited toward any Stock Issue's Qty Sold,
         # before re-evaluating (below) what it should credit now - the employee, date, or
@@ -3095,9 +3172,11 @@ def create_sale(customer_id, sale_date, status, payment_status, payment_due_date
                     covered_qty = min(remaining_qty, available2)
                     remaining_qty = round(remaining_qty - covered_qty, 4)
             if remaining_qty > 0:
-                db.execute("""INSERT INTO InventoryTransactions (ProductID, TransactionDate, TransactionType,
+                direct_sale_txn_id = db.execute("""INSERT INTO InventoryTransactions (ProductID, TransactionDate, TransactionType,
                             QtyChange, RefType, RefID, Notes) VALUES (?,?,?,?,?,?,?)""",
                            (prod_id, sale_date, "Sale", -remaining_qty, "Sale", sale_id, invoice_no))
+                db.execute("""INSERT INTO DirectSaleReviews (TransactionID, ProductID, Status)
+                            VALUES (?,?,'Pending')""", (direct_sale_txn_id, prod_id))
     return sale_id
 
 

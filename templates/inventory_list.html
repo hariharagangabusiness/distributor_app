@@ -15,6 +15,9 @@
   <div class="d-flex gap-2">
     {% if current_user and current_user.Role == 'Admin' %}
     <a href="{{ url_for('inventory_reconciliation_summary') }}" class="btn btn-outline-secondary"><i class="bi bi-clipboard-check"></i> Reconciliation</a>
+    <a href="{{ url_for('direct_sale_review_list') }}" class="btn btn-outline-secondary"><i class="bi bi-search"></i> Direct Sale Review
+      {% if pending_review_count %}<span class="badge bg-warning text-dark ms-1">{{ pending_review_count }}</span>{% endif %}
+    </a>
     {% endif %}
     <a href="{{ url_for('export_module', module='products') }}" class="btn btn-outline-secondary"><i class="bi bi-file-earmark-excel"></i> Export to Excel</a>
   <a href="{{ url_for('export_module_pdf', module='products') }}" class="btn btn-outline-secondary"><i class="bi bi-file-earmark-pdf"></i> PDF</a>

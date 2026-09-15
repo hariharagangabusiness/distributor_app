@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Direct Sale Review{% endblock %}
+{% block page_title %}Direct Sale Review{% endblock %}
+{% block content %}
+<div class="alert alert-info">
+  Every time a Sale is deducted straight from warehouse stock (beyond what was issued to a salesperson that day —
+  the "Direct Sale" figure on the Inventory Reconciliation report), it's parked here so an Admin can confirm it
+  isn't a duplicate deduction. Stock is <strong>not</strong> held back — it deducts immediately as before; this is
+  a review/audit layer on top. Confirming or flagging a row here does not change any stock figures.
+</div>
+<div class="d-flex justify-content-between mb-3 flex-wrap gap-2">
+  <ul class="nav nav-pills">
+    {% for s in ['Pending', 'Confirmed', 'Flagged'] %}
+    <li class="nav-item">
+      <a class="nav-link {% if status_filter == s %}active{% endif %}"
+         href="{{ url_for('direct_sale_review_list', status=s, q=q) }}">
+        {{ s }} <span class="badge bg-light text-dark ms-1">{{ counts.get(s, 0) }}</span>
+      </a>
+    </li>
+    {% endfor %}
+    <li class="nav-item">
+      <a class="nav-link {% if status_filter not in ['Pending','Confirmed','Flagged'] %}active{% endif %}"
+         href="{{ url_for('direct_sale_review_list', status='All', q=q) }}">All</a>
+    </li>
+  </ul>
+  <form class="d-flex gap-2" method="get">
+    <input type="hidden" name="status" value="{{ status_filter }}">
+    <input type="text" name="q" value="{{ q }}" class="form-control" placeholder="Search product / customer / salesperson / invoice" style="width:300px">
+    <button class="btn btn-outline-secondary" type="submit">Search</button>
+  </form>
+</div>
+<div class="card">
+  <div class="table-responsive">
+  <table class="table table-hover mb-0 align-middle no-resize-table">
+    <thead><tr>
+      <th>Date</th><th>Product</th><th>Invoice</th><th>Customer</th><th>Salesperson</th>
+      <th class="text-end">Qty</th><th>Status</th><th>Reviewed by</th><th></th>
+    </tr></thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td>{{ r.TransactionDate or r.SaleDate or '' }}</td>
+        <td>{{ r.ProductName }}</td>
+        <td>
+          {% if r.SaleID %}
+            <a href="{{ url_for('sale_view', sid=r.SaleID) }}">{{ r.InvoiceNumber or ('Sale #' ~ r.SaleID) }}</a>
+          {% else %}
+            <span class="text-muted">Sale not found</span>
+          {% endif %}
+        </td>
+        <td>{{ r.CustomerName or '' }}</td>
+        <td>{{ r.EmployeeName or '' }}</td>
+        <td class="text-end">{{ (r.QtyChange|abs)|round(2) }}</td>
+        <td>
+          <span class="badge {% if r.Status == 'Pending' %}bg-warning text-dark{% elif r.Status == 'Confirmed' %}bg-success{% else %}bg-danger{% endif %}">
+            {{ r.Status }}
+          </span>
+          {% if r.Notes %}<div class="text-muted small">{{ r.Notes }}</div>{% endif %}
+        </td>
+        <td class="text-muted small">{{ r.ReviewedByUsername or '' }}{% if r.ReviewedAt %} · {{ r.ReviewedAt }}{% endif %}</td>
+        <td class="text-end">
+          <form method="post" action="{{ url_for('direct_sale_review_mark', review_id=r.ReviewID) }}" class="d-flex gap-1 justify-content-end">
+            <input type="hidden" name="return_status" value="{{ status_filter }}">
+            {% if r.Status != 'Confirmed' %}
+            <button class="btn btn-sm btn-outline-success" name="status" value="Confirmed" type="submit">Confirm</button>
+            {% endif %}
+            {% if r.Status != 'Flagged' %}
+            <button class="btn btn-sm btn-outline-danger" name="status" value="Flagged" type="submit">Flag</button>
+            {% endif %}
+            {% if r.Status != 'Pending' %}
+            <button class="btn btn-sm btn-outline-secondary" name="status" value="Pending" type="submit">Reopen</button>
+            {% endif %}
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="9" class="text-center text-muted py-4">No transactions found.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endblock %}

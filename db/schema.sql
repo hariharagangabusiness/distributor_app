@@ -798,6 +798,25 @@ CREATE TABLE IF NOT EXISTS Zones (
     DisplayOrder    INTEGER NOT NULL DEFAULT 0
 );
 
+-- One row per "Sale"-type InventoryTransactions row (a Direct Sale - stock deducted straight
+-- from the warehouse, beyond what was issued to a salesperson) so an Admin can review each one
+-- and confirm it isn't a duplicate deduction. The stock deduction itself already happened when
+-- the Sale was saved (this table is review-only, it never blocks or delays that) - see
+-- migrate_direct_sale_reviews.py.
+CREATE TABLE IF NOT EXISTS DirectSaleReviews (
+    ReviewID        INTEGER PRIMARY KEY AUTOINCREMENT,
+    TransactionID   INTEGER NOT NULL UNIQUE,
+    ProductID       INTEGER NOT NULL,
+    Status          TEXT NOT NULL DEFAULT 'Pending',   -- Pending / Confirmed / Flagged
+    ReviewedByUserID INTEGER,
+    ReviewedByUsername TEXT,
+    ReviewedAt      TEXT,
+    Notes           TEXT,
+    CreatedAt       TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (TransactionID) REFERENCES InventoryTransactions(TransactionID),
+    FOREIGN KEY (ProductID) REFERENCES Products(ProductID)
+);
+
 -- =====================================================================
 -- Indexes
 -- =====================================================================
@@ -816,3 +835,5 @@ CREATE INDEX IF NOT EXISTS idx_deletedsaleslog_deletedat ON DeletedSalesLog(Dele
 CREATE INDEX IF NOT EXISTS idx_locationlogs_user_date ON LocationLogs(UserID, RecordedDate);
 CREATE INDEX IF NOT EXISTS idx_locationlogs_date ON LocationLogs(RecordedDate);
 CREATE INDEX IF NOT EXISTS idx_stockissueauditlog_issue ON StockIssueAuditLog(IssueID, CreatedAt);
+CREATE INDEX IF NOT EXISTS idx_directsalereviews_status ON DirectSaleReviews(Status);
+CREATE INDEX IF NOT EXISTS idx_directsalereviews_product ON DirectSaleReviews(ProductID);
