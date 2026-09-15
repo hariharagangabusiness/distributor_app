@@ -43,6 +43,41 @@
   </div>
 </div>
 
+{% if direct_sale_rows %}
+<div class="card mb-4">
+  <div class="card-header">Direct Sale transactions ({{ direct_sale_total|round(2) }} {{ product.Unit }} total, deducted straight from warehouse)</div>
+  <div class="card-body pb-0 pt-2">
+    <div class="text-muted small">These are Sales-tab entries for this product that couldn't be fully covered by the
+      salesperson's own open Stock Issue for that day — the day's issued stock for this product had already run
+      out, the sale had no salesperson/Stock Issue link at all (an office/counter sale), or it's the catch-all
+      "Unassigned" sale Reconcile auto-creates for whatever a line's true sold total exceeds. None of these are a
+      problem by themselves; they're broken out here so you can check each invoice traces to a real sale.</div>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm table-hover mb-0 no-resize-table">
+      <thead><tr>
+        <th data-sort-type="date">Date</th><th>Invoice</th><th>Customer</th><th>Salesperson</th>
+        <th class="text-end">Qty</th><th>Sale Status</th><th></th>
+      </tr></thead>
+      <tbody>
+        {% for r in direct_sale_rows %}
+        <tr>
+          <td>{{ r.TransactionDate|dmy if r.TransactionDate else '-' }}</td>
+          <td>{{ r.InvoiceNumber or '-' }}</td>
+          <td>{{ r.CustomerName or '-' }}</td>
+          <td>{{ r.EmployeeName or '-' }}</td>
+          <td class="text-end">{{ (-r.QtyChange)|round(2) }}</td>
+          <td>{% if r.SaleID and not r.CustomerName %}<span class="badge text-bg-danger">Sale not found</span>
+              {% else %}{{ r.SaleStatus or '-' }}{% endif %}</td>
+          <td>{% if r.SaleID %}<a href="{{ url_for('sale_view', sid=r.SaleID) }}" target="_blank" class="btn btn-sm btn-outline-secondary">View Sale</a>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
 <div class="card mb-4">
   <div class="card-header">Stock Issue breakdown (every day this product was issued to a salesperson)</div>
   <div class="table-responsive">

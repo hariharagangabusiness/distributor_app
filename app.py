@@ -1737,9 +1737,31 @@ def inventory_reconciliation_detail(pid):
         buckets[t["TransactionType"]] = round(buckets.get(t["TransactionType"], 0) + (t["QtyChange"] or 0), 2)
     ledger_stock = round(sum(buckets.values()), 2)
 
+    # "Direct Sale" ledger rows (TransactionType='Sale') are posted whenever a Sales-tab
+    # entry's quantity for this product couldn't be fully covered by crediting the
+    # salesperson's own open Stock Issue line for that day - e.g. the day's issued stock
+    # for this product had already run out, the sale has no salesperson/Stock-Issue link
+    # at all (an office/counter sale), or it's the catch-all "Unassigned" sale auto-created
+    # at Reconcile time for whatever a Stock Issue line's true sold total exceeds. Every one
+    # of these deducts straight from warehouse stock rather than from stock already earmarked
+    # to a van, so they're broken out here (joined back to the actual Sale/Customer/Employee)
+    # instead of only showing as an anonymous "Sale" row in the raw ledger.
+    direct_sale_rows = db.query("""
+        SELECT it.TransactionID, it.TransactionDate, it.QtyChange, it.RefID AS SaleID, it.Notes AS InvoiceNumber,
+               s.CustomerID, c.CustomerName, s.EmployeeID, e.EmployeeName, s.Status AS SaleStatus
+        FROM InventoryTransactions it
+        LEFT JOIN Sales s ON s.SaleID = it.RefID AND it.RefType = 'Sale'
+        LEFT JOIN Customers c ON c.CustomerID = s.CustomerID
+        LEFT JOIN Employees e ON e.EmployeeID = s.EmployeeID
+        WHERE it.ProductID=? AND it.TransactionType='Sale'
+        ORDER BY it.TransactionDate DESC, it.TransactionID DESC
+    """, (pid,))
+    direct_sale_total = round(sum((r["QtyChange"] or 0) for r in direct_sale_rows), 2)
+
     return render_template("inventory_reconciliation_detail.html", product=product, ledger_rows=ledger_rows,
                             buckets=buckets, ledger_stock=ledger_stock, issue_breakdown=issue_breakdown,
-                            total_unaccounted=total_unaccounted, total_pending=total_pending)
+                            total_unaccounted=total_unaccounted, total_pending=total_pending,
+                            direct_sale_rows=direct_sale_rows, direct_sale_total=direct_sale_total)
 
 
 # ---------------------------------------------------------------------
