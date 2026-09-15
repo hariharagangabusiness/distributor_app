@@ -1652,6 +1652,26 @@ def _unassigned_sold_by_issue():
     return {(r["IssueID"], r["ProductID"]): (r["q"] or 0) for r in rows}
 
 
+def _direct_sale_qty_lookup():
+    """{(EmployeeID, SaleDate, ProductID): qty} - how much of a salesperson's total
+    units sold that date/product was actually a genuine Direct Sale (a real, separate
+    warehouse deduction - TransactionType='Sale' in InventoryTransactions), rather than
+    credited against a Stock Issue line. _true_qty_sold_lookup() sums ALL SalesLines for
+    an (employee, date, product) regardless of channel, so on any day a salesperson had
+    BOTH stock credited from their issue AND a separate genuine Direct Sale (e.g. an
+    oversell beyond that day's issued capacity), the Direct Sale portion was being
+    counted twice: once correctly as 'Direct Sale' on the ledger, and again as if it
+    were sold from the issue's own stock, understating that line's Unaccounted. This
+    lookup lets that portion be subtracted back out before comparing against a Stock
+    Issue line's Qty Issued."""
+    rows = db.query("""SELECT s.EmployeeID, s.SaleDate, it.ProductID, SUM(-it.QtyChange) AS q
+                     FROM InventoryTransactions it
+                     JOIN Sales s ON s.SaleID = it.RefID AND it.RefType = 'Sale'
+                     WHERE it.TransactionType = 'Sale' AND s.Status <> 'Cancelled'
+                     GROUP BY s.EmployeeID, s.SaleDate, it.ProductID""")
+    return {(r["EmployeeID"], r["SaleDate"], r["ProductID"]): (r["q"] or 0) for r in rows}
+
+
 def _inventory_reconciliation_summary():
     """Per-product breakdown: every InventoryTransactions bucket that sums to the
     current ledger stock, plus the true-ground-truth Unaccounted (stock issued to
@@ -1669,18 +1689,23 @@ def _inventory_reconciliation_summary():
                             FROM StockIssueLines sil JOIN StockIssues si ON si.IssueID = sil.IssueID""")
     true_sold = _true_qty_sold_lookup()
     unassigned_sold = _unassigned_sold_by_issue()
+    direct_sold = _direct_sale_qty_lookup()
 
     unaccounted = {}
     pending = {}
     for line in issue_lines:
         pid = line["ProductID"]
         if line["Status"] == "Reconciled":
-            # Ground-truth sold for this line = whatever's billed to the salesperson's own
-            # named customers that day, PLUS whatever's still billed on this issue's own
-            # auto-created "Unassigned" invoice (not yet reassigned) - see
-            # _unassigned_sold_by_issue() for why both are needed.
-            sold = (true_sold.get((line["EmployeeID"], line["IssueDate"], pid), 0)
-                    + unassigned_sold.get((line["IssueID"], pid), 0))
+            # Ground-truth sold FROM THIS ISSUE for this line = everything billed to the
+            # salesperson's own named customers that day, PLUS whatever's still billed on
+            # this issue's own auto-created "Unassigned" invoice (not yet reassigned) -
+            # see _unassigned_sold_by_issue() - MINUS whatever of that total was actually a
+            # genuine, separate Direct Sale warehouse deduction rather than stock credited
+            # from this issue - see _direct_sale_qty_lookup() (otherwise a same-day Direct
+            # Sale gets silently double-counted as if it also came from the issue).
+            key = (line["EmployeeID"], line["IssueDate"], pid)
+            sold = (true_sold.get(key, 0) + unassigned_sold.get((line["IssueID"], pid), 0)
+                    - direct_sold.get(key, 0))
             gap = round((line["QtyIssued"] or 0) - sold - (line["QtyReturned"] or 0) - (line["QtyFree"] or 0), 2)
             unaccounted[pid] = round(unaccounted.get(pid, 0) + gap, 2)
         else:
@@ -1746,18 +1771,22 @@ def inventory_reconciliation_detail(pid):
                             WHERE sil.ProductID=? ORDER BY si.IssueDate DESC, si.IssueID DESC""", (pid,))
     true_sold = _true_qty_sold_lookup()
     unassigned_sold = _unassigned_sold_by_issue()
+    direct_sold = _direct_sale_qty_lookup()
     issue_breakdown = []
     total_unaccounted = 0
     total_pending = 0
     for line in issue_lines:
         row = dict(line)
         if line["Status"] == "Reconciled":
-            # Ground-truth sold for this line = whatever's billed to the salesperson's own
-            # named customers that day, PLUS whatever's still billed on this issue's own
-            # auto-created "Unassigned" invoice (not yet reassigned) - see
-            # _unassigned_sold_by_issue() for why both are needed.
-            true_qty = (true_sold.get((line["EmployeeID"], line["IssueDate"], pid), 0)
-                        + unassigned_sold.get((line["IssueID"], pid), 0))
+            # Ground-truth sold FROM THIS ISSUE for this line = everything billed to the
+            # salesperson's own named customers that day, PLUS whatever's still billed on
+            # this issue's own auto-created "Unassigned" invoice (not yet reassigned) -
+            # see _unassigned_sold_by_issue() - MINUS whatever of that total was actually a
+            # genuine, separate Direct Sale warehouse deduction rather than stock credited
+            # from this issue - see _direct_sale_qty_lookup().
+            key = (line["EmployeeID"], line["IssueDate"], pid)
+            true_qty = (true_sold.get(key, 0) + unassigned_sold.get((line["IssueID"], pid), 0)
+                        - direct_sold.get(key, 0))
             row["true_qty_sold"] = true_qty
             row["unaccounted"] = round((line["QtyIssued"] or 0) - true_qty
                                         - (line["QtyReturned"] or 0) - (line["QtyFree"] or 0), 2)
