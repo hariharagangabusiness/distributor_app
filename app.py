@@ -1631,6 +1631,27 @@ def _true_qty_sold_lookup():
     return {(r["EmployeeID"], r["SaleDate"], r["ProductID"]): (r["q"] or 0) for r in rows}
 
 
+def _unassigned_sold_by_issue():
+    """{(IssueID, ProductID): qty} - how much of a Stock Issue line was billed on that
+    issue's own auto-created 'Unassigned' invoice (StockIssues.SaleID), still sitting
+    unreassigned. That invoice is deliberately created with NO EmployeeID (see
+    stock_issue_reconcile()), so _true_qty_sold_lookup() above - keyed by EmployeeID -
+    can never see it. Without this, the Reconciliation report's day-by-day Unaccounted
+    figure wildly overstates the real gap for any day whose sales were never
+    individually reassigned to real customers (the report showed a product's true
+    all-time Gap as 72 while the day-by-day breakdown summed to 275, entirely because
+    of this blind spot - see phase47 follow-up). Once a Sale is fully reassigned away
+    (sale_reassign()), StockIssues.SaleID is cleared and this can no longer trace it -
+    a known limitation, not fixed here."""
+    rows = db.query("""SELECT si.IssueID, sl.ProductID, SUM(sl.Qty) AS q
+                     FROM StockIssues si
+                     JOIN Sales s ON s.SaleID = si.SaleID
+                     JOIN SalesLines sl ON sl.SaleID = s.SaleID
+                     WHERE si.SaleID IS NOT NULL AND s.Status <> 'Cancelled'
+                     GROUP BY si.IssueID, sl.ProductID""")
+    return {(r["IssueID"], r["ProductID"]): (r["q"] or 0) for r in rows}
+
+
 def _inventory_reconciliation_summary():
     """Per-product breakdown: every InventoryTransactions bucket that sums to the
     current ledger stock, plus the true-ground-truth Unaccounted (stock issued to
@@ -1643,17 +1664,23 @@ def _inventory_reconciliation_summary():
     for r in ledger_rows:
         ledger.setdefault(r["ProductID"], {})[r["TransactionType"]] = r["amt"] or 0
 
-    issue_lines = db.query("""SELECT sil.ProductID, sil.QtyIssued, sil.QtyReturned, sil.QtyFree,
+    issue_lines = db.query("""SELECT sil.IssueID, sil.ProductID, sil.QtyIssued, sil.QtyReturned, sil.QtyFree,
                             si.EmployeeID, si.IssueDate, si.Status
                             FROM StockIssueLines sil JOIN StockIssues si ON si.IssueID = sil.IssueID""")
     true_sold = _true_qty_sold_lookup()
+    unassigned_sold = _unassigned_sold_by_issue()
 
     unaccounted = {}
     pending = {}
     for line in issue_lines:
         pid = line["ProductID"]
         if line["Status"] == "Reconciled":
-            sold = true_sold.get((line["EmployeeID"], line["IssueDate"], pid), 0)
+            # Ground-truth sold for this line = whatever's billed to the salesperson's own
+            # named customers that day, PLUS whatever's still billed on this issue's own
+            # auto-created "Unassigned" invoice (not yet reassigned) - see
+            # _unassigned_sold_by_issue() for why both are needed.
+            sold = (true_sold.get((line["EmployeeID"], line["IssueDate"], pid), 0)
+                    + unassigned_sold.get((line["IssueID"], pid), 0))
             gap = round((line["QtyIssued"] or 0) - sold - (line["QtyReturned"] or 0) - (line["QtyFree"] or 0), 2)
             unaccounted[pid] = round(unaccounted.get(pid, 0) + gap, 2)
         else:
@@ -1718,13 +1745,19 @@ def inventory_reconciliation_detail(pid):
                             JOIN Employees e ON e.EmployeeID = si.EmployeeID
                             WHERE sil.ProductID=? ORDER BY si.IssueDate DESC, si.IssueID DESC""", (pid,))
     true_sold = _true_qty_sold_lookup()
+    unassigned_sold = _unassigned_sold_by_issue()
     issue_breakdown = []
     total_unaccounted = 0
     total_pending = 0
     for line in issue_lines:
         row = dict(line)
         if line["Status"] == "Reconciled":
-            true_qty = true_sold.get((line["EmployeeID"], line["IssueDate"], pid), 0)
+            # Ground-truth sold for this line = whatever's billed to the salesperson's own
+            # named customers that day, PLUS whatever's still billed on this issue's own
+            # auto-created "Unassigned" invoice (not yet reassigned) - see
+            # _unassigned_sold_by_issue() for why both are needed.
+            true_qty = (true_sold.get((line["EmployeeID"], line["IssueDate"], pid), 0)
+                        + unassigned_sold.get((line["IssueID"], pid), 0))
             row["true_qty_sold"] = true_qty
             row["unaccounted"] = round((line["QtyIssued"] or 0) - true_qty
                                         - (line["QtyReturned"] or 0) - (line["QtyFree"] or 0), 2)

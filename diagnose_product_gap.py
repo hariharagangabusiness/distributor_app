@@ -24,8 +24,8 @@ def main():
     conn.row_factory = sqlite3.Row
 
     matches = conn.execute(
-        "SELECT ProductID, ProductName, SKU, Unit FROM Products WHERE ProductName LIKE ? ORDER BY ProductName",
-        (f"%{needle}%",)
+        "SELECT ProductID, ProductName, SKU, Unit FROM Products WHERE ProductName LIKE ? OR SKU LIKE ? ORDER BY ProductName",
+        (f"%{needle}%", f"%{needle}%")
     ).fetchall()
     if not matches:
         print(f"No product matched '{needle}'.")
@@ -72,6 +72,21 @@ def main():
     """):
         true_sold[(r["EmployeeID"], r["SaleDate"], r["ProductID"])] = r["q"] or 0
 
+    # ---- Corrected lookup: units still billed on a Stock Issue's own auto-created
+    # "Unassigned" invoice (StockIssues.SaleID), which true_sold above can NEVER see
+    # because that invoice is deliberately created with no EmployeeID. This is the fix
+    # for the day-by-day report overstating the gap. ----
+    unassigned_sold = {}
+    for r in conn.execute("""
+        SELECT si.IssueID, sl.ProductID, SUM(sl.Qty) q
+        FROM StockIssues si
+        JOIN Sales s ON s.SaleID = si.SaleID
+        JOIN SalesLines sl ON sl.SaleID = s.SaleID
+        WHERE si.SaleID IS NOT NULL AND s.Status <> 'Cancelled'
+        GROUP BY si.IssueID, sl.ProductID
+    """):
+        unassigned_sold[(r["IssueID"], r["ProductID"])] = r["q"] or 0
+
     # ---- Day-by-day Stock Issue breakdown ----
     issue_lines = conn.execute("""
         SELECT sil.*, si.EmployeeID, si.IssueDate, si.Status, si.IssueID, e.EmployeeName
@@ -82,31 +97,38 @@ def main():
         ORDER BY si.IssueDate, si.IssueID
     """, (pid,)).fetchall()
 
-    print("\n--- Day-by-day Stock Issue breakdown ---")
-    print(f"{'Date':<12} {'Salesperson':<20} {'Status':<11} {'Issued':>8} {'TrueSold':>9} "
-          f"{'Returned':>9} {'Free':>6} {'Unaccounted':>12}")
-    total_unaccounted = 0.0
+    print("\n--- Day-by-day Stock Issue breakdown (OLD figure vs CORRECTED figure) ---")
+    print(f"{'Date':<12} {'Salesperson':<20} {'Status':<11} {'Issued':>7} {'OldTrueSold':>11} "
+          f"{'+Unassign':>10} {'=NewSold':>9} {'Returned':>9} {'Free':>5} {'OldUnacc':>9} {'NewUnacc':>9}")
+    total_unaccounted_old = 0.0
+    total_unaccounted_new = 0.0
     total_pending = 0.0
     flagged_days = []
     for line in issue_lines:
         if line["Status"] == "Reconciled":
             key = (line["EmployeeID"], line["IssueDate"], pid)
-            true_qty = true_sold.get(key, 0)
-            unacc = round((line["QtyIssued"] or 0) - true_qty - (line["QtyReturned"] or 0) - (line["QtyFree"] or 0), 2)
-            total_unaccounted = round(total_unaccounted + unacc, 2)
+            old_true_qty = true_sold.get(key, 0)
+            unassigned_qty = unassigned_sold.get((line["IssueID"], pid), 0)
+            new_true_qty = old_true_qty + unassigned_qty
+            old_unacc = round((line["QtyIssued"] or 0) - old_true_qty - (line["QtyReturned"] or 0) - (line["QtyFree"] or 0), 2)
+            new_unacc = round((line["QtyIssued"] or 0) - new_true_qty - (line["QtyReturned"] or 0) - (line["QtyFree"] or 0), 2)
+            total_unaccounted_old = round(total_unaccounted_old + old_unacc, 2)
+            total_unaccounted_new = round(total_unaccounted_new + new_unacc, 2)
             print(f"{line['IssueDate']:<12} {line['EmployeeName']:<20} {'Reconciled':<11} "
-                  f"{line['QtyIssued'] or 0:>8,.2f} {true_qty:>9,.2f} {line['QtyReturned'] or 0:>9,.2f} "
-                  f"{line['QtyFree'] or 0:>6,.2f} {unacc:>12,.2f}"
-                  + ("   <== contributes to Gap" if abs(unacc) > 0.01 else ""))
-            if abs(unacc) > 0.01:
-                flagged_days.append((line["IssueDate"], line["EmployeeName"], line["IssueID"], unacc))
+                  f"{line['QtyIssued'] or 0:>7,.1f} {old_true_qty:>11,.1f} {unassigned_qty:>10,.1f} "
+                  f"{new_true_qty:>9,.1f} {line['QtyReturned'] or 0:>9,.1f} {line['QtyFree'] or 0:>5,.1f} "
+                  f"{old_unacc:>9,.1f} {new_unacc:>9,.1f}"
+                  + ("   <== still contributes to Gap" if abs(new_unacc) > 0.01 else ""))
+            if abs(new_unacc) > 0.01:
+                flagged_days.append((line["IssueDate"], line["EmployeeName"], line["IssueID"], new_unacc))
         else:
             total_pending = round(total_pending + (line["QtyIssued"] or 0), 2)
             print(f"{line['IssueDate']:<12} {line['EmployeeName']:<20} {'Pending':<11} "
-                  f"{line['QtyIssued'] or 0:>8,.2f} {'--':>9} {'--':>9} {'--':>6} "
-                  f"{'not reconciled yet':>12}")
+                  f"{line['QtyIssued'] or 0:>7,.1f} {'--':>11} {'--':>10} {'--':>9} {'--':>9} {'--':>5} "
+                  f"{'not reconciled yet':>9}")
 
-    print(f"\n  TOTAL UNACCOUNTED (reconciled days only): {total_unaccounted:,.2f}")
+    print(f"\n  TOTAL UNACCOUNTED - OLD (buggy) figure: {total_unaccounted_old:,.2f}")
+    print(f"  TOTAL UNACCOUNTED - CORRECTED figure  : {total_unaccounted_new:,.2f}   <-- trust this one")
     print(f"  TOTAL PENDING (issued, not yet reconciled - not a problem): {total_pending:,.2f}")
 
     # ---- Total Units Sold / Gap section (same formula as the app) ----
