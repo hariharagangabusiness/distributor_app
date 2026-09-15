@@ -3937,10 +3937,21 @@ def stock_issue_reconcile(issue_id):
         expected_amount = 0.0
         scheme_amount = 0.0
         if is_reedit:
-            # Remove the Return-In/Free Scheme entries the previous reconciliation posted
-            # (but NOT the original Issue transaction) before re-posting fresh ones below.
+            # Remove the Return-In entries the previous reconciliation posted (but NOT the
+            # original Issue transaction) before re-posting a fresh one below. Also clean up
+            # any old-style "Free Scheme" row(s) this issue may still have from before the
+            # double-deduction fix (see migrate_fix_free_scheme_double_deduction.py) - and,
+            # if that migration already corrected them, the compensating "FreeSchemeFix"
+            # row(s) too, so re-editing doesn't leave an orphaned correction with nothing
+            # left for it to correct (which would overstate stock instead of just being
+            # neutral, now that fresh reconciles no longer post a Free Scheme row at all).
+            old_free_scheme_ids = [r["TransactionID"] for r in db.query(
+                """SELECT TransactionID FROM InventoryTransactions
+                   WHERE RefType='StockIssue' AND RefID=? AND TransactionType='Free Scheme'""", (issue_id,))]
             db.execute("""DELETE FROM InventoryTransactions WHERE RefType='StockIssue' AND RefID=?
                         AND TransactionType IN ('Return-In','Free Scheme')""", (issue_id,))
+            for old_id in old_free_scheme_ids:
+                db.execute("DELETE FROM InventoryTransactions WHERE RefType='FreeSchemeFix' AND RefID=?", (old_id,))
             if money_locked and f.get("money_data_action") == "clear":
                 # Admin chose to clear existing due-payment/claim history rather than keep it,
                 # since it was based on figures this edit is about to change - reset it the same
@@ -3978,11 +3989,16 @@ def stock_issue_reconcile(issue_id):
                             QtyChange, RefType, RefID, Notes) VALUES (?,?,?,?,?,?,?)""",
                            (line["ProductID"], today_str(), "Return-In", qty_returned, "StockIssue", issue_id,
                             "Returned unsold from stock issue"))
-            if qty_free > 0:
-                db.execute("""INSERT INTO InventoryTransactions (ProductID, TransactionDate, TransactionType,
-                            QtyChange, RefType, RefID, Notes) VALUES (?,?,?,?,?,?,?)""",
-                           (line["ProductID"], today_str(), "Free Scheme", -qty_free, "StockIssue", issue_id,
-                            "Given free to customer under scheme"))
+            # NOTE: qty_free posts NO InventoryTransactions row, same as qty_sold above - the
+            # original "Issue" transaction already deducted the FULL QtyIssued from the ledger
+            # at issue time, and units given away free (like units sold) never come back, so
+            # that original deduction already fully accounts for them. A previous version of
+            # this code also posted a "Free Scheme" -qty_free row here on top of that, which
+            # double-deducted every free-given unit from stock forever (see
+            # migrate_fix_free_scheme_double_deduction.py, which reverses the historical
+            # damage this caused - it's very likely most of what shows up as "missing"
+            # inventory on the Reconciliation report). Only qty_returned needs a transaction
+            # here, because that's the one outcome where stock genuinely comes back.
         expected_amount = round(max(expected_amount, 0), 2)
         scheme_amount = round(scheme_amount, 2)
         discrepancy = round(cash_collected - expected_amount, 2)
