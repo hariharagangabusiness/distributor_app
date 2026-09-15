@@ -1604,6 +1604,145 @@ def inventory_adjust(pid):
 
 
 # ---------------------------------------------------------------------
+# Inventory Reconciliation: shows exactly why a product's current stock
+# (the InventoryTransactions ledger total) is what it is, and — for
+# products issued out to salespeople via Stock Issues — how much of the
+# stock that left the warehouse is still genuinely unaccounted for versus
+# just pending an end-of-day reconciliation. Uses the same ground-truth
+# true_product_qty_sold() logic as Live Sales Monitor/Reconcile rather than
+# trusting StockIssueLines.QtySold directly, since older reconciled issues
+# (reconciled before that fix existed) can have an understated QtySold on
+# file even though the actual stock genuinely was sold - this report would
+# otherwise flag that gap as "missing" stock when it's really just a stale
+# recorded figure.
+# ---------------------------------------------------------------------
+
+def _true_qty_sold_lookup():
+    """{(EmployeeID, SaleDate, ProductID): total qty}, computed straight from
+    SalesLines/Sales - the same ground truth true_product_qty_sold() uses,
+    but as one grouped query instead of one query per Stock Issue line."""
+    rows = db.query("""SELECT s.EmployeeID, s.SaleDate, sl.ProductID, SUM(sl.Qty) AS q
+                     FROM SalesLines sl JOIN Sales s ON s.SaleID = sl.SaleID
+                     WHERE s.Status <> 'Cancelled'
+                     GROUP BY s.EmployeeID, s.SaleDate, sl.ProductID""")
+    return {(r["EmployeeID"], r["SaleDate"], r["ProductID"]): (r["q"] or 0) for r in rows}
+
+
+def _inventory_reconciliation_summary():
+    """Per-product breakdown: every InventoryTransactions bucket that sums to the
+    current ledger stock, plus the true-ground-truth Unaccounted (stock issued to
+    a salesperson on an already-Reconciled day that was never sold/returned/given
+    free) and Pending (issued but the day hasn't been reconciled yet, so nothing
+    is wrong - it's just still out) quantities."""
+    ledger_rows = db.query("""SELECT ProductID, TransactionType, SUM(QtyChange) AS amt
+                            FROM InventoryTransactions GROUP BY ProductID, TransactionType""")
+    ledger = {}
+    for r in ledger_rows:
+        ledger.setdefault(r["ProductID"], {})[r["TransactionType"]] = r["amt"] or 0
+
+    issue_lines = db.query("""SELECT sil.ProductID, sil.QtyIssued, sil.QtyReturned, sil.QtyFree,
+                            si.EmployeeID, si.IssueDate, si.Status
+                            FROM StockIssueLines sil JOIN StockIssues si ON si.IssueID = sil.IssueID""")
+    true_sold = _true_qty_sold_lookup()
+
+    unaccounted = {}
+    pending = {}
+    for line in issue_lines:
+        pid = line["ProductID"]
+        if line["Status"] == "Reconciled":
+            sold = true_sold.get((line["EmployeeID"], line["IssueDate"], pid), 0)
+            gap = round((line["QtyIssued"] or 0) - sold - (line["QtyReturned"] or 0) - (line["QtyFree"] or 0), 2)
+            unaccounted[pid] = round(unaccounted.get(pid, 0) + gap, 2)
+        else:
+            pending[pid] = round(pending.get(pid, 0) + (line["QtyIssued"] or 0), 2)
+
+    products = db.query("SELECT ProductID, ProductName, SKU, Unit FROM Products ORDER BY ProductName")
+    out = []
+    for p in products:
+        pid = p["ProductID"]
+        buckets = ledger.get(pid, {})
+        ledger_stock = round(sum(buckets.values()), 2)
+        row = dict(p)
+        row.update(
+            opening=buckets.get("Opening Stock", 0), purchases=buckets.get("Purchase", 0),
+            issued=buckets.get("Issue", 0), returned_in=buckets.get("Return-In", 0),
+            free_scheme=buckets.get("Free Scheme", 0), direct_sale=buckets.get("Sale", 0),
+            adjustment_in=buckets.get("Adjustment-In", 0), adjustment_out=buckets.get("Adjustment-Out", 0),
+            ledger_stock=ledger_stock,
+            unaccounted=unaccounted.get(pid, 0), pending_reconciliation=pending.get(pid, 0),
+        )
+        out.append(row)
+    return out
+
+
+@app.route("/inventory/reconciliation")
+@admin_required
+def inventory_reconciliation_summary():
+    rows = _inventory_reconciliation_summary()
+    q = (request.args.get("q") or "").strip().lower()
+    if q:
+        rows = [r for r in rows if q in r["ProductName"].lower() or q in (r["SKU"] or "").lower()]
+    only_gaps = request.args.get("only_gaps") == "1"
+    if only_gaps:
+        rows = [r for r in rows if abs(r["unaccounted"]) > 0.01]
+    rows.sort(key=lambda r: abs(r["unaccounted"]), reverse=True)
+    return render_template("inventory_reconciliation.html", rows=rows, q=request.args.get("q", ""),
+                            only_gaps=only_gaps)
+
+
+@app.route("/inventory/<int:pid>/reconciliation")
+@admin_required
+def inventory_reconciliation_detail(pid):
+    product = db.query("SELECT * FROM Products WHERE ProductID=?", (pid,), one=True)
+    if not product:
+        flash("Product not found.", "error")
+        return redirect(url_for("inventory_reconciliation_summary"))
+
+    ledger = db.query("""SELECT * FROM InventoryTransactions WHERE ProductID=?
+                       ORDER BY TransactionDate, TransactionID""", (pid,))
+    running = 0
+    ledger_rows = []
+    for t in ledger:
+        running = round(running + (t["QtyChange"] or 0), 2)
+        row = dict(t)
+        row["running_balance"] = running
+        ledger_rows.append(row)
+    ledger_rows.reverse()  # most recent first, like every other list page in the app
+
+    issue_lines = db.query("""SELECT sil.*, si.EmployeeID, si.IssueDate, si.Status, e.EmployeeName
+                            FROM StockIssueLines sil
+                            JOIN StockIssues si ON si.IssueID = sil.IssueID
+                            JOIN Employees e ON e.EmployeeID = si.EmployeeID
+                            WHERE sil.ProductID=? ORDER BY si.IssueDate DESC, si.IssueID DESC""", (pid,))
+    true_sold = _true_qty_sold_lookup()
+    issue_breakdown = []
+    total_unaccounted = 0
+    total_pending = 0
+    for line in issue_lines:
+        row = dict(line)
+        if line["Status"] == "Reconciled":
+            true_qty = true_sold.get((line["EmployeeID"], line["IssueDate"], pid), 0)
+            row["true_qty_sold"] = true_qty
+            row["unaccounted"] = round((line["QtyIssued"] or 0) - true_qty
+                                        - (line["QtyReturned"] or 0) - (line["QtyFree"] or 0), 2)
+            total_unaccounted = round(total_unaccounted + row["unaccounted"], 2)
+        else:
+            row["true_qty_sold"] = None
+            row["unaccounted"] = None
+            total_pending = round(total_pending + (line["QtyIssued"] or 0), 2)
+        issue_breakdown.append(row)
+
+    buckets = {}
+    for t in ledger:
+        buckets[t["TransactionType"]] = round(buckets.get(t["TransactionType"], 0) + (t["QtyChange"] or 0), 2)
+    ledger_stock = round(sum(buckets.values()), 2)
+
+    return render_template("inventory_reconciliation_detail.html", product=product, ledger_rows=ledger_rows,
+                            buckets=buckets, ledger_stock=ledger_stock, issue_breakdown=issue_breakdown,
+                            total_unaccounted=total_unaccounted, total_pending=total_pending)
+
+
+# ---------------------------------------------------------------------
 # Suppliers
 # ---------------------------------------------------------------------
 

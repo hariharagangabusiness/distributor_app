@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Reconciliation — {{ product.ProductName }}{% endblock %}
+{% block page_title %}Inventory Reconciliation — {{ product.ProductName }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-end mb-3">
+  <a href="{{ url_for('inventory_reconciliation_summary') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left"></i> Back to all products</a>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-3"><div class="card h-100"><div class="card-body">
+    <div class="text-muted small">Ledger Stock (current)</div>
+    <div class="fs-4 fw-bold">{{ ledger_stock|round(2) }} {{ product.Unit }}</div>
+  </div></div></div>
+  <div class="col-md-3"><div class="card h-100"><div class="card-body">
+    <div class="text-muted small">Pending Reconciliation</div>
+    <div class="fs-4 fw-bold">{{ total_pending|round(2) }} {{ product.Unit }}</div>
+    <div class="text-muted small">Out with a salesperson, day not yet reconciled — not a discrepancy.</div>
+  </div></div></div>
+  <div class="col-md-3"><div class="card h-100"><div class="card-body">
+    <div class="text-muted small">Unaccounted (real gap)</div>
+    <div class="fs-4 fw-bold {% if total_unaccounted|abs > 0.01 %}text-danger{% endif %}">{{ total_unaccounted|round(2) }} {{ product.Unit }}</div>
+    <div class="text-muted small">Issued on an already-reconciled day, never sold/returned/given free.</div>
+  </div></div></div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-header">Where the stock came from and went (all-time)</div>
+  <div class="table-responsive">
+    <table class="table table-sm mb-0 no-resize-table">
+      <thead><tr><th>Bucket</th><th class="text-end">Qty</th></tr></thead>
+      <tbody>
+        <tr><td>Opening Stock</td><td class="text-end">{{ buckets.get('Opening Stock', 0)|round(2) }}</td></tr>
+        <tr><td>Purchases (received)</td><td class="text-end">{{ buckets.get('Purchase', 0)|round(2) }}</td></tr>
+        <tr><td>Issued to salespeople</td><td class="text-end">{{ buckets.get('Issue', 0)|round(2) }}</td></tr>
+        <tr><td>Returned In (unsold, from Stock Issues)</td><td class="text-end">{{ buckets.get('Return-In', 0)|round(2) }}</td></tr>
+        <tr><td>Given Free (scheme)</td><td class="text-end">{{ buckets.get('Free Scheme', 0)|round(2) }}</td></tr>
+        <tr><td>Direct Sale (deducted straight from warehouse, beyond what was issued)</td><td class="text-end">{{ buckets.get('Sale', 0)|round(2) }}</td></tr>
+        <tr><td>Manual Adjustment — In</td><td class="text-end">{{ buckets.get('Adjustment-In', 0)|round(2) }}</td></tr>
+        <tr><td>Manual Adjustment — Out</td><td class="text-end">{{ buckets.get('Adjustment-Out', 0)|round(2) }}</td></tr>
+        <tr class="table-light fw-bold"><td>= Ledger Stock</td><td class="text-end">{{ ledger_stock|round(2) }} {{ product.Unit }}</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-header">Stock Issue breakdown (every day this product was issued to a salesperson)</div>
+  <div class="table-responsive">
+    <table class="table table-sm table-hover mb-0 no-resize-table" id="tbl-issue-breakdown">
+      <thead><tr>
+        <th data-sort-type="date">Date</th><th>Salesperson</th><th>Status</th>
+        <th class="text-end">Qty Issued</th><th class="text-end">Qty Sold (true)</th>
+        <th class="text-end">Qty Returned</th><th class="text-end">Qty Free</th><th class="text-end">Unaccounted</th>
+      </tr></thead>
+      <tbody>
+        {% for r in issue_breakdown %}
+        <tr>
+          <td>{{ r.IssueDate|dmy }}</td>
+          <td>{{ r.EmployeeName }}</td>
+          <td><span class="badge {% if r.Status == 'Reconciled' %}text-bg-success{% else %}text-bg-warning{% endif %}">{{ r.Status }}</span></td>
+          <td class="text-end">{{ r.QtyIssued|round(2) }}</td>
+          <td class="text-end">{{ r.true_qty_sold|round(2) if r.true_qty_sold is not none else '-' }}</td>
+          <td class="text-end">{{ (r.QtyReturned or 0)|round(2) }}</td>
+          <td class="text-end">{{ (r.QtyFree or 0)|round(2) }}</td>
+          <td class="text-end {% if r.unaccounted is not none and r.unaccounted|abs > 0.01 %}text-danger fw-bold{% endif %}">
+            {{ r.unaccounted|round(2) if r.unaccounted is not none else 'pending' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8" class="text-center text-muted py-4">This product has never been issued to a salesperson.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">Full transaction ledger (most recent first)</div>
+  <div class="table-responsive">
+    <table class="table table-sm mb-0 no-resize-table">
+      <thead><tr>
+        <th>Date</th><th>Type</th><th class="text-end">Qty Change</th><th class="text-end">Running Balance</th>
+        <th>Reference</th><th>Notes</th>
+      </tr></thead>
+      <tbody>
+        {% for t in ledger_rows %}
+        <tr>
+          <td>{{ t.TransactionDate|dmy if t.TransactionDate else '-' }}</td>
+          <td>{{ t.TransactionType }}</td>
+          <td class="text-end {% if t.QtyChange < 0 %}text-danger{% else %}text-success{% endif %}">{{ t.QtyChange|round(2) }}</td>
+          <td class="text-end">{{ t.running_balance|round(2) }}</td>
+          <td>{{ t.RefType or '-' }}{% if t.RefID %} #{{ t.RefID }}{% endif %}</td>
+          <td>{{ t.Notes or '-' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="text-center text-muted py-4">No transactions recorded for this product.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

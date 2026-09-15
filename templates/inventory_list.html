@@ -13,6 +13,9 @@
     <button class="btn btn-outline-secondary" type="submit">Filter</button>
   </form>
   <div class="d-flex gap-2">
+    {% if current_user and current_user.Role == 'Admin' %}
+    <a href="{{ url_for('inventory_reconciliation_summary') }}" class="btn btn-outline-secondary"><i class="bi bi-clipboard-check"></i> Reconciliation</a>
+    {% endif %}
     <a href="{{ url_for('export_module', module='products') }}" class="btn btn-outline-secondary"><i class="bi bi-file-earmark-excel"></i> Export to Excel</a>
   <a href="{{ url_for('export_module_pdf', module='products') }}" class="btn btn-outline-secondary"><i class="bi bi-file-earmark-pdf"></i> PDF</a>
     <a href="{{ url_for('inventory_form') }}" class="btn btn-brand"><i class="bi bi-plus-lg"></i> Add Product</a>
@@ -55,6 +58,9 @@
         <td class="text-end">
           <a href="{{ url_for('inventory_adjust', pid=p.ProductID) }}" class="btn btn-sm btn-outline-secondary">Adjust</a>
           <a href="{{ url_for('inventory_form', pid=p.ProductID) }}" class="btn btn-sm btn-outline-secondary">Edit</a>
+          {% if current_user and current_user.Role == 'Admin' %}
+          <a href="{{ url_for('inventory_reconciliation_detail', pid=p.ProductID) }}" class="btn btn-sm btn-outline-secondary">Reconcile</a>
+          {% endif %}
         </td>
       </tr>
       {% else %}

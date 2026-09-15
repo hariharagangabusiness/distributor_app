@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Inventory Reconciliation{% endblock %}
+{% block page_title %}Inventory Reconciliation{% endblock %}
+{% block content %}
+<div class="alert alert-info">
+  This breaks every product's current stock down into where it came from and where it went, and separates
+  <strong>Pending</strong> stock (out with a salesperson whose day hasn't been reconciled yet — not a problem) from
+  genuine <strong>Unaccounted</strong> stock (issued out on an already-reconciled day, but never recorded as sold,
+  returned, or given free under a scheme). Click a product's name for its full transaction ledger and a
+  day-by-day breakdown of every Stock Issue that touched it.
+</div>
+<div class="d-flex justify-content-between mb-3 flex-wrap gap-2">
+  <form class="d-flex gap-2" method="get">
+    <input type="text" name="q" value="{{ q }}" class="form-control" placeholder="Search product / SKU" style="width:260px">
+    <div class="form-check d-flex align-items-center gap-1 ms-2">
+      <input class="form-check-input" type="checkbox" name="only_gaps" value="1" id="only_gaps" {% if only_gaps %}checked{% endif %} onchange="this.form.submit()">
+      <label class="form-check-label" for="only_gaps">Only show products with a gap</label>
+    </div>
+    <button class="btn btn-outline-secondary" type="submit">Filter</button>
+  </form>
+</div>
+<div class="card">
+  <div class="table-responsive">
+  <table class="table table-hover mb-0 align-middle no-resize-table" id="tbl-recon">
+    <thead><tr>
+      <th>Product</th><th class="text-end">Opening</th><th class="text-end">Purchases</th>
+      <th class="text-end">Issued</th><th class="text-end">Returned In</th><th class="text-end">Free Scheme</th>
+      <th class="text-end">Direct Sale</th><th class="text-end">Adjustments</th>
+      <th class="text-end">Ledger Stock</th><th class="text-end">Pending Reconciliation</th>
+      <th class="text-end">Unaccounted</th>
+    </tr></thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td><a href="{{ url_for('inventory_reconciliation_detail', pid=r.ProductID) }}">{{ r.ProductName }}</a>
+          <div class="text-muted small">{{ r.SKU or '' }}</div></td>
+        <td class="text-end">{{ r.opening|round(2) }}</td>
+        <td class="text-end">{{ r.purchases|round(2) }}</td>
+        <td class="text-end">{{ r.issued|round(2) }}</td>
+        <td class="text-end">{{ r.returned_in|round(2) }}</td>
+        <td class="text-end">{{ r.free_scheme|round(2) }}</td>
+        <td class="text-end">{{ r.direct_sale|round(2) }}</td>
+        <td class="text-end">{{ (r.adjustment_in + r.adjustment_out)|round(2) }}</td>
+        <td class="text-end fw-bold">{{ r.ledger_stock|round(2) }} {{ r.Unit }}</td>
+        <td class="text-end">{{ r.pending_reconciliation|round(2) }}</td>
+        <td class="text-end {% if r.unaccounted|abs > 0.01 %}text-danger fw-bold{% endif %}">{{ r.unaccounted|round(2) }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="11" class="text-center text-muted py-4">No products found.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endblock %}
