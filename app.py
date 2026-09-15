@@ -1758,9 +1758,33 @@ def inventory_reconciliation_detail(pid):
     """, (pid,))
     direct_sale_total = round(sum((r["QtyChange"] or 0) for r in direct_sale_rows), 2)
 
+    # Total Units Sold (true, all-time) - straight from SalesLines/Sales, independent of any
+    # StockIssueLines figure, so it's the actual ground truth regardless of source (whether the
+    # sale was credited against an Issue or fell through to a Direct Sale). This is the number
+    # to compare against "Issued to salespeople" + "Returned In" + "Given Free" below: if
+    # (Issued - Returned - Free) is bigger than this total, the difference is genuinely
+    # unaccounted-for stock - issued out (or otherwise leaving the warehouse) but never sold,
+    # returned, or given away for free under a scheme.
+    total_units_sold = db.query("""SELECT COALESCE(SUM(sl.Qty), 0) q FROM SalesLines sl
+                                 JOIN Sales s ON s.SaleID = sl.SaleID
+                                 WHERE sl.ProductID=? AND s.Status <> 'Cancelled'""", (pid,), one=True)["q"] or 0
+    total_units_sold = round(total_units_sold, 2)
+    # How much of Total Units Sold came from stock that was issued out to a salesperson,
+    # rather than deducted straight from the warehouse as a Direct Sale (that portion, by
+    # definition, was never part of what was issued in the first place, so it must be
+    # excluded before comparing against the Issued/Returned/Free figures below).
+    sold_via_issue = round(total_units_sold - abs(direct_sale_total), 2)
+    # (Issue is stored negative, Return-In positive, Free Scheme negative - normalize all
+    # three to "how much left the warehouse via Issue, net of what came back" for a clean
+    # comparison: this SHOULD equal sold_via_issue if every issued unit is accounted for.)
+    should_be_sold = round(-buckets.get("Issue", 0) - buckets.get("Return-In", 0) + (-buckets.get("Free Scheme", 0)), 2)
+    sales_gap = round(should_be_sold - sold_via_issue, 2)
+
     return render_template("inventory_reconciliation_detail.html", product=product, ledger_rows=ledger_rows,
                             buckets=buckets, ledger_stock=ledger_stock, issue_breakdown=issue_breakdown,
                             total_unaccounted=total_unaccounted, total_pending=total_pending,
+                            total_units_sold=total_units_sold, sold_via_issue=sold_via_issue,
+                            should_be_sold=should_be_sold, sales_gap=sales_gap,
                             direct_sale_rows=direct_sale_rows, direct_sale_total=direct_sale_total)
 
 

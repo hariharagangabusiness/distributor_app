@@ -41,6 +41,23 @@
       </tbody>
     </table>
   </div>
+  <div class="card-body border-top">
+    <div class="text-muted small mb-2">Total Units Sold is the ground truth, straight from every Sales invoice for
+      this product (regardless of source) — compare it against Issued/Returned/Free above to see exactly where a
+      gap comes from.</div>
+    <table class="table table-sm mb-0 no-resize-table">
+      <tbody>
+        <tr><td>Total Units Sold (true, all-time, every invoice)</td><td class="text-end fw-bold">{{ total_units_sold|round(2) }}</td></tr>
+        <tr><td class="ps-4 text-muted">— of which Direct Sale (not from issued stock)</td><td class="text-end text-muted">{{ (-direct_sale_total)|round(2) }}</td></tr>
+        <tr><td class="ps-4 text-muted">— of which sold from stock issued to a salesperson</td><td class="text-end text-muted">{{ sold_via_issue|round(2) }}</td></tr>
+        <tr><td>Should equal: Issued − Returned − Given Free</td><td class="text-end">{{ should_be_sold|round(2) }}</td></tr>
+        <tr class="{% if sales_gap|abs > 0.01 %}table-danger{% else %}table-success{% endif %} fw-bold">
+          <td>Gap (issued stock never sold, returned, or given free)</td>
+          <td class="text-end">{{ sales_gap|round(2) }} {{ product.Unit }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
 </div>
 
 {% if direct_sale_rows %}
