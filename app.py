@@ -2516,10 +2516,13 @@ def sales_daywise_report():
 def find_open_stock_issue(employee_id, sale_date):
     """The Stock Issue (if any) for this salesperson on this exact date that
     hasn't been reconciled yet - the only kind a directly-entered Sale is
-    allowed to auto-credit against. Once a Stock Issue is Reconciled it's
-    treated as closed for this purpose (its figures are locked/reviewed by
-    a person at that point); a late sale against a reconciled issue just
-    deducts from warehouse stock normally instead, same as any plain sale."""
+    allowed to live-credit against (bumping its QtySold/SaleStockIssueLinks).
+    A late sale against an ALREADY-Reconciled issue is handled separately in
+    create_sale() (see the `reconciled_issue` capacity check there) - its
+    stock still came from that day's van stock and shouldn't post a second
+    warehouse deduction if the reconciled issue has any unaccounted-for
+    capacity left, but the reconciled issue's own StockIssueLines figures
+    are deliberately left untouched/frozen rather than live-credited."""
     if not employee_id:
         return None
     return db.query("""SELECT * FROM StockIssues WHERE EmployeeID=? AND IssueDate=? AND Status='Issued'
@@ -3017,6 +3020,23 @@ def create_sale(customer_id, sale_date, status, payment_status, payment_due_date
         reverse_sale_stock_issue_links(sale_id)
 
     open_issue = find_open_stock_issue(employee_id, sale_date) if (status == "Completed" and post_inventory) else None
+    # A salesperson's Stock Issue for this exact date that's ALREADY been Reconciled, checked
+    # separately from open_issue above (which only matches Status='Issued') - used below purely
+    # to decide whether a late-entered or later-edited Sale for that employee/date should still
+    # post its own warehouse deduction. Its stock genuinely came from that same day's van stock,
+    # not a fresh warehouse pickup, so as long as the reconciled issue's own line still has
+    # capacity left unaccounted-for (QtyIssued minus whatever's already been returned, given
+    # free, or truly sold that day - see true_product_qty_sold()), this Sale should fill that
+    # gap instead of deducting warehouse stock a second time. StockIssueLines/SaleStockIssueLinks
+    # are deliberately left untouched for a Reconciled issue (its own figures stay frozen/
+    # historical, exactly as an Admin reconciled them) - only the ledger deduction decision uses
+    # this, recomputed fresh from true_product_qty_sold every time so multiple late sales against
+    # the same reconciled day correctly divide up whatever capacity remains between them.
+    reconciled_issue = None
+    if employee_id and status == "Completed" and post_inventory:
+        reconciled_issue = db.query("""SELECT * FROM StockIssues WHERE EmployeeID=? AND IssueDate=?
+                                     AND Status='Reconciled' ORDER BY IssueID DESC LIMIT 1""",
+                                    (employee_id, sale_date), one=True)
     if open_issue is None and employee_id and auto_create_issue and status == "Completed" and post_inventory and line_data:
         issue_id = auto_create_stock_issue_for_sale(employee_id, sale_date, line_data)
         open_issue = db.query("SELECT * FROM StockIssues WHERE IssueID=?", (issue_id,), one=True)
@@ -3054,6 +3074,26 @@ def create_sale(customer_id, sale_date, status, payment_status, payment_due_date
                         db.execute("""INSERT INTO SaleStockIssueLinks (SaleID, StockIssueLineID, QtyApplied, DiscountApplied)
                                     VALUES (?,?,?,?)""", (sale_id, sil["LineID"], apply_qty, discount_share))
                         remaining_qty = round(remaining_qty - apply_qty, 4)
+            if remaining_qty > 0 and reconciled_issue:
+                sil2 = db.query("""SELECT QtyIssued, QtySold, QtyReturned, QtyFree FROM StockIssueLines
+                                 WHERE IssueID=? AND ProductID=?""", (reconciled_issue["IssueID"], prod_id), one=True)
+                if sil2:
+                    # true_product_qty_sold() filters by EmployeeID, so it only ever sees Sales
+                    # that actually carry this employee's ID - it does NOT see the reconciled
+                    # issue's own auto-invoiced "Unassigned" catch-all Sale (create_sale() there
+                    # is deliberately called with no employee_id, since that Sale bills the
+                    # system Unassigned customer, not a specific salesperson's own account). So
+                    # sil2["QtySold"] (this line's frozen, already-reconciled figure - which IS
+                    # what that anonymous catch-all Sale covers) has to be added in separately
+                    # here, on top of true_product_qty_sold's employee-linked total for every
+                    # OTHER (genuinely late) sale against this same day, or this capacity check
+                    # would overcount by the whole original reconciled QtySold every time.
+                    already_sold_other = round((sil2["QtySold"] or 0)
+                                                + true_product_qty_sold(employee_id, sale_date, prod_id) - qty, 4)
+                    available2 = max((sil2["QtyIssued"] or 0) - (sil2["QtyReturned"] or 0)
+                                      - (sil2["QtyFree"] or 0) - already_sold_other, 0)
+                    covered_qty = min(remaining_qty, available2)
+                    remaining_qty = round(remaining_qty - covered_qty, 4)
             if remaining_qty > 0:
                 db.execute("""INSERT INTO InventoryTransactions (ProductID, TransactionDate, TransactionType,
                             QtyChange, RefType, RefID, Notes) VALUES (?,?,?,?,?,?,?)""",
