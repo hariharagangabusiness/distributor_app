@@ -3357,6 +3357,12 @@ def sale_form():
             auto_create_issue=bool(locked_employee_id))
         save_custom_fields("Sale", sale_id, f)
         flash(sale_stock_issue_credit_message(sale_id), "success")
+        if locked_employee_id:
+            # Sales reps' own locked entry point: show a "Saved! Invoice #X" popup first,
+            # then default straight to the 58mm thermal receipt (that's what they hand
+            # customers on the spot) rather than the full A4 Tax Invoice - see
+            # sale_invoice_thermal()/invoice_thermal.html for the popup + print wiring.
+            return redirect(url_for("sale_invoice_thermal", sid=sale_id, saved=1))
         return redirect(url_for("sale_invoice", sid=sale_id, auto_print=1))
     customers = db.query("SELECT * FROM Customers WHERE Active=1 ORDER BY CustomerName")
     products = get_products_with_stock()
@@ -3790,8 +3796,12 @@ def sale_invoice_thermal(sid):
     company = get_company_settings()
     balance_due = sale_balance_due(sale)
     auto_print = request.args.get("auto_print") == "1"
+    # "saved=1" (only set by sale_form()'s locked salesperson entry point right after a Save)
+    # shows a "Saved! Invoice #X" popup first; printing then waits for that popup's OK button
+    # instead of firing immediately on page load like a plain reprint (auto_print alone) does.
+    saved = request.args.get("saved") == "1"
     return render_template("invoice_thermal.html", sale=sale, lines=lines, company=company,
-                            balance_due=balance_due, auto_print=auto_print)
+                            balance_due=balance_due, auto_print=auto_print, saved=saved)
 
 
 @app.route("/sales/<int:sid>/invoice.pdf")

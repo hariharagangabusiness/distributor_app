@@ -23,15 +23,41 @@
   .footer { text-align: center; margin-top: 6px; font-size: 10px; }
   .no-print { text-align: center; margin: 10px auto; width: 58mm; }
   .no-print button, .no-print a { display: block; width: 100%; margin: 4px 0; padding: 8px; font-size: 13px; cursor: pointer; }
+  .saved-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+    display: flex; align-items: center; justify-content: center; z-index: 1000;
+  }
+  .saved-modal {
+    background: #fff; border-radius: 10px; padding: 24px 28px; width: 84vw; max-width: 320px;
+    text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.3); font-family: Arial, sans-serif;
+  }
+  .saved-modal .check { font-size: 40px; line-height: 1; margin-bottom: 8px; }
+  .saved-modal h3 { margin: 0 0 6px; font-size: 17px; color: #1a7a34; }
+  .saved-modal p { margin: 0 0 18px; font-size: 14px; color: #333; }
+  .saved-modal .invoice-no { font-weight: bold; }
+  .saved-modal button {
+    width: 100%; padding: 10px; font-size: 15px; border: none; border-radius: 6px;
+    background: #1a7a34; color: #fff; cursor: pointer;
+  }
   @media print {
     html, body { background: #fff; }
-    .no-print { display: none; }
+    .no-print, .saved-overlay { display: none; }
     .receipt { margin: 0; width: 58mm; }
     @page { size: 58mm auto; margin: 0; }
   }
 </style>
 </head>
 <body>
+{% if saved %}
+<div class="saved-overlay" id="savedOverlay">
+  <div class="saved-modal">
+    <div class="check">✅</div>
+    <h3>Sale saved successfully</h3>
+    <p>Invoice <span class="invoice-no">#{{ sale.InvoiceNumber }}</span></p>
+    <button id="savedOkBtn">OK</button>
+  </div>
+</div>
+{% endif %}
 <div class="no-print">
   <button onclick="window.print()">🖨 Print 58mm Receipt</button>
   <a href="{{ url_for('sale_invoice', sid=sale.SaleID) }}">Switch to full Tax Invoice (A4)</a>
@@ -98,7 +124,17 @@
   <div class="divider"></div>
   <div class="footer">Thank you for your purchase!</div>
 </div>
-{% if auto_print %}
+{% if saved %}
+<script>
+  // Popup-first flow (right after Save Sale, for the salesperson's own locked entry
+  // screen): print only fires once the "Saved!" popup is dismissed with OK, not
+  // immediately on page load - this is the "58mm Thermal Print" default for Sales reps.
+  document.getElementById('savedOkBtn').addEventListener('click', function() {
+    document.getElementById('savedOverlay').hidden = true;
+    setTimeout(function() { window.print(); }, 150);
+  });
+</script>
+{% elif auto_print %}
 <script>
   window.addEventListener('load', function() {
     setTimeout(function() { window.print(); }, 300);
