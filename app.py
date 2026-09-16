@@ -3357,13 +3357,11 @@ def sale_form():
             auto_create_issue=bool(locked_employee_id))
         save_custom_fields("Sale", sale_id, f)
         flash(sale_stock_issue_credit_message(sale_id), "success")
-        if locked_employee_id:
-            # Sales reps' own locked entry point: show a "Saved! Invoice #X" popup first,
-            # then default straight to the 58mm thermal receipt (that's what they hand
-            # customers on the spot) rather than the full A4 Tax Invoice - see
-            # sale_invoice_thermal()/invoice_thermal.html for the popup + print wiring.
-            return redirect(url_for("sale_invoice_thermal", sid=sale_id, saved=1))
-        return redirect(url_for("sale_invoice", sid=sale_id, auto_print=1))
+        # Show a "Saved! Invoice #X" popup for every save (Admin/Office/Sales rep alike),
+        # then default straight to the 58mm thermal receipt on OK - see
+        # sale_invoice_thermal()/invoice_thermal.html for the popup + print wiring.
+        # A link on that page still lets anyone switch to the full A4 Tax Invoice.
+        return redirect(url_for("sale_invoice_thermal", sid=sale_id, saved=1))
     customers = db.query("SELECT * FROM Customers WHERE Active=1 ORDER BY CustomerName")
     products = get_products_with_stock()
     employees = db.query("SELECT * FROM Employees WHERE Status='Active' ORDER BY EmployeeName")
