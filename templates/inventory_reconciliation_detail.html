@@ -61,7 +61,7 @@
 </div>
 
 {% if direct_sale_rows %}
-<div class="card mb-4">
+<div class="card mb-4" data-collapsible>
   <div class="card-header">Direct Sale transactions ({{ direct_sale_total|round(2) }} {{ product.Unit }} total, deducted straight from warehouse)</div>
   <div class="card-body pb-0 pt-2">
     <div class="text-muted small">These are Sales-tab entries for this product that couldn't be fully covered by the
@@ -71,7 +71,7 @@
       problem by themselves; they're broken out here so you can check each invoice traces to a real sale.</div>
   </div>
   <div class="table-responsive">
-    <table class="table table-sm table-hover mb-0 no-resize-table">
+    <table class="table table-sm table-hover mb-0 no-resize-table table-cards-mobile">
       <thead><tr>
         <th data-sort-type="date">Date</th><th>Invoice</th><th>Customer</th><th>Salesperson</th>
         <th class="text-end">Qty</th><th>Sale Status</th><th></th>
@@ -79,14 +79,14 @@
       <tbody>
         {% for r in direct_sale_rows %}
         <tr>
-          <td>{{ r.TransactionDate|dmy if r.TransactionDate else '-' }}</td>
-          <td>{{ r.InvoiceNumber or '-' }}</td>
-          <td>{{ r.CustomerName or '-' }}</td>
-          <td>{{ r.EmployeeName or '-' }}</td>
-          <td class="text-end">{{ (-r.QtyChange)|round(2) }}</td>
-          <td>{% if r.SaleID and not r.CustomerName %}<span class="badge text-bg-danger">Sale not found</span>
+          <td data-label="Date">{{ r.TransactionDate|dmy if r.TransactionDate else '-' }}</td>
+          <td data-label="Invoice">{{ r.InvoiceNumber or '-' }}</td>
+          <td data-label="Customer">{{ r.CustomerName or '-' }}</td>
+          <td data-label="Salesperson">{{ r.EmployeeName or '-' }}</td>
+          <td class="text-end" data-label="Qty">{{ (-r.QtyChange)|round(2) }}</td>
+          <td data-label="Sale Status">{% if r.SaleID and not r.CustomerName %}<span class="badge text-bg-danger">Sale not found</span>
               {% else %}{{ r.SaleStatus or '-' }}{% endif %}</td>
-          <td>{% if r.SaleID %}<a href="{{ url_for('sale_view', sid=r.SaleID) }}" target="_blank" class="btn btn-sm btn-outline-secondary">View Sale</a>{% endif %}</td>
+          <td>{% if r.SaleID %}<a href="{{ url_for('sale_view', sid=r.SaleID) }}" target="_blank" class="btn btn-sm btn-outline-secondary w-100">View Sale</a>{% endif %}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -98,7 +98,7 @@
 <div class="card mb-4">
   <div class="card-header">Stock Issue breakdown (every day this product was issued to a salesperson)</div>
   <div class="table-responsive">
-    <table class="table table-sm table-hover mb-0 no-resize-table" id="tbl-issue-breakdown">
+    <table class="table table-sm table-hover mb-0 no-resize-table table-cards-mobile" id="tbl-issue-breakdown">
       <thead><tr>
         <th data-sort-type="date">Date</th><th>Salesperson</th><th>Status</th>
         <th class="text-end">Qty Issued</th><th class="text-end">Qty Sold (true)</th>
@@ -107,14 +107,14 @@
       <tbody>
         {% for r in issue_breakdown %}
         <tr>
-          <td>{{ r.IssueDate|dmy }}</td>
-          <td>{{ r.EmployeeName }}</td>
-          <td><span class="badge {% if r.Status == 'Reconciled' %}text-bg-success{% else %}text-bg-warning{% endif %}">{{ r.Status }}</span></td>
-          <td class="text-end">{{ r.QtyIssued|round(2) }}</td>
-          <td class="text-end">{{ r.true_qty_sold|round(2) if r.true_qty_sold is not none else '-' }}</td>
-          <td class="text-end">{{ (r.QtyReturned or 0)|round(2) }}</td>
-          <td class="text-end">{{ (r.QtyFree or 0)|round(2) }}</td>
-          <td class="text-end {% if r.unaccounted is not none and r.unaccounted|abs > 0.01 %}text-danger fw-bold{% endif %}">
+          <td data-label="Date">{{ r.IssueDate|dmy }}</td>
+          <td data-label="Salesperson">{{ r.EmployeeName }}</td>
+          <td data-label="Status"><span class="badge {% if r.Status == 'Reconciled' %}text-bg-success{% else %}text-bg-warning{% endif %}">{{ r.Status }}</span></td>
+          <td class="text-end" data-label="Qty Issued">{{ r.QtyIssued|round(2) }}</td>
+          <td class="text-end" data-label="Qty Sold (true)">{{ r.true_qty_sold|round(2) if r.true_qty_sold is not none else '-' }}</td>
+          <td class="text-end" data-label="Qty Returned">{{ (r.QtyReturned or 0)|round(2) }}</td>
+          <td class="text-end" data-label="Qty Free">{{ (r.QtyFree or 0)|round(2) }}</td>
+          <td class="text-end {% if r.unaccounted is not none and r.unaccounted|abs > 0.01 %}text-danger fw-bold{% endif %}" data-label="Unaccounted">
             {{ r.unaccounted|round(2) if r.unaccounted is not none else 'pending' }}</td>
         </tr>
         {% else %}
@@ -128,7 +128,7 @@
 <div class="card">
   <div class="card-header">Full transaction ledger (most recent first)</div>
   <div class="table-responsive">
-    <table class="table table-sm mb-0 no-resize-table">
+    <table class="table table-sm mb-0 no-resize-table table-cards-mobile">
       <thead><tr>
         <th>Date</th><th>Type</th><th class="text-end">Qty Change</th><th class="text-end">Running Balance</th>
         <th>Reference</th><th>Notes</th>
@@ -136,12 +136,12 @@
       <tbody>
         {% for t in ledger_rows %}
         <tr>
-          <td>{{ t.TransactionDate|dmy if t.TransactionDate else '-' }}</td>
-          <td>{{ t.TransactionType }}</td>
-          <td class="text-end {% if t.QtyChange < 0 %}text-danger{% else %}text-success{% endif %}">{{ t.QtyChange|round(2) }}</td>
-          <td class="text-end">{{ t.running_balance|round(2) }}</td>
-          <td>{{ t.RefType or '-' }}{% if t.RefID %} #{{ t.RefID }}{% endif %}</td>
-          <td>{{ t.Notes or '-' }}</td>
+          <td data-label="Date">{{ t.TransactionDate|dmy if t.TransactionDate else '-' }}</td>
+          <td data-label="Type">{{ t.TransactionType }}</td>
+          <td class="text-end {% if t.QtyChange < 0 %}text-danger{% else %}text-success{% endif %}" data-label="Qty Change">{{ t.QtyChange|round(2) }}</td>
+          <td class="text-end" data-label="Running Balance">{{ t.running_balance|round(2) }}</td>
+          <td data-label="Reference">{{ t.RefType or '-' }}{% if t.RefID %} #{{ t.RefID }}{% endif %}</td>
+          <td data-label="Notes">{{ t.Notes or '-' }}</td>
         </tr>
         {% else %}
         <tr><td colspan="6" class="text-center text-muted py-4">No transactions recorded for this product.</td></tr>

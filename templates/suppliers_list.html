@@ -12,16 +12,16 @@
 </div>
 <div class="card">
   <div class="table-responsive">
-  <table class="table table-hover mb-0 align-middle" id="tbl-supplier">
+  <table class="table table-hover mb-0 align-middle table-cards-mobile" id="tbl-supplier">
     <thead><tr><th data-col="name">Name</th><th data-col="contact">Contact</th><th data-col="phone">Phone</th>
       <th data-col="email">Email</th><th data-col="gstin">GSTIN</th><th data-col="status">Status</th><th></th></tr></thead>
     <tbody>
       {% for s in suppliers %}
       <tr>
-        <td data-col="name">{{ s.SupplierName }}</td><td data-col="contact">{{ s.ContactPerson or '-' }}</td><td data-col="phone">{{ s.Phone or '-' }}</td>
-        <td data-col="email">{{ s.Email or '-' }}</td><td data-col="gstin">{{ s.GSTIN or '-' }}</td>
-        <td data-col="status">{% if s.Active %}<span class="badge badge-ok">Active</span>{% else %}<span class="badge text-bg-secondary">Inactive</span>{% endif %}</td>
-        <td class="text-end"><a href="{{ url_for('supplier_form', sid=s.SupplierID) }}" class="btn btn-sm btn-outline-secondary">Edit</a></td>
+        <td data-col="name" data-label="Name">{{ s.SupplierName }}</td><td data-col="contact" data-label="Contact">{{ s.ContactPerson or '-' }}</td><td data-col="phone" data-label="Phone">{{ s.Phone or '-' }}</td>
+        <td data-col="email" data-label="Email">{{ s.Email or '-' }}</td><td data-col="gstin" data-label="GSTIN">{{ s.GSTIN or '-' }}</td>
+        <td data-col="status" data-label="Status">{% if s.Active %}<span class="badge badge-ok">Active</span>{% else %}<span class="badge text-bg-secondary">Inactive</span>{% endif %}</td>
+        <td class="text-end"><a href="{{ url_for('supplier_form', sid=s.SupplierID) }}" class="btn btn-sm btn-outline-secondary w-100">Edit</a></td>
       </tr>
       {% else %}<tr><td colspan="7" class="text-center text-muted py-4">No suppliers yet.</td></tr>{% endfor %}
     </tbody>

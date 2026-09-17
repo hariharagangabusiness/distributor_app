@@ -21,7 +21,7 @@
 </div>
 <div class="card">
   <div class="table-responsive">
-  <table class="table table-hover mb-0 align-middle no-resize-table" id="tbl-recon">
+  <table class="table table-hover mb-0 align-middle no-resize-table table-cards-mobile" id="tbl-recon">
     <thead><tr>
       <th>Product</th><th class="text-end">Opening</th><th class="text-end">Purchases</th>
       <th class="text-end">Issued</th><th class="text-end">Returned In</th><th class="text-end">Free Scheme</th>
@@ -32,18 +32,18 @@
     <tbody>
       {% for r in rows %}
       <tr>
-        <td><a href="{{ url_for('inventory_reconciliation_detail', pid=r.ProductID) }}">{{ r.ProductName }}</a>
+        <td data-label="Product"><a href="{{ url_for('inventory_reconciliation_detail', pid=r.ProductID) }}">{{ r.ProductName }}</a>
           <div class="text-muted small">{{ r.SKU or '' }}</div></td>
-        <td class="text-end">{{ r.opening|round(2) }}</td>
-        <td class="text-end">{{ r.purchases|round(2) }}</td>
-        <td class="text-end">{{ r.issued|round(2) }}</td>
-        <td class="text-end">{{ r.returned_in|round(2) }}</td>
-        <td class="text-end">{{ r.free_scheme|round(2) }}</td>
-        <td class="text-end">{{ r.direct_sale|round(2) }}</td>
-        <td class="text-end">{{ (r.adjustment_in + r.adjustment_out)|round(2) }}</td>
-        <td class="text-end fw-bold">{{ r.ledger_stock|round(2) }} {{ r.Unit }}</td>
-        <td class="text-end">{{ r.pending_reconciliation|round(2) }}</td>
-        <td class="text-end {% if r.unaccounted|abs > 0.01 %}text-danger fw-bold{% endif %}">{{ r.unaccounted|round(2) }}</td>
+        <td class="text-end" data-label="Opening">{{ r.opening|round(2) }}</td>
+        <td class="text-end" data-label="Purchases">{{ r.purchases|round(2) }}</td>
+        <td class="text-end" data-label="Issued">{{ r.issued|round(2) }}</td>
+        <td class="text-end" data-label="Returned In">{{ r.returned_in|round(2) }}</td>
+        <td class="text-end" data-label="Free Scheme">{{ r.free_scheme|round(2) }}</td>
+        <td class="text-end" data-label="Direct Sale">{{ r.direct_sale|round(2) }}</td>
+        <td class="text-end" data-label="Adjustments">{{ (r.adjustment_in + r.adjustment_out)|round(2) }}</td>
+        <td class="text-end fw-bold" data-label="Ledger Stock">{{ r.ledger_stock|round(2) }} {{ r.Unit }}</td>
+        <td class="text-end" data-label="Pending Reconciliation">{{ r.pending_reconciliation|round(2) }}</td>
+        <td class="text-end {% if r.unaccounted|abs > 0.01 %}text-danger fw-bold{% endif %}" data-label="Unaccounted">{{ r.unaccounted|round(2) }}</td>
       </tr>
       {% else %}
       <tr><td colspan="11" class="text-center text-muted py-4">No products found.</td></tr>

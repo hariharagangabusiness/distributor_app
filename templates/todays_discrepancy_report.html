@@ -46,18 +46,18 @@
     </div>
   </div>
   <div class="table-responsive">
-  <table class="table table-sm mb-0">
+  <table class="table table-sm mb-0 table-cards-mobile">
     <thead><tr><th>Product</th><th>Qty Issued</th><th>Qty Sold (stored)</th><th>True Qty Sold</th><th>Gap</th><th>Unit Price</th><th>Est. Rs Understated</th></tr></thead>
     <tbody>
       {% for l in ir.lines %}
       <tr class="{% if l.Gap > 0.01 %}table-warning{% endif %}">
-        <td>{{ l.ProductName }}</td>
-        <td>{{ l.QtyIssued }} {{ l.Unit }}</td>
-        <td>{{ l.StoredQtySold }} {{ l.Unit }}</td>
-        <td>{{ l.TrueQtySold }} {{ l.Unit }}</td>
-        <td>{% if l.Gap > 0.01 %}<span class="text-danger fw-bold">{{ l.Gap }}</span>{% else %}0{% endif %}</td>
-        <td>{{ (l.UnitPrice)|inr(2) }}</td>
-        <td>{% if l.GapAmount > 0.01 %}<span class="text-danger">{{ (l.GapAmount)|inr(2) }}</span>{% else %}—{% endif %}</td>
+        <td data-label="Product">{{ l.ProductName }}</td>
+        <td data-label="Qty Issued">{{ l.QtyIssued }} {{ l.Unit }}</td>
+        <td data-label="Qty Sold (stored)">{{ l.StoredQtySold }} {{ l.Unit }}</td>
+        <td data-label="True Qty Sold">{{ l.TrueQtySold }} {{ l.Unit }}</td>
+        <td data-label="Gap">{% if l.Gap > 0.01 %}<span class="text-danger fw-bold">{{ l.Gap }}</span>{% else %}0{% endif %}</td>
+        <td data-label="Unit Price">{{ (l.UnitPrice)|inr(2) }}</td>
+        <td data-label="Est. Rs Understated">{% if l.GapAmount > 0.01 %}<span class="text-danger">{{ (l.GapAmount)|inr(2) }}</span>{% else %}—{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>

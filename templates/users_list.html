@@ -9,14 +9,14 @@
 <div class="card">
   <div class="card-header">Login Accounts</div>
   <div class="table-responsive">
-    <table class="table mb-0 align-middle">
+    <table class="table mb-0 align-middle table-cards-mobile">
       <thead><tr><th>Username</th><th>Full Name</th><th>Role</th><th>Salesperson Link</th><th>Status</th><th>Last Login</th><th></th></tr></thead>
       <tbody>
         {% for u in users %}
         <tr>
-          <td>{{ u.Username }}{% if current_user and u.UserID == current_user.UserID %} <span class="badge text-bg-secondary">You</span>{% endif %}</td>
-          <td>{{ u.FullName or '-' }}</td>
-          <td>
+          <td data-label="Username">{{ u.Username }}{% if current_user and u.UserID == current_user.UserID %} <span class="badge text-bg-secondary">You</span>{% endif %}</td>
+          <td data-label="Full Name">{{ u.FullName or '-' }}</td>
+          <td data-label="Role">
             <form method="post" action="{{ url_for('user_role_update', uid=u.UserID) }}" class="d-inline">
               <select name="role" class="form-select form-select-sm d-inline-block" style="width:auto"
                       onchange="this.form.submit()"
@@ -27,7 +27,7 @@
               </select>
             </form>
           </td>
-          <td>
+          <td data-label="Salesperson Link">
             <form method="post" action="{{ url_for('user_employee_update', uid=u.UserID) }}" class="d-inline">
               <select name="employee_id" class="form-select form-select-sm d-inline-block" style="width:auto" onchange="this.form.submit()">
                 <option value="">-- none --</option>
@@ -37,8 +37,8 @@
               </select>
             </form>
           </td>
-          <td>{% if u.Active %}<span class="badge badge-ok">Active</span>{% else %}<span class="badge text-bg-secondary">Deactivated</span>{% endif %}</td>
-          <td class="text-muted small">{{ u.LastLoginAt|dmy if u.LastLoginAt else 'Never' }}</td>
+          <td data-label="Status">{% if u.Active %}<span class="badge badge-ok">Active</span>{% else %}<span class="badge text-bg-secondary">Deactivated</span>{% endif %}</td>
+          <td class="text-muted small" data-label="Last Login">{{ u.LastLoginAt|dmy if u.LastLoginAt else 'Never' }}</td>
           <td class="text-end">
             <a href="{{ url_for('user_reset_password', uid=u.UserID) }}" class="btn btn-sm btn-outline-secondary">Reset Password</a>
             <form method="post" action="{{ url_for('user_toggle', uid=u.UserID) }}" class="d-inline"

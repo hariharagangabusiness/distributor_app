@@ -33,7 +33,7 @@
   </div>
 </div>
 
-<div class="card mb-3">
+<div class="card mb-3" data-collapsible>
   <div class="card-header"><i class="bi bi-calendar-event"></i> Upcoming Due Dates
     <span class="text-muted small fw-normal">— {{ 'QRMP' if company.GstFilingScheme == 'QRMP' else 'Monthly' }} scheme{% if company.GstFilingScheme == 'QRMP' %}, state code {{ company.StateCode or '?' }}{% endif %}
       · <a href="{{ url_for('settings_form') }}">change</a></span>
@@ -64,7 +64,7 @@
 {% endif %}
 
 {% if recent_uploads %}
-<div class="card">
+<div class="card" data-collapsible>
   <div class="card-header">Recent GSTR-2B Uploads</div>
   <div class="table-responsive">
   <table class="table mb-0 table-cards-mobile">

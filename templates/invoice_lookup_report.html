@@ -47,16 +47,16 @@
 
 <div class="card">
   <div class="table-responsive">
-  <table class="table mb-0">
+  <table class="table mb-0 table-cards-mobile">
     <thead><tr><th>Product</th><th>Qty</th><th>Rate</th><th>Discount</th><th>Line Total</th></tr></thead>
     <tbody>
       {% for l in lines %}
       <tr>
-        <td>{{ l.ProductName }}</td>
-        <td>{{ l.Qty }} {{ l.Unit }}</td>
-        <td>{{ (l.UnitPrice)|inr(2) }}</td>
-        <td>{{ (l.DiscountAmount or 0)|inr(2) }}</td>
-        <td>{{ ((l.TaxableValue or 0) + (l.CGSTAmount or 0) + (l.SGSTAmount or 0) + (l.IGSTAmount or 0))|inr(2) }}</td>
+        <td data-label="Product">{{ l.ProductName }}</td>
+        <td data-label="Qty">{{ l.Qty }} {{ l.Unit }}</td>
+        <td data-label="Rate">{{ (l.UnitPrice)|inr(2) }}</td>
+        <td data-label="Discount">{{ (l.DiscountAmount or 0)|inr(2) }}</td>
+        <td data-label="Line Total">{{ ((l.TaxableValue or 0) + (l.CGSTAmount or 0) + (l.SGSTAmount or 0) + (l.IGSTAmount or 0))|inr(2) }}</td>
       </tr>
       {% endfor %}
     </tbody>

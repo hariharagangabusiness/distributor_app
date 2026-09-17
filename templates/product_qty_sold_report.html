@@ -30,18 +30,18 @@
 </div></div>
 
 {% if stock_issue_lines %}
-<div class="card mb-3"><div class="card-body">
+<div class="card mb-3" data-collapsible><div class="card-body">
   <h6>Stock Issue lines for this product/date</h6>
-  <table class="table table-sm mb-0">
+  <table class="table table-sm mb-0 table-cards-mobile">
     <thead><tr><th>Issue</th><th>Salesperson</th><th>Status</th><th>Qty Issued</th><th>Qty Sold (stored)</th><th></th></tr></thead>
     <tbody>
       {% for l in stock_issue_lines %}
       <tr class="{% if (l.QtySold or 0) + 0.01 < true_total %}table-warning{% endif %}">
-        <td><a href="{{ url_for('stock_issue_view', issue_id=l.IssueID) }}">#{{ l.IssueID }}</a></td>
-        <td>{{ l.EmployeeName }}</td>
-        <td>{{ l.Status }}</td>
-        <td>{{ l.QtyIssued }}</td>
-        <td>{{ l.QtySold or 0 }}</td>
+        <td data-label="Issue"><a href="{{ url_for('stock_issue_view', issue_id=l.IssueID) }}">#{{ l.IssueID }}</a></td>
+        <td data-label="Salesperson">{{ l.EmployeeName }}</td>
+        <td data-label="Status">{{ l.Status }}</td>
+        <td data-label="Qty Issued">{{ l.QtyIssued }}</td>
+        <td data-label="Qty Sold (stored)">{{ l.QtySold or 0 }}</td>
         <td>
           {% if (l.QtySold or 0) + 0.01 < true_total %}
           <span class="text-danger small">under-reports true total by {{ (true_total - (l.QtySold or 0))|round(2) }} &mdash;
@@ -59,16 +59,16 @@
 
 <div class="card">
   <div class="table-responsive">
-  <table class="table mb-0">
+  <table class="table mb-0 table-cards-mobile">
     <thead><tr><th>Customer</th><th>Invoice</th><th>Salesperson</th><th>Qty</th><th>Value</th></tr></thead>
     <tbody>
       {% for r in sale_rows %}
       <tr>
-        <td>{{ r.CustomerName }}</td>
-        <td><a href="{{ url_for('invoice_lookup_report', invoice=r.InvoiceNumber) }}">{{ r.InvoiceNumber }}</a></td>
-        <td>{{ r.EmployeeName or '-' }}</td>
-        <td>{{ r.Qty }}</td>
-        <td>{{ (r.LineTotal)|inr(2) }}</td>
+        <td data-label="Customer">{{ r.CustomerName }}</td>
+        <td data-label="Invoice"><a href="{{ url_for('invoice_lookup_report', invoice=r.InvoiceNumber) }}">{{ r.InvoiceNumber }}</a></td>
+        <td data-label="Salesperson">{{ r.EmployeeName or '-' }}</td>
+        <td data-label="Qty">{{ r.Qty }}</td>
+        <td data-label="Value">{{ (r.LineTotal)|inr(2) }}</td>
       </tr>
       {% else %}
       <tr><td colspan="5" class="text-center text-muted py-4">No sales of this product on this date.</td></tr>

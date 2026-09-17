@@ -32,11 +32,11 @@
 <div class="card mb-3">
   <div class="card-header">Top Products Bought <span class="text-muted small fw-normal">— click a column heading to sort</span></div>
   <div class="table-responsive">
-  <table class="table mb-0 table-sm">
+  <table class="table mb-0 table-sm table-cards-mobile">
     <thead><tr><th>Product</th><th>Total Qty</th><th>Total Amount</th></tr></thead>
     <tbody>
       {% for p in top_products %}
-      <tr><td>{{ p.product }}</td><td>{{ p.qty|round(2) }}</td><td>{{ (p.amount)|inr(2) }}</td></tr>
+      <tr><td data-label="Product">{{ p.product }}</td><td data-label="Total Qty">{{ p.qty|round(2) }}</td><td data-label="Total Amount">{{ (p.amount)|inr(2) }}</td></tr>
       {% endfor %}
     </tbody>
   </table>
@@ -47,21 +47,21 @@
 <div class="card">
   <div class="card-header">Invoice History ({{ sales|length }}) <span class="text-muted small fw-normal">— click a row to expand its line items</span></div>
   <div class="table-responsive">
-  <table class="table mb-0 no-sort-table" id="history-table">
+  <table class="table mb-0 no-sort-table table-cards-mobile" id="history-table">
     <thead><tr><th>Invoice #</th><th data-sort-type="date">Date</th><th>Status</th><th>Payment</th>
       <th>Taxable Value</th><th>Total (incl. GST)</th><th>Received</th><th>Due</th><th class="no-sort"></th></tr></thead>
     <tbody>
       {% for s in sales %}
       <tr style="cursor:pointer" data-bs-toggle="collapse" data-bs-target="#lines-{{ s.SaleID }}">
-        <td>{{ s.InvoiceNumber }}</td>
-        <td>{{ s.SaleDate|dmy }}</td>
-        <td>{{ s.Status }}</td>
-        <td><span class="badge {% if s.PaymentStatus=='Paid' %}text-bg-success{% elif s.PaymentStatus=='Partial' %}text-bg-warning{% else %}text-bg-danger{% endif %}">{{ s.PaymentStatus }}</span></td>
-        <td>{{ (s.TaxableAmount)|inr(2) }}</td>
-        <td>{{ (s.TotalAmount)|inr(2) }}</td>
-        <td>{{ (s.AmountReceived)|inr(2) }}</td>
-        <td class="{% if s.Due > 0.005 %}text-danger fw-bold{% endif %}">{{ (s.Due)|inr(2) }}</td>
-        <td><a href="{{ url_for('sale_view', sid=s.SaleID) }}" class="btn btn-sm btn-outline-secondary" onclick="event.stopPropagation()">View</a></td>
+        <td data-label="Invoice #">{{ s.InvoiceNumber }}</td>
+        <td data-label="Date">{{ s.SaleDate|dmy }}</td>
+        <td data-label="Status">{{ s.Status }}</td>
+        <td data-label="Payment"><span class="badge {% if s.PaymentStatus=='Paid' %}text-bg-success{% elif s.PaymentStatus=='Partial' %}text-bg-warning{% else %}text-bg-danger{% endif %}">{{ s.PaymentStatus }}</span></td>
+        <td data-label="Taxable Value">{{ (s.TaxableAmount)|inr(2) }}</td>
+        <td data-label="Total (incl. GST)">{{ (s.TotalAmount)|inr(2) }}</td>
+        <td data-label="Received">{{ (s.AmountReceived)|inr(2) }}</td>
+        <td class="{% if s.Due > 0.005 %}text-danger fw-bold{% endif %}" data-label="Due">{{ (s.Due)|inr(2) }}</td>
+        <td><a href="{{ url_for('sale_view', sid=s.SaleID) }}" class="btn btn-sm btn-outline-secondary w-100" onclick="event.stopPropagation()">View</a></td>
       </tr>
       <tr class="collapse" id="lines-{{ s.SaleID }}"><td colspan="9" class="bg-light">
         <table class="table table-sm mb-0">

@@ -12,22 +12,22 @@
 </div>
 <div class="card">
   <div class="table-responsive">
-  <table class="table table-hover mb-0 align-middle" id="tbl-vehicle">
+  <table class="table table-hover mb-0 align-middle table-cards-mobile" id="tbl-vehicle">
     <thead><tr><th data-col="reg_number">Reg. No</th><th data-col="type">Type</th><th data-col="make_model">Make/Model</th><th data-col="odometer">Odometer</th>
       <th data-col="purchase_price">Purchase Price</th>
       <th data-col="insurance">Insurance</th><th data-col="permit">Permit</th><th data-col="puc">PUC</th><th data-col="fitness">Fitness</th><th data-col="status">Status</th><th></th></tr></thead>
     <tbody>
       {% for v in vehicles %}
       <tr>
-        <td data-col="reg_number">{{ v.RegistrationNumber }}</td><td data-col="type">{{ v.VehicleType or '-' }}</td>
-        <td data-col="make_model">{{ v.Make or '' }} {{ v.Model or '' }}</td><td data-col="odometer">{{ v.CurrentOdometer|round(0) }} km</td>
-        <td data-col="purchase_price">{{ (v.PurchasePrice)|inr(2) if v.PurchasePrice is not none else '-' }}</td>
-        <td data-col="insurance" class="{{ 'text-danger fw-bold' if v.InsuranceExpiry and v.InsuranceExpiry <= today }}">{{ v.InsuranceExpiry or '-' }}</td>
-        <td data-col="permit" class="{{ 'text-danger fw-bold' if v.PermitExpiry and v.PermitExpiry <= today }}">{{ v.PermitExpiry or '-' }}</td>
-        <td data-col="puc" class="{{ 'text-danger fw-bold' if v.PUCExpiry and v.PUCExpiry <= today }}">{{ v.PUCExpiry or '-' }}</td>
-        <td data-col="fitness" class="{{ 'text-danger fw-bold' if v.FitnessExpiry and v.FitnessExpiry <= today }}">{{ v.FitnessExpiry or '-' }}</td>
-        <td data-col="status">{{ v.Status }}</td>
-        <td class="text-end"><a href="{{ url_for('vehicle_form', vid=v.VehicleID) }}" class="btn btn-sm btn-outline-secondary">Edit</a></td>
+        <td data-col="reg_number" data-label="Reg. No">{{ v.RegistrationNumber }}</td><td data-col="type" data-label="Type">{{ v.VehicleType or '-' }}</td>
+        <td data-col="make_model" data-label="Make/Model">{{ v.Make or '' }} {{ v.Model or '' }}</td><td data-col="odometer" data-label="Odometer">{{ v.CurrentOdometer|round(0) }} km</td>
+        <td data-col="purchase_price" data-label="Purchase Price">{{ (v.PurchasePrice)|inr(2) if v.PurchasePrice is not none else '-' }}</td>
+        <td data-col="insurance" data-label="Insurance" class="{{ 'text-danger fw-bold' if v.InsuranceExpiry and v.InsuranceExpiry <= today }}">{{ v.InsuranceExpiry or '-' }}</td>
+        <td data-col="permit" data-label="Permit" class="{{ 'text-danger fw-bold' if v.PermitExpiry and v.PermitExpiry <= today }}">{{ v.PermitExpiry or '-' }}</td>
+        <td data-col="puc" data-label="PUC" class="{{ 'text-danger fw-bold' if v.PUCExpiry and v.PUCExpiry <= today }}">{{ v.PUCExpiry or '-' }}</td>
+        <td data-col="fitness" data-label="Fitness" class="{{ 'text-danger fw-bold' if v.FitnessExpiry and v.FitnessExpiry <= today }}">{{ v.FitnessExpiry or '-' }}</td>
+        <td data-col="status" data-label="Status">{{ v.Status }}</td>
+        <td class="text-end"><a href="{{ url_for('vehicle_form', vid=v.VehicleID) }}" class="btn btn-sm btn-outline-secondary w-100">Edit</a></td>
       </tr>
       {% else %}<tr><td colspan="11" class="text-center text-muted py-4">No vehicles yet.</td></tr>{% endfor %}
     </tbody>

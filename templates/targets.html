@@ -83,20 +83,20 @@
 {% endif %}
 
 {% if daywise %}
-<div class="card mb-3">
+<div class="card mb-3" data-collapsible>
   <div class="card-header"><i class="bi bi-graph-up text-secondary"></i> Day-wise trend — cumulative Qty Sold vs pace target</div>
   <div class="table-responsive">
-  <table class="table table-sm mb-0">
+  <table class="table table-sm mb-0 table-cards-mobile">
     <thead><tr><th>Date</th><th>Qty Sold that day</th><th>Cumulative Actual</th><th>Cumulative Target (pace)</th><th>% of pace</th><th style="width:30%">Progress</th></tr></thead>
     <tbody>
       {% for d in daywise %}
       <tr>
-        <td>{{ d.date|dmy }}</td>
-        <td>{{ d.qty|inrn(2) }}</td>
-        <td>{{ d.cum_actual|inrn(2) }}</td>
-        <td>{{ d.cum_target|inrn(2) }}</td>
-        <td class="{% if (d.pct or 0) < 75 %}text-danger{% elif (d.pct or 0) >= 100 %}text-success{% endif %} fw-bold">{{ d.pct if d.pct is not none else '-' }}%</td>
-        <td>
+        <td data-label="Date">{{ d.date|dmy }}</td>
+        <td data-label="Qty Sold that day">{{ d.qty|inrn(2) }}</td>
+        <td data-label="Cumulative Actual">{{ d.cum_actual|inrn(2) }}</td>
+        <td data-label="Cumulative Target (pace)">{{ d.cum_target|inrn(2) }}</td>
+        <td class="{% if (d.pct or 0) < 75 %}text-danger{% elif (d.pct or 0) >= 100 %}text-success{% endif %} fw-bold" data-label="% of pace">{{ d.pct if d.pct is not none else '-' }}%</td>
+        <td data-label="Progress">
           <div class="progress" style="height:8px">
             <div class="progress-bar {% if (d.pct or 0) >= 100 %}bg-success{% elif (d.pct or 0) >= 75 %}bg-warning{% else %}bg-danger{% endif %}" style="width: {{ [d.pct or 0, 100]|min }}%"></div>
           </div>
@@ -116,7 +116,7 @@
 <div class="card mb-3">
   <div class="card-header"><i class="bi bi-list-check text-secondary"></i> Targets for {{ month_name }} {{ year }}</div>
   <div class="table-responsive">
-  <table class="table table-sm mb-0">
+  <table class="table table-sm mb-0 table-cards-mobile">
     <thead><tr><th>Salesperson</th><th>Product</th><th>Qty Target</th><th>Qty Actual (full mo.)</th><th>%</th>
       <th>Value Target</th><th>Expected (full mo.)</th><th>Collected</th><th>%</th>
       <th>Discount Cap (fixed)</th><th>Discount Cap (₹/unit)</th><th>Discount Actual</th><th>No-discount qty %</th>
@@ -125,35 +125,35 @@
     <tbody>
       {% for t in targets %}
       <tr>
-        <td>{{ t.EmployeeName }}</td>
-        <td>{{ t.ProductName or 'All Products' }}</td>
-        <td>{{ t.QtySoldTarget|inrn(2) }}</td>
-        <td>{{ t.full.qty_sold|inrn(2) }}</td>
-        <td class="{% if (t.qty_pct_full or 0) >= 100 %}text-success{% elif (t.qty_pct_full or 0) < 75 %}text-danger{% endif %} fw-bold">{{ t.qty_pct_full if t.qty_pct_full is not none else '-' }}%</td>
-        <td>{{ (t.SalesValueTarget)|inr(2) }}</td>
-        <td>{{ (t.full.expected)|inr(2) }}</td>
-        <td>{{ (t.full.collected)|inr(2) }}</td>
-        <td class="{% if (t.value_pct_full_expected or 0) >= 100 %}text-success{% elif (t.value_pct_full_expected or 0) < 75 %}text-danger{% endif %} fw-bold">{{ t.value_pct_full_expected if t.value_pct_full_expected is not none else '-' }}%</td>
-        <td>{{ (t.DiscountCapAmount)|inr(2) }}
+        <td data-label="Salesperson">{{ t.EmployeeName }}</td>
+        <td data-label="Product">{{ t.ProductName or 'All Products' }}</td>
+        <td data-label="Qty Target">{{ t.QtySoldTarget|inrn(2) }}</td>
+        <td data-label="Qty Actual (full mo.)">{{ t.full.qty_sold|inrn(2) }}</td>
+        <td class="{% if (t.qty_pct_full or 0) >= 100 %}text-success{% elif (t.qty_pct_full or 0) < 75 %}text-danger{% endif %} fw-bold" data-label="%">{{ t.qty_pct_full if t.qty_pct_full is not none else '-' }}%</td>
+        <td data-label="Value Target">{{ (t.SalesValueTarget)|inr(2) }}</td>
+        <td data-label="Expected (full mo.)">{{ (t.full.expected)|inr(2) }}</td>
+        <td data-label="Collected">{{ (t.full.collected)|inr(2) }}</td>
+        <td class="{% if (t.value_pct_full_expected or 0) >= 100 %}text-success{% elif (t.value_pct_full_expected or 0) < 75 %}text-danger{% endif %} fw-bold" data-label="%">{{ t.value_pct_full_expected if t.value_pct_full_expected is not none else '-' }}%</td>
+        <td data-label="Discount Cap (fixed)">{{ (t.DiscountCapAmount)|inr(2) }}
           {% if t.discount_fixed_pct_full is not none %}<div class="small {% if t.discount_fixed_pct_full > 100 %}text-danger{% endif %}">{{ t.discount_fixed_pct_full }}% used</div>{% endif %}
         </td>
-        <td>{{ (t.DiscountCapRatePerUnit)|inr(2) }}/u
+        <td data-label="Discount Cap (₹/unit)">{{ (t.DiscountCapRatePerUnit)|inr(2) }}/u
           {% if t.discount_rate_pct_full is not none %}<div class="small {% if t.discount_rate_pct_full > 100 %}text-danger{% endif %}">{{ t.discount_rate_pct_full }}% of ₹{{ '%.2f'|format(t.discount_rate_cap_full) }} allowed</div>{% endif %}
         </td>
-        <td class="{% if (t.discount_fixed_pct_full or 0) > 100 or (t.discount_rate_pct_full or 0) > 100 %}text-danger fw-bold{% endif %}">{{ (t.full.discount)|inr(2) }}</td>
-        <td>{{ t.no_discount_pct_full if t.no_discount_pct_full is not none else '-' }}%</td>
-        <td>{{ (t.BaseIncentiveAmount)|inr(2) }}</td>
-        <td>
+        <td class="{% if (t.discount_fixed_pct_full or 0) > 100 or (t.discount_rate_pct_full or 0) > 100 %}text-danger fw-bold{% endif %}" data-label="Discount Actual">{{ (t.full.discount)|inr(2) }}</td>
+        <td data-label="No-discount qty %">{{ t.no_discount_pct_full if t.no_discount_pct_full is not none else '-' }}%</td>
+        <td data-label="Base Incentive">{{ (t.BaseIncentiveAmount)|inr(2) }}</td>
+        <td data-label="Bucket Hit">
           {% if t.incentive_multiplier_full is not none %}{{ t.incentive_multiplier_full }}x
           {% elif t.buckets %}<span class="text-muted small">below lowest bucket</span>
           {% else %}<span class="text-muted small">no buckets set</span>{% endif %}
         </td>
-        <td class="fw-bold {% if t.incentive_amount_full %}text-success{% endif %}">{{ (t.incentive_amount_full)|inr(2) }}</td>
+        <td class="fw-bold {% if t.incentive_amount_full %}text-success{% endif %}" data-label="Incentive Earned">{{ (t.incentive_amount_full)|inr(2) }}</td>
         {% if is_admin %}
         <td class="text-nowrap">
-          <a href="{{ url_for('targets_view', year=year, month=month, employee_id=selected_employee_id, edit=t.TargetID) }}#target-form" class="btn btn-sm btn-outline-secondary">Edit</a>
+          <a href="{{ url_for('targets_view', year=year, month=month, employee_id=selected_employee_id, edit=t.TargetID) }}#target-form" class="btn btn-sm btn-outline-secondary w-100">Edit</a>
           <form method="post" action="{{ url_for('target_delete', target_id=t.TargetID) }}" class="d-inline" onsubmit="return confirm('Delete this target?');">
-            <button type="submit" class="btn btn-sm btn-outline-danger">Del</button>
+            <button type="submit" class="btn btn-sm btn-outline-danger w-100">Del</button>
           </form>
         </td>
         {% endif %}

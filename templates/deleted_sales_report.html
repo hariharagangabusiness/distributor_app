@@ -36,7 +36,7 @@
 
 <div class="card">
   <div class="table-responsive">
-  <table class="table table-hover mb-0 align-middle">
+  <table class="table table-hover mb-0 align-middle table-cards-mobile">
     <thead>
       <tr>
         <th>Deleted At</th>
@@ -53,15 +53,15 @@
     <tbody>
       {% for r in rows %}
       <tr>
-        <td>{{ r.DeletedAt|dmy }}</td>
-        <td>{{ r.InvoiceNumber }}</td>
-        <td>{{ r.CustomerName or '-' }}</td>
-        <td>{{ r.SaleDate|dmy if r.SaleDate else '-' }}</td>
-        <td>{{ r.EmployeeName or '-' }}</td>
-        <td>{{ r.LineCount }}</td>
-        <td>{{ (r.TotalAmount)|inr(2) }}</td>
-        <td>{{ r.DeletedByUsername or '-' }}</td>
-        <td class="small">{{ r.Reason or '—' }}</td>
+        <td data-label="Deleted At">{{ r.DeletedAt|dmy }}</td>
+        <td data-label="Invoice #">{{ r.InvoiceNumber }}</td>
+        <td data-label="Customer">{{ r.CustomerName or '-' }}</td>
+        <td data-label="Sale Date">{{ r.SaleDate|dmy if r.SaleDate else '-' }}</td>
+        <td data-label="Salesperson">{{ r.EmployeeName or '-' }}</td>
+        <td data-label="Line Items">{{ r.LineCount }}</td>
+        <td data-label="Total ₹">{{ (r.TotalAmount)|inr(2) }}</td>
+        <td data-label="Deleted By">{{ r.DeletedByUsername or '-' }}</td>
+        <td class="small" data-label="Reason">{{ r.Reason or '—' }}</td>
       </tr>
       {% else %}
       <tr><td colspan="9" class="text-center text-muted py-4">No sales deleted in this date range.</td></tr>

@@ -37,18 +37,18 @@
 
 <div class="card">
   <div class="table-responsive">
-  <table class="table mb-0 align-middle" id="tbl-salarypayment">
+  <table class="table mb-0 align-middle table-cards-mobile" id="tbl-salarypayment">
     <thead><tr><th data-col="employee">Employee</th><th data-col="designation">Designation</th><th data-col="basic">Basic</th>
       <th data-col="advance_deducted">Advance Deducted</th><th data-col="net_payable">Net Payable</th><th data-col="status">Status</th><th></th></tr></thead>
     <tbody>
       {% for r in records %}
       <tr>
-        <td data-col="employee">{{ r.EmployeeName }}</td><td data-col="designation">{{ r.Designation or '-' }}</td>
-        <td data-col="basic">{{ (r.BasicAmount)|inr(2) }}
+        <td data-col="employee" data-label="Employee">{{ r.EmployeeName }}</td><td data-col="designation" data-label="Designation">{{ r.Designation or '-' }}</td>
+        <td data-col="basic" data-label="Basic">{{ (r.BasicAmount)|inr(2) }}
           {% if r.LOPDays %}<br><span class="text-muted small">of {{ (r.GrossSalary)|inr(2) }} gross, {{ r.LOPDays|round(2) }} LOP day(s)</span>{% endif %}
-        </td><td data-col="advance_deducted">{{ (r.AdvanceDeducted)|inr(2) }}</td>
-        <td data-col="net_payable"><strong>{{ (r.NetPayable)|inr(2) }}</strong></td>
-        <td data-col="status">{% if r.Status=='Paid' %}<span class="badge badge-ok">Paid {{ r.PaymentDate|dmy }}</span>{% else %}<span class="badge badge-low">Pending</span>{% endif %}</td>
+        </td><td data-col="advance_deducted" data-label="Advance Deducted">{{ (r.AdvanceDeducted)|inr(2) }}</td>
+        <td data-col="net_payable" data-label="Net Payable"><strong>{{ (r.NetPayable)|inr(2) }}</strong></td>
+        <td data-col="status" data-label="Status">{% if r.Status=='Paid' %}<span class="badge badge-ok">Paid {{ r.PaymentDate|dmy }}</span>{% else %}<span class="badge badge-low">Pending</span>{% endif %}</td>
         <td class="text-end">
           <div class="d-flex gap-1 justify-content-end flex-wrap">
             <a href="{{ url_for('payslip_view', pid=r.PaymentID) }}" class="btn btn-sm btn-outline-secondary" title="View / Download Payslip"><i class="bi bi-file-earmark-text"></i> Payslip</a>

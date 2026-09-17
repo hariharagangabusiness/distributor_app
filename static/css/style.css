@@ -531,21 +531,16 @@ table.table.col-resize-active > tbody > tr > td {
   body:not(.mobile-ui-off) table.table-cards-mobile tfoot td::before { content: none; }
 }
 
-/* ============ Touch targets (Finance + Sales modules) ============
-   Buttons and nav-style links in the Finance and Sales pages (data-section
-   is "finance", "sales", or - for a couple of report-style pages like
-   Accounts Receivable that live under /reports/... - "reports", all set by
-   base.html per URL) get a taller minimum tap height on phones/small
+/* ============ Touch targets (app-wide) ============
+   Buttons and nav-style tabs get a taller minimum tap height on phones/small
    tablets, per the ~44-48px accessible touch-target guideline - Bootstrap's
-   stock .btn-sm/.nav-link are noticeably smaller than that. Extend the
-   selector list below to roll this out to further modules later. */
+   stock .btn-sm/.nav-link are noticeably smaller than that. Originally piloted
+   on just the Finance/Sales sections (data-section="finance"/"sales"/"reports"
+   on <main>); now applied app-wide since the pilot held up fine everywhere it
+   was tried. */
 @media (max-width: 767.98px) {
-  body:not(.mobile-ui-off) main.content[data-section="finance"] .btn,
-  body:not(.mobile-ui-off) main.content[data-section="sales"] .btn,
-  body:not(.mobile-ui-off) main.content[data-section="reports"] .btn,
-  body:not(.mobile-ui-off) main.content[data-section="finance"] .page-body .nav-tabs .nav-link,
-  body:not(.mobile-ui-off) main.content[data-section="sales"] .page-body .nav-tabs .nav-link,
-  body:not(.mobile-ui-off) main.content[data-section="reports"] .page-body .nav-tabs .nav-link {
+  body:not(.mobile-ui-off) main.content .btn,
+  body:not(.mobile-ui-off) main.content .page-body .nav-tabs .nav-link {
     min-height: 44px;
     padding-top: .55rem;
     padding-bottom: .55rem;
@@ -553,29 +548,33 @@ table.table.col-resize-active > tbody > tr > td {
     align-items: center;
     justify-content: center;
   }
-  body:not(.mobile-ui-off) main.content[data-section="finance"] .page-body .nav-tabs .nav-link,
-  body:not(.mobile-ui-off) main.content[data-section="sales"] .page-body .nav-tabs .nav-link,
-  body:not(.mobile-ui-off) main.content[data-section="reports"] .page-body .nav-tabs .nav-link {
+  body:not(.mobile-ui-off) main.content .page-body .nav-tabs .nav-link {
     display: flex;
   }
   /* Buttons packed edge-to-edge in an action cell (Edit / Mark Claimed /
      delete icon, View, etc.) need breathing room between tap targets, not
      just taller ones. */
-  body:not(.mobile-ui-off) main.content[data-section="finance"] td .btn + .btn,
-  body:not(.mobile-ui-off) main.content[data-section="finance"] td form + .btn,
-  body:not(.mobile-ui-off) main.content[data-section="finance"] td form + form,
-  body:not(.mobile-ui-off) main.content[data-section="sales"] td .btn + .btn,
-  body:not(.mobile-ui-off) main.content[data-section="sales"] td form + .btn,
-  body:not(.mobile-ui-off) main.content[data-section="sales"] td form + form,
-  body:not(.mobile-ui-off) main.content[data-section="reports"] td .btn + .btn,
-  body:not(.mobile-ui-off) main.content[data-section="reports"] td form + .btn,
-  body:not(.mobile-ui-off) main.content[data-section="reports"] td form + form {
+  body:not(.mobile-ui-off) main.content td .btn + .btn,
+  body:not(.mobile-ui-off) main.content td form + .btn,
+  body:not(.mobile-ui-off) main.content td form + form {
     margin-top: .35rem;
   }
-  body:not(.mobile-ui-off) main.content[data-section="finance"] td .d-inline,
-  body:not(.mobile-ui-off) main.content[data-section="sales"] td .d-inline,
-  body:not(.mobile-ui-off) main.content[data-section="reports"] td .d-inline {
+  body:not(.mobile-ui-off) main.content td .d-inline {
     display: inline-block !important;
     margin: .15rem 0;
   }
 }
+
+/* ============ Auto-collapse panels (app-wide) ============
+   A page opts a <div class="card">...</div> into "starts collapsed, click
+   the header to expand" behaviour just by adding a data-collapsible
+   attribute to that outer card div - everything else (wrapping the body in
+   a Bootstrap .collapse, adding the chevron, wiring the click handler) is
+   done once at runtime by the script in base.html. Used for supplementary/
+   drill-down report panels (e.g. "Pending Dues", "Discount/Free-Scheme Line
+   Detail", "Day-wise Cost vs Sales" on Stock Issue Schemes & Dues) so the
+   page isn't a wall of expanded tables by default - NOT meant for a page's
+   one primary table/form, which should stay visible as-is. */
+.auto-collapse-header { cursor: pointer; }
+.auto-collapse-chevron { transition: transform .2s ease; margin-left: .5rem; }
+.auto-collapse-header[aria-expanded="false"] .auto-collapse-chevron { transform: rotate(-90deg); }

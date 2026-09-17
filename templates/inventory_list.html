@@ -30,7 +30,7 @@
 
 <div class="card">
   <div class="table-responsive">
-  <table class="table table-hover mb-0 align-middle" id="tbl-product">
+  <table class="table table-hover mb-0 align-middle table-cards-mobile" id="tbl-product">
     <thead><tr>
       <th data-col="product_name">Product</th><th data-col="sku">SKU</th><th data-col="category">Category</th>
       <th data-col="stock">Stock</th><th data-col="min_stock">Min</th><th data-col="max_stock">Max</th>
@@ -42,27 +42,27 @@
     <tbody>
       {% for p in products %}
       <tr>
-        <td data-col="product_name">{{ p.ProductName }}</td>
-        <td data-col="sku">{{ p.SKU or '-' }}</td>
-        <td data-col="category">{{ p.Category or '-' }}</td>
-        <td data-col="stock">{{ p.CurrentStock|round(1) }} {{ p.Unit }}</td>
-        <td data-col="min_stock">{{ p.MinStock|round(1) }}</td>
-        <td data-col="max_stock">{{ p.MaxStock|round(1) }}</td>
-        <td data-col="cost_price">{{ (p.CostPrice)|inr(2) }}</td>
-        <td data-col="selling_price">{{ (p.SellingPrice)|inr(2) }}</td>
-        <td data-col="scheme">{% if p.SchemePercent %}<span class="badge text-bg-info">{{ p.SchemeName or 'Scheme' }} {{ p.SchemePercent|round(1) }}%</span>{% else %}-{% endif %}</td>
-        <td data-col="incentive">{% if p.IncentivePerUnit %}{{ (p.IncentivePerUnit)|inr(2) }}{% else %}-{% endif %}</td>
-        <td data-col="supplier">{{ p.DefaultSupplierName or '-' }}</td>
-        <td data-col="status">
+        <td data-col="product_name" data-label="Product">{{ p.ProductName }}</td>
+        <td data-col="sku" data-label="SKU">{{ p.SKU or '-' }}</td>
+        <td data-col="category" data-label="Category">{{ p.Category or '-' }}</td>
+        <td data-col="stock" data-label="Stock">{{ p.CurrentStock|round(1) }} {{ p.Unit }}</td>
+        <td data-col="min_stock" data-label="Min">{{ p.MinStock|round(1) }}</td>
+        <td data-col="max_stock" data-label="Max">{{ p.MaxStock|round(1) }}</td>
+        <td data-col="cost_price" data-label="Cost">{{ (p.CostPrice)|inr(2) }}</td>
+        <td data-col="selling_price" data-label="Selling">{{ (p.SellingPrice)|inr(2) }}</td>
+        <td data-col="scheme" data-label="Scheme">{% if p.SchemePercent %}<span class="badge text-bg-info">{{ p.SchemeName or 'Scheme' }} {{ p.SchemePercent|round(1) }}%</span>{% else %}-{% endif %}</td>
+        <td data-col="incentive" data-label="Incentive">{% if p.IncentivePerUnit %}{{ (p.IncentivePerUnit)|inr(2) }}{% else %}-{% endif %}</td>
+        <td data-col="supplier" data-label="Supplier">{{ p.DefaultSupplierName or '-' }}</td>
+        <td data-col="status" data-label="Status">
           {% if p.CurrentStock <= p.MinStock %}<span class="badge badge-low">Low</span>
           {% elif p.MaxStock > 0 and p.CurrentStock >= p.MaxStock %}<span class="badge badge-over">Overstock</span>
           {% else %}<span class="badge badge-ok">OK</span>{% endif %}
         </td>
         <td class="text-end">
-          <a href="{{ url_for('inventory_adjust', pid=p.ProductID) }}" class="btn btn-sm btn-outline-secondary">Adjust</a>
-          <a href="{{ url_for('inventory_form', pid=p.ProductID) }}" class="btn btn-sm btn-outline-secondary">Edit</a>
+          <a href="{{ url_for('inventory_adjust', pid=p.ProductID) }}" class="btn btn-sm btn-outline-secondary w-100">Adjust</a>
+          <a href="{{ url_for('inventory_form', pid=p.ProductID) }}" class="btn btn-sm btn-outline-secondary w-100">Edit</a>
           {% if current_user and current_user.Role == 'Admin' %}
-          <a href="{{ url_for('inventory_reconciliation_detail', pid=p.ProductID) }}" class="btn btn-sm btn-outline-secondary">Reconcile</a>
+          <a href="{{ url_for('inventory_reconciliation_detail', pid=p.ProductID) }}" class="btn btn-sm btn-outline-secondary w-100">Reconcile</a>
           {% endif %}
         </td>
       </tr>

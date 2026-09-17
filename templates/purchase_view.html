@@ -18,12 +18,12 @@
 </div></div>
 <div class="card">
   <div class="table-responsive">
-  <table class="table mb-0">
+  <table class="table mb-0 table-cards-mobile">
     <thead><tr><th>Product</th><th>HSN</th><th>GST%</th><th>Qty</th><th>Unit Cost</th><th>Taxable</th><th>CGST</th><th>SGST</th><th>IGST</th><th>Line Total (excl. GST)</th></tr></thead>
     <tbody>
       {% for l in lines %}
-      <tr><td>{{ l.ProductName }}</td><td>{{ l.HSNCode or '-' }}</td><td>{{ l.GSTRate|round(1) }}%</td><td>{{ l.Qty }} {{ l.Unit }}</td><td>{{ (l.UnitCost)|inr(2) }}</td>
-        <td>{{ (l.TaxableValue)|inr(2) }}</td><td>{{ (l.CGSTAmount)|inr(2) }}</td><td>{{ (l.SGSTAmount)|inr(2) }}</td><td>{{ (l.IGSTAmount)|inr(2) }}</td><td>{{ (l.LineTotal)|inr(2) }}</td></tr>
+      <tr><td data-label="Product">{{ l.ProductName }}</td><td data-label="HSN">{{ l.HSNCode or '-' }}</td><td data-label="GST%">{{ l.GSTRate|round(1) }}%</td><td data-label="Qty">{{ l.Qty }} {{ l.Unit }}</td><td data-label="Unit Cost">{{ (l.UnitCost)|inr(2) }}</td>
+        <td data-label="Taxable">{{ (l.TaxableValue)|inr(2) }}</td><td data-label="CGST">{{ (l.CGSTAmount)|inr(2) }}</td><td data-label="SGST">{{ (l.SGSTAmount)|inr(2) }}</td><td data-label="IGST">{{ (l.IGSTAmount)|inr(2) }}</td><td data-label="Line Total (excl. GST)">{{ (l.LineTotal)|inr(2) }}</td></tr>
       {% endfor %}
     </tbody>
     <tfoot>

@@ -332,6 +332,50 @@
       if (window.innerWidth >= 992) closeSidebar();
     });
   })();
+
+  // Auto-collapse panels: any <div class="card" data-collapsible> on the page
+  // gets its body (everything after the first .card-header) wrapped in a
+  // Bootstrap .collapse - starting CLOSED - with a click-to-expand chevron
+  // added to the header. One shared mechanism instead of hand-wiring the
+  // collapse/chevron/aria markup on every report card individually; a
+  // template opts in with just the one data-collapsible attribute. Skipped
+  // entirely when the mobile-friendly UI flag is off (body.mobile-ui-off),
+  // so turning that flag off also reverts every page to plain always-open
+  // cards, matching how it was before this feature existed.
+  if (!document.body.classList.contains('mobile-ui-off')) {
+    var autoCollapseCount = 0;
+    document.querySelectorAll('.card[data-collapsible]').forEach(function (card) {
+      var header = card.querySelector(':scope > .card-header');
+      if (!header) return;
+      autoCollapseCount += 1;
+      var panelId = 'auto-collapse-' + autoCollapseCount;
+
+      var body = document.createElement('div');
+      body.className = 'collapse';
+      body.id = panelId;
+      var node = header.nextSibling;
+      while (node) {
+        var next = node.nextSibling;
+        body.appendChild(node);
+        node = next;
+      }
+      card.appendChild(body);
+
+      header.classList.add('auto-collapse-header', 'd-flex', 'justify-content-between', 'align-items-center');
+      header.setAttribute('data-bs-toggle', 'collapse');
+      header.setAttribute('data-bs-target', '#' + panelId);
+      header.setAttribute('aria-expanded', 'false');
+      header.setAttribute('aria-controls', panelId);
+      header.setAttribute('role', 'button');
+
+      var chevron = document.createElement('i');
+      chevron.className = 'bi bi-chevron-down auto-collapse-chevron';
+      header.appendChild(chevron);
+
+      body.addEventListener('shown.bs.collapse', function () { header.setAttribute('aria-expanded', 'true'); });
+      body.addEventListener('hidden.bs.collapse', function () { header.setAttribute('aria-expanded', 'false'); });
+    });
+  }
 </script>
 {% block scripts %}{% endblock %}
 <script src="{{ url_for('static', filename='js/table-sort.js') }}" defer></script>

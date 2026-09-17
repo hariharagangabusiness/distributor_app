@@ -12,19 +12,19 @@
 </div>
 <div class="card">
   <div class="table-responsive">
-  <table class="table table-hover mb-0 align-middle" id="tbl-advance">
+  <table class="table table-hover mb-0 align-middle table-cards-mobile" id="tbl-advance">
     <thead><tr><th data-col="employee">Employee</th><th data-col="date">Date</th><th data-col="amount">Amount</th>
       <th data-col="reason">Reason</th><th data-col="repay_months">Repay (months)</th><th data-col="monthly_deduction">Monthly Deduction</th>
       <th data-col="balance">Balance</th><th data-col="status">Status</th><th></th></tr></thead>
     <tbody>
       {% for a in advances %}
       <tr>
-        <td data-col="employee">{{ a.EmployeeName }}</td><td data-col="date">{{ a.AdvanceDate|dmy }}</td><td data-col="amount">{{ (a.Amount)|inr(2) }}</td>
-        <td data-col="reason">{{ a.Reason or '-' }}</td><td data-col="repay_months">{{ a.RepaymentMonths }}</td><td data-col="monthly_deduction">{{ (a.MonthlyDeduction)|inr(2) }}</td>
-        <td data-col="balance">{{ (a.BalanceRemaining)|inr(2) }}</td>
-        <td data-col="status">{% if a.Status=='Active' %}<span class="badge badge-over">Active</span>{% else %}<span class="badge badge-ok">Closed</span>{% endif %}</td>
+        <td data-col="employee" data-label="Employee">{{ a.EmployeeName }}</td><td data-col="date" data-label="Date">{{ a.AdvanceDate|dmy }}</td><td data-col="amount" data-label="Amount">{{ (a.Amount)|inr(2) }}</td>
+        <td data-col="reason" data-label="Reason">{{ a.Reason or '-' }}</td><td data-col="repay_months" data-label="Repay (months)">{{ a.RepaymentMonths }}</td><td data-col="monthly_deduction" data-label="Monthly Deduction">{{ (a.MonthlyDeduction)|inr(2) }}</td>
+        <td data-col="balance" data-label="Balance">{{ (a.BalanceRemaining)|inr(2) }}</td>
+        <td data-col="status" data-label="Status">{% if a.Status=='Active' %}<span class="badge badge-over">Active</span>{% else %}<span class="badge badge-ok">Closed</span>{% endif %}</td>
         <td class="text-end">
-          <a href="{{ url_for('advance_view', aid=a.AdvanceID) }}" class="btn btn-sm btn-outline-secondary">View</a>
+          <a href="{{ url_for('advance_view', aid=a.AdvanceID) }}" class="btn btn-sm btn-outline-secondary w-100">View</a>
           {% if a.Status=='Active' %}
           <form method="post" action="{{ url_for('advance_close', aid=a.AdvanceID) }}" onsubmit="return confirm('Write off remaining balance and close this advance?');" class="d-inline">
             <button class="btn btn-sm btn-outline-secondary" type="submit">Close</button>

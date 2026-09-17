@@ -13,20 +13,20 @@
 </div>
 <div class="card">
   <div class="table-responsive">
-  <table class="table table-hover mb-0 align-middle" id="tbl-purchase">
+  <table class="table table-hover mb-0 align-middle table-cards-mobile" id="tbl-purchase">
     <thead><tr><th data-col="po_number">PO #</th><th data-col="supplier">Supplier</th><th data-col="date">Date</th>
       <th data-col="invoice_number">Invoice #</th><th data-col="status">Status</th><th data-col="payment">Payment</th>
       <th data-col="total">Total</th><th></th></tr></thead>
     <tbody>
       {% for p in purchases %}
       <tr>
-        <td data-col="po_number">{{ p.PONumber }}</td><td data-col="supplier">{{ p.SupplierName }}</td><td data-col="date">{{ p.PurchaseDate|dmy }}</td>
-        <td data-col="invoice_number">{{ p.InvoiceNumber or '-' }}</td><td data-col="status">{{ p.Status }}</td>
-        <td data-col="payment">{% if p.PaymentStatus=='Paid' %}<span class="badge badge-ok">Paid</span>
+        <td data-col="po_number" data-label="PO #">{{ p.PONumber }}</td><td data-col="supplier" data-label="Supplier">{{ p.SupplierName }}</td><td data-col="date" data-label="Date">{{ p.PurchaseDate|dmy }}</td>
+        <td data-col="invoice_number" data-label="Invoice #">{{ p.InvoiceNumber or '-' }}</td><td data-col="status" data-label="Status">{{ p.Status }}</td>
+        <td data-col="payment" data-label="Payment">{% if p.PaymentStatus=='Paid' %}<span class="badge badge-ok">Paid</span>
             {% elif p.PaymentStatus=='Partial' %}<span class="badge badge-over">Partial</span>
             {% else %}<span class="badge badge-low">Unpaid</span>{% endif %}</td>
-        <td data-col="total">{{ (p.TotalAmount)|inr(2) }}</td>
-        <td class="text-end"><a href="{{ url_for('purchase_view', pid=p.PurchaseID) }}" class="btn btn-sm btn-outline-secondary">View</a></td>
+        <td data-col="total" data-label="Total">{{ (p.TotalAmount)|inr(2) }}</td>
+        <td class="text-end"><a href="{{ url_for('purchase_view', pid=p.PurchaseID) }}" class="btn btn-sm btn-outline-secondary w-100">View</a></td>
       </tr>
       {% else %}<tr><td colspan="8" class="text-center text-muted py-4">No purchases recorded yet.</td></tr>{% endfor %}
     </tbody>
