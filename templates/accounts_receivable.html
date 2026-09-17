@@ -98,8 +98,25 @@
         <td data-label="Total (incl. GST)">{{ (r.TotalAmount)|inr(2) }}</td>
         <td data-label="Received">{{ (r.AmountReceived)|inr(2) }}</td>
         <td data-label="Due" class="text-danger fw-bold">{{ (r.Due)|inr(2) }}</td>
-        <td><a href="{{ url_for('sale_view', sid=r.SaleID) }}" class="btn btn-sm btn-outline-secondary mobile-btn-full">View</a></td>
+        <td>
+          <a href="{{ url_for('sale_view', sid=r.SaleID) }}" class="btn btn-sm btn-outline-secondary mobile-btn-full">View</a>
+          <button type="button" class="btn btn-sm btn-brand mobile-btn-full" data-bs-toggle="collapse" data-bs-target="#pay-{{ r.SaleID }}">Record Payment</button>
+        </td>
       </tr>
+      <tr class="collapse" id="pay-{{ r.SaleID }}"><td colspan="11" class="bg-light">
+        <form method="post" action="{{ url_for('sale_record_payment', sid=r.SaleID) }}" class="row g-2 align-items-end">
+          <input type="hidden" name="next" value="{{ request.full_path }}">
+          <div class="col-md-2"><label class="form-label small mb-0">Amount</label><input type="number" step="0.01" max="{{ r.Due }}" name="amount" class="form-control form-control-sm" placeholder="Amount" required></div>
+          <div class="col-md-2"><label class="form-label small mb-0">Date</label><input type="date" name="payment_date" class="form-control form-control-sm" value="{{ today }}"></div>
+          <div class="col-md-2"><label class="form-label small mb-0">Method</label>
+            <select name="method" class="form-select form-select-sm">
+              <option>Cash</option><option>Bank</option><option>UPI</option><option>Cheque</option><option>Other</option>
+            </select>
+          </div>
+          <div class="col-md-4"><label class="form-label small mb-0">Notes</label><input type="text" name="notes" class="form-control form-control-sm" placeholder="Notes (optional)"></div>
+          <div class="col-md-2"><button type="submit" class="btn btn-brand btn-sm mobile-btn-full">Save Payment</button></div>
+        </form>
+      </td></tr>
       {% else %}<tr><td colspan="11" class="text-center text-muted py-4">No unpaid or partially-paid invoices.</td></tr>{% endfor %}
     </tbody>
   </table>

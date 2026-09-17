@@ -21,22 +21,25 @@
 <div class="card">
   <div class="table-responsive">
   <table class="table table-hover mb-0 align-middle table-cards-mobile" id="tbl-customer">
-    <thead><tr><th data-col="name">Name</th><th data-col="contact">Contact</th><th data-col="phone">Phone</th>
+    <thead><tr><th class="no-sort">Sl No</th><th data-col="name">Name</th><th data-col="contact">Contact</th><th data-col="phone">Phone</th>
       <th data-col="zone">Zone</th>
       <th data-col="credit_limit">Credit Limit</th><th data-col="credit_days">Credit Days</th><th data-col="status">Status</th><th></th></tr></thead>
     <tbody>
       {% for c in customers %}
       <tr>
+        <td data-label="Sl No">{{ loop.index }}</td>
         <td data-col="name" data-label="Name">{{ c.CustomerName }}</td><td data-col="contact" data-label="Contact">{{ c.ContactPerson or '-' }}</td><td data-col="phone" data-label="Phone">{{ c.Phone or '-' }}</td>
         <td data-col="zone" data-label="Zone">{{ c.Zone or '-' }}</td>
         <td data-col="credit_limit" data-label="Credit Limit">{{ (c.CreditLimit)|inr(0) }}</td><td data-col="credit_days" data-label="Credit Days">{{ c.CreditDays }} days</td>
         <td data-col="status" data-label="Status">{% if c.Active %}<span class="badge badge-ok">Active</span>{% else %}<span class="badge text-bg-secondary">Inactive</span>{% endif %}</td>
         <td class="text-end">
-          <a href="{{ url_for('customer_purchase_history', cid=c.CustomerID) }}" class="btn btn-sm btn-outline-secondary">History</a>
-          <a href="{{ url_for('customer_form', cid=c.CustomerID) }}" class="btn btn-sm btn-outline-secondary">Edit</a>
+          <a href="{{ url_for('customer_purchase_history', cid=c.CustomerID) }}" class="btn btn-sm btn-outline-secondary mobile-btn-full">History</a>
+          <a href="{{ url_for('customer_purchase_history', cid=c.CustomerID, view='ledger') }}" class="btn btn-sm btn-outline-secondary mobile-btn-full">Ledger</a>
+          <a href="{{ url_for('customer_purchase_history', cid=c.CustomerID, view='products') }}" class="btn btn-sm btn-outline-secondary mobile-btn-full">By Product</a>
+          <a href="{{ url_for('customer_form', cid=c.CustomerID) }}" class="btn btn-sm btn-outline-secondary mobile-btn-full">Edit</a>
         </td>
       </tr>
-      {% else %}<tr><td colspan="8" class="text-center text-muted py-4">No customers yet.</td></tr>{% endfor %}
+      {% else %}<tr><td colspan="9" class="text-center text-muted py-4">No customers yet.</td></tr>{% endfor %}
     </tbody>
   </table>
   </div>

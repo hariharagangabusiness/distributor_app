@@ -18,7 +18,12 @@
       var cells = Array.prototype.slice.call(row.children);
       var dataCells = cells.filter(function (c) { return c.hasAttribute('data-col'); });
       if (!dataCells.length) return; // e.g. an empty-state row spanning the whole table
-      var anchor = cells.filter(function (c) { return !c.hasAttribute('data-col'); })[0] || null;
+      // Anchor on the LAST cell without data-col (normally the trailing actions
+      // column) rather than the first, so a leading non-data-col cell (e.g. a
+      // fixed "Sl No" column) stays put at the front instead of being pushed
+      // rightward as ordered data-col columns get inserted ahead of the anchor.
+      var noDataCols = cells.filter(function (c) { return !c.hasAttribute('data-col'); });
+      var anchor = noDataCols.length ? noDataCols[noDataCols.length - 1] : null;
       var byKey = {};
       dataCells.forEach(function (c) { byKey[c.getAttribute('data-col')] = c; });
 

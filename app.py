@@ -2071,22 +2071,115 @@ def customer_form(cid=None):
                             zones=zones)
 
 
+def _build_customer_ledger(sales_asc, date_from, date_to):
+    """Chronological statement-of-account for a customer: every invoice (debit,
+    at Taxable Value - matching how "Due" is computed everywhere else in the
+    app on this customer's history/Accounts Receivable, i.e. GST isn't chased
+    as part of what's owed) and every payment received against it (credit),
+    with a running balance. Payments come from SalePayments; for a sale that
+    has AmountReceived on it but no matching SalePayments rows (e.g. entered
+    as a lump sum on the Sale form before per-payment recording existed, or
+    auto-set via Stock Issue reconciliation), the uncovered leftover is shown
+    as a single "Payment received" credit dated the sale date, so the
+    ledger's closing balance always reconciles with the Due shown on this
+    customer's invoices without requiring any backfill."""
+    sale_ids = [s["SaleID"] for s in sales_asc]
+    payments_by_sale = {}
+    if sale_ids:
+        placeholders = ",".join("?" * len(sale_ids))
+        pay_rows = db.query(f"""SELECT * FROM SalePayments WHERE SaleID IN ({placeholders})
+                              ORDER BY PaymentDate, PaymentID""", tuple(sale_ids))
+        for p in pay_rows:
+            payments_by_sale.setdefault(p["SaleID"], []).append(p)
+
+    entries = []
+    for s in sales_asc:
+        entries.append({
+            "date": s["SaleDate"], "type": "Invoice", "ref": s["InvoiceNumber"],
+            "detail": f"Invoice {s['InvoiceNumber']}",
+            "debit": round(s["TaxableAmount"] or 0, 2), "credit": 0, "sort2": 0,
+        })
+        covered = 0.0
+        for p in payments_by_sale.get(s["SaleID"], []):
+            method_bit = f" ({p['PaymentMethod']})" if p["PaymentMethod"] else ""
+            notes_bit = f" — {p['Notes']}" if p["Notes"] else ""
+            entries.append({
+                "date": p["PaymentDate"], "type": "Payment", "ref": s["InvoiceNumber"],
+                "detail": f"Payment received — Invoice {s['InvoiceNumber']}{method_bit}{notes_bit}",
+                "debit": 0, "credit": round(p["Amount"], 2), "sort2": 1,
+            })
+            covered += p["Amount"]
+        leftover = round((s["AmountReceived"] or 0) - covered, 2)
+        if leftover > 0.005:
+            entries.append({
+                "date": s["SaleDate"], "type": "Payment", "ref": s["InvoiceNumber"],
+                "detail": f"Payment received — Invoice {s['InvoiceNumber']}",
+                "debit": 0, "credit": leftover, "sort2": 1,
+            })
+
+    entries.sort(key=lambda e: (e["date"], e["sort2"]))
+
+    opening_balance = 0.0
+    running = 0.0
+    displayed = []
+    for e in entries:
+        running = round(running + e["debit"] - e["credit"], 2)
+        if date_from and e["date"] < date_from:
+            opening_balance = running
+            continue
+        if date_to and e["date"] > date_to:
+            continue
+        row = dict(e)
+        row["balance"] = running
+        displayed.append(row)
+
+    closing_balance = round(displayed[-1]["balance"], 2) if displayed else round(opening_balance, 2)
+    return {
+        "entries": displayed,
+        "opening_balance": round(opening_balance, 2),
+        "closing_balance": closing_balance,
+        "total_debit": round(sum(e["debit"] for e in displayed), 2),
+        "total_credit": round(sum(e["credit"] for e in displayed), 2),
+    }
+
+
 @app.route("/customers/<int:cid>/history")
 def customer_purchase_history(cid):
-    """A single customer's full purchase (Sales) history with this business:
-    every invoice, its line items, and running totals - so "what has this
-    customer bought from us, and when" doesn't need a trip to Data Query."""
+    """A single customer's full purchase (Sales) history with this business
+    (?view=overview|products|ledger):
+      - overview (default): every invoice, its line items, running totals, and top 10 products bought.
+      - products: full product-wise purchase breakdown (qty + amount), optionally scoped to a date range.
+      - ledger: a running-balance statement of account (invoices as debits, payments as credits).
+    An optional ?from=&to= date range scopes all three views to that period - Overview/Products simply
+    filter which invoices count; Ledger additionally rolls everything before "from" into an Opening
+    Balance line, same as a bank/vendor statement of account."""
     customer = db.query("SELECT * FROM Customers WHERE CustomerID=?", (cid,), one=True)
     if not customer:
         flash("Customer not found.", "error")
         return redirect(url_for("customers_list"))
 
-    sales = db.query("""SELECT s.SaleID, s.InvoiceNumber, s.SaleDate, s.Status, s.PaymentStatus,
+    view = request.args.get("view", "overview")
+    if view not in ("overview", "products", "ledger"):
+        view = "overview"
+    date_from = (request.args.get("from") or "").strip()
+    date_to = (request.args.get("to") or "").strip()
+
+    sales_asc = db.query("""SELECT s.SaleID, s.InvoiceNumber, s.SaleDate, s.Status, s.PaymentStatus,
                       s.TaxableAmount, s.TotalAmount, s.AmountReceived,
                       (s.TaxableAmount - s.AmountReceived) AS Due
                       FROM Sales s WHERE s.CustomerID=? AND s.Status<>'Cancelled'
-                      ORDER BY s.SaleDate DESC, s.SaleID DESC""", (cid,))
-    sale_ids = [s["SaleID"] for s in sales]
+                      ORDER BY s.SaleDate, s.SaleID""", (cid,))
+
+    def in_range(d):
+        if date_from and d < date_from:
+            return False
+        if date_to and d > date_to:
+            return False
+        return True
+
+    filtered_sales = [s for s in sales_asc if in_range(s["SaleDate"])] if (date_from or date_to) else list(sales_asc)
+
+    sale_ids = [s["SaleID"] for s in filtered_sales]
     lines_by_sale = {}
     product_totals = {}
     if sale_ids:
@@ -2099,22 +2192,36 @@ def customer_purchase_history(cid):
             pt = product_totals.setdefault(l["ProductName"], {"product": l["ProductName"], "qty": 0, "amount": 0})
             pt["qty"] += l["Qty"]
             pt["amount"] += l["LineTotal"]
-    top_products = sorted(product_totals.values(), key=lambda p: -p["amount"])[:10]
-    for p in top_products:
+    product_rows = sorted(product_totals.values(), key=lambda p: -p["amount"])
+    for p in product_rows:
         p["amount"] = round(p["amount"], 2)
+        p["qty"] = round(p["qty"], 2)
+    top_products = product_rows[:10]
 
     totals = {
-        "invoice_count": len(sales),
-        "total_taxable": round(sum(s["TaxableAmount"] for s in sales), 2),
-        "total_invoiced": round(sum(s["TotalAmount"] for s in sales), 2),
-        "total_received": round(sum(s["AmountReceived"] for s in sales), 2),
-        "total_due": round(sum(max(s["Due"], 0) for s in sales), 2),
-        "first_purchase": min((s["SaleDate"] for s in sales), default=None),
-        "last_purchase": max((s["SaleDate"] for s in sales), default=None),
+        "invoice_count": len(filtered_sales),
+        "total_taxable": round(sum(s["TaxableAmount"] for s in filtered_sales), 2),
+        "total_invoiced": round(sum(s["TotalAmount"] for s in filtered_sales), 2),
+        "total_received": round(sum(s["AmountReceived"] for s in filtered_sales), 2),
+        "total_due": round(sum(max(s["Due"], 0) for s in filtered_sales), 2),
+        "first_purchase": min((s["SaleDate"] for s in filtered_sales), default=None),
+        "last_purchase": max((s["SaleDate"] for s in filtered_sales), default=None),
     }
 
+    ledger = _build_customer_ledger(sales_asc, date_from, date_to) if view == "ledger" else None
+
+    sales = sorted(filtered_sales, key=lambda s: (s["SaleDate"], s["SaleID"]), reverse=True)
+
+    extra_qs = ""
+    if date_from:
+        extra_qs += "&from=" + date_from
+    if date_to:
+        extra_qs += "&to=" + date_to
+
     return render_template("customer_purchase_history.html", customer=customer, sales=sales,
-                            lines_by_sale=lines_by_sale, top_products=top_products, totals=totals)
+                            lines_by_sale=lines_by_sale, top_products=top_products, product_rows=product_rows,
+                            totals=totals, view=view, date_from=date_from, date_to=date_to, ledger=ledger,
+                            extra_qs=extra_qs)
 
 
 # ---------------------------------------------------------------------
@@ -3642,10 +3749,62 @@ def sale_view(sid):
                                    JOIN StockIssueLines sil ON sil.LineID = ssl.StockIssueLineID
                                    JOIN StockIssues si ON si.IssueID = sil.IssueID
                                    WHERE ssl.SaleID=?""", (sid,), one=True)
+    payments = db.query("""SELECT * FROM SalePayments WHERE SaleID=? ORDER BY PaymentDate, PaymentID""", (sid,))
     return render_template("sale_view.html", sale=sale, lines=lines, balance_due=balance_due,
+                            payments=payments, today=today_str(),
                             stock_issue_credit=stock_issue_credit if stock_issue_credit and stock_issue_credit["c"] else None,
                             custom_fields=custom_fields, custom_values=custom_values,
                             cf_record_id=sid, custom_attachments=get_custom_attachments("Sale", sid))
+
+
+@app.route("/sales/<int:sid>/record-payment", methods=["POST"])
+def sale_record_payment(sid):
+    """Log one payment received against a specific invoice's outstanding
+    balance (Accounts Receivable / Sale detail page "Record Payment"). Adds a
+    dated SalePayments row (building up a full audit trail / customer ledger)
+    and rolls the total into Sales.AmountReceived + PaymentStatus, same as
+    stock_issue_collect_due does for van-sale dues."""
+    sale = db.query("SELECT * FROM Sales WHERE SaleID=?", (sid,), one=True)
+    if not sale:
+        flash("Sale not found.", "error")
+        return redirect(url_for("sales_list"))
+    f = request.form
+    next_url = f.get("next") or ""
+    redirect_to = next_url if next_url.startswith("/") and not next_url.startswith("//") else url_for("sale_view", sid=sid)
+    try:
+        amount = round(float(f.get("amount") or 0), 2)
+    except ValueError:
+        amount = 0
+    if amount <= 0:
+        flash("Enter a payment amount greater than zero.", "error")
+        return redirect(redirect_to)
+    balance = sale_balance_due(sale)
+    if balance <= 0.005:
+        flash("This invoice is already fully paid.", "error")
+        return redirect(redirect_to)
+    if amount - balance > 0.005:
+        flash(f"That's more than the balance due (₹{balance:.2f}) — recorded ₹{balance:.2f} instead.", "warning")
+        amount = balance
+    payment_date = f.get("payment_date") or today_str()
+    method = (f.get("method") or "Cash").strip() or "Cash"
+    notes = (f.get("notes") or "").strip()
+    db.execute("""INSERT INTO SalePayments (SaleID, PaymentDate, Amount, PaymentMethod, Notes, CreatedAt)
+                VALUES (?,?,?,?,?,?)""",
+               (sid, payment_date, amount, method, notes, datetime.now().isoformat(timespec="seconds")))
+    new_received = round((sale["AmountReceived"] or 0) + amount, 2)
+    new_due_amount = sale_due_amount(sale)
+    new_balance = round(new_due_amount - new_received, 2)
+    if new_balance <= 0.005:
+        payment_status = "Paid"
+    elif new_received > 0.005:
+        payment_status = "Partial"
+    else:
+        payment_status = "Unpaid"
+    db.execute("UPDATE Sales SET AmountReceived=?, PaymentStatus=? WHERE SaleID=?",
+               (new_received, payment_status, sid))
+    flash(f"Recorded ₹{amount:.2f} payment for Invoice #{sale['InvoiceNumber']}. "
+          f"{'Fully paid.' if new_balance <= 0.005 else f'₹{max(new_balance, 0):.2f} still due.'}", "success")
+    return redirect(redirect_to)
 
 
 @app.route("/sales/<int:sid>/reassign", methods=["GET", "POST"])

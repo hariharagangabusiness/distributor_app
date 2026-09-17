@@ -694,6 +694,24 @@ CREATE TABLE IF NOT EXISTS StockIssueDuePayments (
     FOREIGN KEY (IssueID) REFERENCES StockIssues(IssueID) ON DELETE CASCADE
 );
 
+-- One row per cash/bank collection recorded against a direct office Sale's
+-- outstanding balance (Accounts Receivable "Record Payment") - mirrors
+-- StockIssueDuePayments above but for Sales, so a partial/late payment on
+-- an invoice can be logged with its own date/method/notes and built up into
+-- a full audit trail (and a customer ledger/statement of account), instead
+-- of only ever overwriting Sales.AmountReceived with one lump figure.
+CREATE TABLE IF NOT EXISTS SalePayments (
+    PaymentID       INTEGER PRIMARY KEY AUTOINCREMENT,
+    SaleID          INTEGER NOT NULL,
+    PaymentDate     TEXT NOT NULL,
+    Amount          REAL NOT NULL,
+    PaymentMethod   TEXT,
+    Notes           TEXT,
+    CreatedAt       TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (SaleID) REFERENCES Sales(SaleID) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_salepayments_sale ON SalePayments(SaleID);
+
 -- =====================================================================
 -- Login (individual staff accounts)
 -- =====================================================================

@@ -76,12 +76,27 @@
         var rows = Array.prototype.slice.call(tbody.rows).filter(function (r) {
           return r.cells.length > 1 || (r.cells[0] && !r.cells[0].hasAttribute('colspan'));
         });
-        rows.sort(function (r1, r2) {
-          var c1 = r1.cells[colIndex], c2 = r2.cells[colIndex];
+        // A row can have its own single-cell colspan detail row (an expand-on-click
+        // line-item breakdown, or a "Record Payment" form row) immediately after it
+        // in the markup - that detail row is excluded from `rows` above since it
+        // can't be sorted on any column, but it still needs to move together with
+        // its parent row so it stays attached to the right invoice after sorting.
+        // Pair each sortable row with its detail row (if any) before reordering.
+        var pairs = rows.map(function (r) {
+          var next = r.nextElementSibling;
+          var isDetail = next && next.tagName === 'TR' && rows.indexOf(next) === -1 &&
+            next.cells.length === 1 && next.cells[0].hasAttribute('colspan');
+          return { row: r, detail: isDetail ? next : null };
+        });
+        pairs.sort(function (p1, p2) {
+          var c1 = p1.row.cells[colIndex], c2 = p2.row.cells[colIndex];
           if (!c1 || !c2) return 0;
           return compareRows(c1.textContent, c2.textContent, forcedType, dir);
         });
-        rows.forEach(function (r) { tbody.appendChild(r); });
+        pairs.forEach(function (p) {
+          tbody.appendChild(p.row);
+          if (p.detail) tbody.appendChild(p.detail);
+        });
       });
     });
   }
