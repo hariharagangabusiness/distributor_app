@@ -12,17 +12,17 @@
 </div>
 <div class="card">
   <div class="table-responsive">
-  <table class="table mb-0" id="tbl-stockissue">
+  <table class="table mb-0 table-cards-mobile" id="tbl-stockissue">
     <thead><tr><th data-col="date">Date</th><th data-col="salesperson">Salesperson</th><th data-col="status">Status</th><th data-col="month_target">Month Target</th><th data-col="expected">Expected</th><th data-col="collected">Collected</th><th data-col="discrepancy">Discrepancy</th>
       <th data-col="qty_sold">Qty Sold</th><th data-col="discount">Discount</th><th data-col="scheme">Scheme Amount</th><th data-col="unaccounted">Unaccounted</th><th class="no-sort"></th></tr></thead>
     <tbody>
       {% for i in issues %}
       <tr>
-        <td data-col="date">{{ i.IssueDate|dmy }}</td>
-        <td data-col="salesperson">{{ i.EmployeeName }}</td>
-        <td data-col="status"><span class="badge {% if i.Status == 'Reconciled' %}text-bg-success{% else %}text-bg-warning{% endif %}">{{ i.Status }}</span>
+        <td data-col="date" data-label="Date">{{ i.IssueDate|dmy }}</td>
+        <td data-col="salesperson" data-label="Salesperson">{{ i.EmployeeName }}</td>
+        <td data-col="status" data-label="Status"><span class="badge {% if i.Status == 'Reconciled' %}text-bg-success{% else %}text-bg-warning{% endif %}">{{ i.Status }}</span>
           {% if i.ReviewStatus == 'Pending' %}<span class="badge text-bg-danger" title="Auto-created — needs Manager/Admin approval before it can be reconciled">Pending Review</span>{% endif %}</td>
-        <td data-col="month_target">
+        <td data-col="month_target" data-label="Month Target">
           {% if i.TargetProgress %}
           <span class="badge {% if (i.TargetProgress.qty_pct_mtd or 0) >= 100 %}text-bg-success{% elif (i.TargetProgress.qty_pct_mtd or 0) >= 75 %}text-bg-warning{% else %}text-bg-danger{% endif %}"
                 title="Qty Sold MTD {{ i.TargetProgress.mtd.qty_sold|round(2) }} of {{ i.TargetProgress.prorated_qty|round(2) }} pace">
@@ -30,17 +30,17 @@
           </span>
           {% else %}<span class="text-muted small">no target</span>{% endif %}
         </td>
-        <td data-col="expected">{% if i.ExpectedAmount is not none %}{{ (i.ExpectedAmount)|inr(2) }}{% else %}-{% endif %}</td>
-        <td data-col="collected">{% if i.CashCollected is not none %}{{ (i.CashCollected)|inr(2) }}{% else %}-{% endif %}</td>
-        <td data-col="discrepancy">
+        <td data-col="expected" data-label="Expected">{% if i.ExpectedAmount is not none %}{{ (i.ExpectedAmount)|inr(2) }}{% else %}-{% endif %}</td>
+        <td data-col="collected" data-label="Collected">{% if i.CashCollected is not none %}{{ (i.CashCollected)|inr(2) }}{% else %}-{% endif %}</td>
+        <td data-col="discrepancy" data-label="Discrepancy">
           {% if i.Discrepancy is not none %}
           <span class="{% if i.Discrepancy < 0 %}text-danger{% elif i.Discrepancy > 0 %}text-success{% endif %}">{{ (i.Discrepancy)|inr(2) }}</span>
           {% else %}-{% endif %}
         </td>
-        <td data-col="qty_sold">{{ i.QtySoldTotal|inrn(2) }}</td>
-        <td data-col="discount">{{ (i.DiscountTotal)|inr(2) }}</td>
-        <td data-col="scheme">{{ (i.SchemeTotal)|inr(2) }}</td>
-        <td data-col="unaccounted" class="{% if i.UnaccountedTotal != 0 %}text-danger fw-bold{% endif %}">{{ i.UnaccountedTotal|inrn(2) }}</td>
+        <td data-col="qty_sold" data-label="Qty Sold">{{ i.QtySoldTotal|inrn(2) }}</td>
+        <td data-col="discount" data-label="Discount">{{ (i.DiscountTotal)|inr(2) }}</td>
+        <td data-col="scheme" data-label="Scheme Amount">{{ (i.SchemeTotal)|inr(2) }}</td>
+        <td data-col="unaccounted" data-label="Unaccounted" class="{% if i.UnaccountedTotal != 0 %}text-danger fw-bold{% endif %}">{{ i.UnaccountedTotal|inrn(2) }}</td>
         <td>
           <a href="{{ url_for('stock_issue_view', issue_id=i.IssueID) }}" class="btn btn-sm btn-outline-secondary">View</a>
           {% if i.Status != 'Reconciled' and i.ReviewStatus != 'Pending' and current_user and current_user.Role == 'Admin' %}
@@ -76,5 +76,5 @@
 window.LIST_COLUMNS_TABLE_ID = 'tbl-stockissue';
 window.LIST_COLUMNS_PREFS = {{ columns|tojson }};
 </script>
-<script src="{{ url_for('static', filename='js/list-columns.js') }}"></script>
+<script src="{{ url_for('static', filename='js/list-columns.js') }}" defer></script>
 {% endblock %}

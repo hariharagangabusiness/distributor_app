@@ -41,22 +41,22 @@
 {% endif %}
 <div class="card">
   <div class="table-responsive">
-  <table class="table mb-0">
+  <table class="table mb-0 table-cards-mobile">
     <thead><tr><th>Product</th><th>HSN</th><th>Qty</th><th>Rate</th><th>Discount</th><th>Taxable</th>
       {% if sale.IsInterState %}<th>IGST</th>{% else %}<th>CGST</th><th>SGST</th>{% endif %}
       <th>Line Total</th></tr></thead>
     <tbody>
       {% for l in lines %}
       <tr>
-        <td>{{ l.ProductName }}</td><td>{{ l.HSNCode or '-' }}</td><td>{{ l.Qty }} {{ l.Unit }}</td>
-        <td>{{ (l.UnitPrice)|inr(2) }}</td><td>{{ (l.DiscountAmount or 0)|inr(2) }}</td><td>{{ (l.TaxableValue)|inr(2) }}</td>
+        <td data-label="Product">{{ l.ProductName }}</td><td data-label="HSN">{{ l.HSNCode or '-' }}</td><td data-label="Qty">{{ l.Qty }} {{ l.Unit }}</td>
+        <td data-label="Rate">{{ (l.UnitPrice)|inr(2) }}</td><td data-label="Discount">{{ (l.DiscountAmount or 0)|inr(2) }}</td><td data-label="Taxable">{{ (l.TaxableValue)|inr(2) }}</td>
         {% if sale.IsInterState %}
-        <td>{{ (l.IGSTAmount)|inr(2) }} ({{ l.IGSTRate }}%)</td>
+        <td data-label="IGST">{{ (l.IGSTAmount)|inr(2) }} ({{ l.IGSTRate }}%)</td>
         {% else %}
-        <td>{{ (l.CGSTAmount)|inr(2) }} ({{ l.CGSTRate }}%)</td>
-        <td>{{ (l.SGSTAmount)|inr(2) }} ({{ l.SGSTRate }}%)</td>
+        <td data-label="CGST">{{ (l.CGSTAmount)|inr(2) }} ({{ l.CGSTRate }}%)</td>
+        <td data-label="SGST">{{ (l.SGSTAmount)|inr(2) }} ({{ l.SGSTRate }}%)</td>
         {% endif %}
-        <td>{{ (l.TaxableValue + l.CGSTAmount + l.SGSTAmount + l.IGSTAmount)|inr(2) }}</td>
+        <td data-label="Line Total">{{ (l.TaxableValue + l.CGSTAmount + l.SGSTAmount + l.IGSTAmount)|inr(2) }}</td>
       </tr>
       {% endfor %}
     </tbody>

@@ -7,15 +7,38 @@
   sold/returned/free/discount figures and cash collected entirely — recompute carefully.</div>
 {% endif %}
 {% if credited_sales %}
-<div class="alert alert-info">
-  <strong>{{ credited_sales|length }} line item(s) from Sales entered directly on the Sales tab have already been
-  credited toward this issue's Qty Sold</strong> (shown pre-filled below) — no need to re-enter them here:
-  <ul class="mb-0 mt-1">
-    {% for cs in credited_sales %}
-    <li><a href="{{ url_for('sale_view', sid=cs.SaleID) }}">{{ cs.InvoiceNumber }}</a> — {{ cs.ProductName }}: {{ cs.QtyApplied|round(2) }}</li>
-    {% endfor %}
-  </ul>
+<div class="alert alert-info p-0 overflow-hidden">
+  <div class="d-flex justify-content-between align-items-center p-3" role="button" data-bs-toggle="collapse"
+       data-bs-target="#credited-sales-list-collapse" aria-expanded="false" aria-controls="credited-sales-list-collapse"
+       style="cursor:pointer">
+    <strong>{{ credited_sales|length }} line item(s) from Sales entered directly on the Sales tab have already been
+    credited toward this issue's Qty Sold</strong>
+    <i class="bi bi-chevron-down credited-sales-list-chevron ms-2"></i>
+  </div>
+  <div class="collapse" id="credited-sales-list-collapse">
+    <div class="px-3 pb-3">
+      <p class="mb-1 text-muted small">(shown pre-filled below) — no need to re-enter them here:</p>
+      <ul class="mb-0 mt-1">
+        {% for cs in credited_sales %}
+        <li><a href="{{ url_for('sale_view', sid=cs.SaleID) }}">{{ cs.InvoiceNumber }}</a> — {{ cs.ProductName }}: {{ cs.QtyApplied|round(2) }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
 </div>
+<style>
+[data-bs-target="#credited-sales-list-collapse"][aria-expanded="false"] .credited-sales-list-chevron { transform: rotate(-90deg); }
+.credited-sales-list-chevron { transition: transform .2s ease; display: inline-block; }
+</style>
+<script>
+(function() {
+  var header = document.querySelector('[data-bs-target="#credited-sales-list-collapse"]');
+  var panel = document.getElementById('credited-sales-list-collapse');
+  if (!header || !panel) return;
+  panel.addEventListener('shown.bs.collapse', function() { header.setAttribute('aria-expanded', 'true'); });
+  panel.addEventListener('hidden.bs.collapse', function() { header.setAttribute('aria-expanded', 'false'); });
+})();
+</script>
 {% endif %}
 {% if target_progress %}
 <div class="alert alert-secondary d-flex justify-content-between align-items-center flex-wrap gap-2">

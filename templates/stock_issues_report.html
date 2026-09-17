@@ -22,17 +22,17 @@
 <div class="card mb-3">
   <div class="card-header"><i class="bi bi-cash-coin text-danger"></i> Pending Dues from Salespeople ({{ due_issues|length }})</div>
   <div class="table-responsive">
-  <table class="table mb-0">
+  <table class="table mb-0 table-cards-mobile">
     <thead><tr><th>Date</th><th>Salesperson</th><th>Expected</th><th>Collected</th><th>Due</th><th>Status</th><th></th></tr></thead>
     <tbody>
       {% for i in due_issues %}
       <tr>
-        <td>{{ i.IssueDate|dmy }}</td><td>{{ i.EmployeeName }}</td>
-        <td>{{ (i.ExpectedAmount or 0)|inr(2) }}</td>
-        <td>{{ (i.CashCollected or 0)|inr(2) }}</td>
-        <td class="text-danger fw-bold">{{ (i.AmountDue or 0)|inr(2) }}</td>
-        <td><span class="badge {% if i.PaymentStatus=='Partial' %}text-bg-warning{% else %}text-bg-danger{% endif %}">{{ i.PaymentStatus }}</span></td>
-        <td><a href="{{ url_for('stock_issue_view', issue_id=i.IssueID) }}" class="btn btn-sm btn-outline-secondary">View</a></td>
+        <td data-label="Date">{{ i.IssueDate|dmy }}</td><td data-label="Salesperson">{{ i.EmployeeName }}</td>
+        <td data-label="Expected">{{ (i.ExpectedAmount or 0)|inr(2) }}</td>
+        <td data-label="Collected">{{ (i.CashCollected or 0)|inr(2) }}</td>
+        <td data-label="Due" class="text-danger fw-bold">{{ (i.AmountDue or 0)|inr(2) }}</td>
+        <td data-label="Status"><span class="badge {% if i.PaymentStatus=='Partial' %}text-bg-warning{% else %}text-bg-danger{% endif %}">{{ i.PaymentStatus }}</span></td>
+        <td><a href="{{ url_for('stock_issue_view', issue_id=i.IssueID) }}" class="btn btn-sm btn-outline-secondary w-100">View</a></td>
       </tr>
       {% else %}<tr><td colspan="7" class="text-center text-muted py-3">No pending dues in this period.</td></tr>{% endfor %}
     </tbody>
@@ -43,15 +43,15 @@
 <div class="card mb-3">
   <div class="card-header"><i class="bi bi-receipt text-warning"></i> Pending Scheme Claims from Company ({{ claim_pending|length }})</div>
   <div class="table-responsive">
-  <table class="table mb-0">
+  <table class="table mb-0 table-cards-mobile">
     <thead><tr><th>Date</th><th>Salesperson</th><th>Scheme Amount</th><th>Claim Status</th><th></th></tr></thead>
     <tbody>
       {% for i in claim_pending %}
       <tr>
-        <td>{{ i.IssueDate|dmy }}</td><td>{{ i.EmployeeName }}</td>
-        <td>{{ (i.SchemeAmount or 0)|inr(2) }}</td>
-        <td><span class="badge {% if i.ClaimStatus=='Claimed' %}text-bg-warning{% else %}text-bg-secondary{% endif %}">{{ i.ClaimStatus }}</span></td>
-        <td><a href="{{ url_for('stock_issue_view', issue_id=i.IssueID) }}" class="btn btn-sm btn-outline-secondary">View</a></td>
+        <td data-label="Date">{{ i.IssueDate|dmy }}</td><td data-label="Salesperson">{{ i.EmployeeName }}</td>
+        <td data-label="Scheme Amount">{{ (i.SchemeAmount or 0)|inr(2) }}</td>
+        <td data-label="Claim Status"><span class="badge {% if i.ClaimStatus=='Claimed' %}text-bg-warning{% else %}text-bg-secondary{% endif %}">{{ i.ClaimStatus }}</span></td>
+        <td><a href="{{ url_for('stock_issue_view', issue_id=i.IssueID) }}" class="btn btn-sm btn-outline-secondary w-100">View</a></td>
       </tr>
       {% else %}<tr><td colspan="5" class="text-center text-muted py-3">No pending scheme claims in this period.</td></tr>{% endfor %}
     </tbody>
@@ -62,15 +62,15 @@
 <div class="card">
   <div class="card-header"><i class="bi bi-gift text-info"></i> Discount / Free-Scheme Line Detail ({{ free_lines|length }})</div>
   <div class="table-responsive">
-  <table class="table mb-0">
+  <table class="table mb-0 table-cards-mobile">
     <thead><tr><th>Date</th><th>Salesperson</th><th>Product</th><th>Qty Free</th><th>Discount ₹ (margin, not claimable)</th><th>Scheme Claim ₹ (claimable)</th><th>Comments</th></tr></thead>
     <tbody>
       {% for l in free_lines %}
       <tr>
-        <td>{{ l.IssueDate|dmy }}</td><td>{{ l.EmployeeName }}</td><td>{{ l.ProductName }}</td>
-        <td>{{ l.QtyFree or 0 }}</td><td>{{ (l.DiscountAmount or 0)|inr(2) }}</td>
-        <td>{{ (l.SchemeClaimAmount or 0)|inr(2) }}</td>
-        <td class="text-muted small">{{ l.LineComments or '' }}</td>
+        <td data-label="Date">{{ l.IssueDate|dmy }}</td><td data-label="Salesperson">{{ l.EmployeeName }}</td><td data-label="Product">{{ l.ProductName }}</td>
+        <td data-label="Qty Free">{{ l.QtyFree or 0 }}</td><td data-label="Discount ₹ (margin, not claimable)">{{ (l.DiscountAmount or 0)|inr(2) }}</td>
+        <td data-label="Scheme Claim ₹ (claimable)">{{ (l.SchemeClaimAmount or 0)|inr(2) }}</td>
+        <td data-label="Comments" class="text-muted small">{{ l.LineComments or '' }}</td>
       </tr>
       {% else %}<tr><td colspan="7" class="text-center text-muted py-3">No discount/free-scheme lines in this period.</td></tr>{% endfor %}
     </tbody>
@@ -86,21 +86,21 @@
       Profit &amp; Loss for the margin view that does account for it.</p>
   </div>
   <div class="table-responsive">
-  <table class="table mb-0">
+  <table class="table mb-0 table-cards-mobile">
     <thead><tr><th>Date</th><th>Cost</th><th>Sales (Expected)</th><th>Sales (Collected)</th><th>Cost vs Sales</th>
       <th>Qty Sold</th><th>Discount ₹</th><th>Scheme ₹</th><th>Unaccounted</th></tr></thead>
     <tbody>
       {% for d in daywise %}
       <tr>
-        <td>{{ d.date|dmy }}</td>
-        <td>{{ (d.cost)|inr(2) }}</td>
-        <td>{{ (d.expected)|inr(2) }}</td>
-        <td>{{ (d.collected)|inr(2) }}</td>
-        <td class="{% if d.margin >= 0 %}text-success{% else %}text-danger{% endif %} fw-bold">{{ (d.margin)|inr(2) }}</td>
-        <td>{{ d.qty_sold|inrn(2) }}</td>
-        <td>{{ (d.discount)|inr(2) }}</td>
-        <td>{{ (d.scheme)|inr(2) }}</td>
-        <td class="{% if d.unaccounted != 0 %}text-danger fw-bold{% endif %}">{{ d.unaccounted|inrn(2) }}</td>
+        <td data-label="Date">{{ d.date|dmy }}</td>
+        <td data-label="Cost">{{ (d.cost)|inr(2) }}</td>
+        <td data-label="Sales (Expected)">{{ (d.expected)|inr(2) }}</td>
+        <td data-label="Sales (Collected)">{{ (d.collected)|inr(2) }}</td>
+        <td data-label="Cost vs Sales" class="{% if d.margin >= 0 %}text-success{% else %}text-danger{% endif %} fw-bold">{{ (d.margin)|inr(2) }}</td>
+        <td data-label="Qty Sold">{{ d.qty_sold|inrn(2) }}</td>
+        <td data-label="Discount ₹">{{ (d.discount)|inr(2) }}</td>
+        <td data-label="Scheme ₹">{{ (d.scheme)|inr(2) }}</td>
+        <td data-label="Unaccounted" class="{% if d.unaccounted != 0 %}text-danger fw-bold{% endif %}">{{ d.unaccounted|inrn(2) }}</td>
       </tr>
       {% else %}<tr><td colspan="9" class="text-center text-muted py-3">No stock issues in this period.</td></tr>{% endfor %}
     </tbody>

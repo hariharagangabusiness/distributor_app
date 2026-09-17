@@ -28,23 +28,23 @@
 </div>
 <div class="card">
   <div class="table-responsive">
-  <table class="table table-hover mb-0 align-middle" id="tbl-sale">
+  <table class="table table-hover mb-0 align-middle table-cards-mobile" id="tbl-sale">
     <thead><tr><th data-col="invoice_number">Invoice #</th><th data-col="customer">Customer</th><th data-col="date">Date</th>
       <th data-col="status">Status</th><th data-col="payment">Payment</th><th data-col="due_date">Due Date</th>
       <th data-col="total">Taxable Amt</th><th data-col="balance">Balance</th><th data-col="salesperson">Salesperson</th><th></th></tr></thead>
     <tbody>
       {% for s in sales %}
       <tr>
-        <td data-col="invoice_number">{{ s.InvoiceNumber }}</td>
-        <td data-col="customer">{{ s.CustomerName }}{% if s.IsUnassignedBucket %} <span class="badge text-bg-warning">Unassigned</span>{% endif %}</td>
-        <td data-col="date">{{ s.SaleDate|dmy }}</td><td data-col="status">{{ s.Status }}</td>
-        <td data-col="payment">{% if s.PaymentStatus=='Paid' %}<span class="badge badge-ok">Paid</span>
+        <td data-col="invoice_number" data-label="Invoice #">{{ s.InvoiceNumber }}</td>
+        <td data-col="customer" data-label="Customer">{{ s.CustomerName }}{% if s.IsUnassignedBucket %} <span class="badge text-bg-warning">Unassigned</span>{% endif %}</td>
+        <td data-col="date" data-label="Date">{{ s.SaleDate|dmy }}</td><td data-col="status" data-label="Status">{{ s.Status }}</td>
+        <td data-col="payment" data-label="Payment">{% if s.PaymentStatus=='Paid' %}<span class="badge badge-ok">Paid</span>
             {% elif s.PaymentStatus=='Partial' %}<span class="badge badge-over">Partial</span>
             {% else %}<span class="badge badge-low">Unpaid</span>{% endif %}</td>
-        <td data-col="due_date">{{ s.PaymentDueDate|dmy if s.PaymentDueDate else '-' }}</td>
-        <td data-col="total">{{ (s.TaxableAmount)|inr(2) }}{% if s.ReverseCharge %} <span class="badge text-bg-info" title="Reverse Charge — product value only counted below">RC</span>{% endif %}</td>
-        <td data-col="balance" class="{% if sale_balance_due(s) > 0 %}text-danger fw-bold{% endif %}">{{ (sale_balance_due(s))|inr(2) }}</td>
-        <td data-col="salesperson">{{ s.EmployeeName or '-' }}</td>
+        <td data-col="due_date" data-label="Due Date">{{ s.PaymentDueDate|dmy if s.PaymentDueDate else '-' }}</td>
+        <td data-col="total" data-label="Taxable Amt">{{ (s.TaxableAmount)|inr(2) }}{% if s.ReverseCharge %} <span class="badge text-bg-info" title="Reverse Charge — product value only counted below">RC</span>{% endif %}</td>
+        <td data-col="balance" data-label="Balance" class="{% if sale_balance_due(s) > 0 %}text-danger fw-bold{% endif %}">{{ (sale_balance_due(s))|inr(2) }}</td>
+        <td data-col="salesperson" data-label="Salesperson">{{ s.EmployeeName or '-' }}</td>
         <td class="text-end">
           <a href="{{ url_for('sale_view', sid=s.SaleID) }}" class="btn btn-sm btn-outline-secondary">View</a>
           {% if s.IsUnassignedBucket %}<a href="{{ url_for('sale_reassign', sid=s.SaleID) }}" class="btn btn-sm btn-warning">Reassign</a>{% endif %}
@@ -64,5 +64,5 @@
 window.LIST_COLUMNS_TABLE_ID = 'tbl-sale';
 window.LIST_COLUMNS_PREFS = {{ columns|tojson }};
 </script>
-<script src="{{ url_for('static', filename='js/list-columns.js') }}"></script>
+<script src="{{ url_for('static', filename='js/list-columns.js') }}" defer></script>
 {% endblock %}

@@ -102,25 +102,25 @@
 
 <div class="card">
   <div class="table-responsive">
-  <table class="table mb-0">
+  <table class="table mb-0 table-cards-mobile">
     <thead><tr><th>Product</th><th>Qty Issued</th><th>Unit Price</th>
       {% if issue.Status == 'Reconciled' %}<th>Qty Sold</th><th>Qty Returned</th><th>Qty Free</th><th>Discount ₹ (margin)</th><th>Scheme Claim ₹</th><th>Unaccounted</th><th>Comments</th>{% endif %}
     </tr></thead>
     <tbody>
       {% for l in lines %}
       <tr>
-        <td>{{ l.ProductName }}</td>
-        <td>{{ l.QtyIssued }} {{ l.Unit }}</td>
-        <td>{{ (l.UnitPrice)|inr(2) }}</td>
+        <td data-label="Product">{{ l.ProductName }}</td>
+        <td data-label="Qty Issued">{{ l.QtyIssued }} {{ l.Unit }}</td>
+        <td data-label="Unit Price">{{ (l.UnitPrice)|inr(2) }}</td>
         {% if issue.Status == 'Reconciled' %}
-        <td>{{ l.QtySold }} {{ l.Unit }}</td>
-        <td>{{ l.QtyReturned }} {{ l.Unit }}</td>
-        <td>{{ l.QtyFree or 0 }} {{ l.Unit }}</td>
-        <td>{{ (l.DiscountAmount or 0)|inr(2) }}</td>
-        <td>{{ (l.SchemeClaimAmount or 0)|inr(2) }}</td>
+        <td data-label="Qty Sold">{{ l.QtySold }} {{ l.Unit }}</td>
+        <td data-label="Qty Returned">{{ l.QtyReturned }} {{ l.Unit }}</td>
+        <td data-label="Qty Free">{{ l.QtyFree or 0 }} {{ l.Unit }}</td>
+        <td data-label="Discount ₹ (margin)">{{ (l.DiscountAmount or 0)|inr(2) }}</td>
+        <td data-label="Scheme Claim ₹">{{ (l.SchemeClaimAmount or 0)|inr(2) }}</td>
         {% set unaccounted = l.QtyIssued - (l.QtySold or 0) - (l.QtyReturned or 0) - (l.QtyFree or 0) %}
-        <td class="{% if unaccounted != 0 %}text-danger fw-bold{% endif %}">{{ unaccounted|round(2) }} {{ l.Unit }}</td>
-        <td class="text-muted small">{{ l.LineComments or '' }}</td>
+        <td data-label="Unaccounted" class="{% if unaccounted != 0 %}text-danger fw-bold{% endif %}">{{ unaccounted|round(2) }} {{ l.Unit }}</td>
+        <td data-label="Comments" class="text-muted small">{{ l.LineComments or '' }}</td>
         {% endif %}
       </tr>
       {% endfor %}
@@ -150,7 +150,7 @@
 {% if credited_sales_full %}
 <div class="card mt-3">
   <div class="card-header d-flex justify-content-between align-items-center" role="button" data-bs-toggle="collapse"
-       data-bs-target="#credited-sales-collapse" aria-expanded="true" aria-controls="credited-sales-collapse"
+       data-bs-target="#credited-sales-collapse" aria-expanded="false" aria-controls="credited-sales-collapse"
        style="cursor:pointer">
     <span><i class="bi bi-cash-stack"></i> Sales recorded directly on the Sales tab for this issue — full tally view
       <span class="text-muted small">({{ credited_sales_full|length }} invoice(s))</span></span>
@@ -161,19 +161,19 @@
       <i class="bi bi-chevron-down credited-sales-chevron"></i>
     </span>
   </div>
-  <div class="collapse show" id="credited-sales-collapse">
+  <div class="collapse" id="credited-sales-collapse">
   <div class="table-responsive">
-  <table class="table mb-0">
+  <table class="table mb-0 table-cards-mobile">
     <thead><tr><th>Invoice</th><th>Cash ₹</th><th>Bank/UPI ₹</th><th>Discount ₹</th><th>Total ₹</th><th></th></tr></thead>
     <tbody>
       {% for cs in credited_sales_full %}
       <tr>
-        <td><a href="{{ url_for('sale_view', sid=cs.SaleID) }}">{{ cs.InvoiceNumber }}</a></td>
-        <td>{{ (cs.CashAmount or 0)|inr(2) }}</td>
-        <td>{{ (cs.BankAmount or 0)|inr(2) }}</td>
-        <td>{{ (cs.Discount or 0)|inr(2) }}</td>
-        <td>{{ (cs.LineTotal or 0)|inr(2) }}</td>
-        <td><a href="{{ url_for('sale_view', sid=cs.SaleID) }}" class="btn btn-sm btn-outline-secondary">View</a></td>
+        <td data-label="Invoice"><a href="{{ url_for('sale_view', sid=cs.SaleID) }}">{{ cs.InvoiceNumber }}</a></td>
+        <td data-label="Cash ₹">{{ (cs.CashAmount or 0)|inr(2) }}</td>
+        <td data-label="Bank/UPI ₹">{{ (cs.BankAmount or 0)|inr(2) }}</td>
+        <td data-label="Discount ₹">{{ (cs.Discount or 0)|inr(2) }}</td>
+        <td data-label="Total ₹">{{ (cs.LineTotal or 0)|inr(2) }}</td>
+        <td><a href="{{ url_for('sale_view', sid=cs.SaleID) }}" class="btn btn-sm btn-outline-secondary w-100">View</a></td>
       </tr>
       {% endfor %}
     </tbody>

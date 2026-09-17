@@ -40,7 +40,7 @@
 <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
 <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
 </head>
-<body>
+<body class="{{ '' if MOBILE_FRIENDLY_UI_ENABLED else 'mobile-ui-off' }}">
 <div class="d-flex">
   <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
   <nav class="sidebar" id="sidebar">

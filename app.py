@@ -20,6 +20,15 @@ import depreciation
 
 app = Flask(__name__)
 
+# Master on/off switch for the mobile-friendly UI rollout (card-view tables on
+# phones instead of horizontal-scrolling ones, and taller touch targets for
+# buttons/tabs on small screens) - currently live on the Finance and Sales
+# modules. Flip this to False and redeploy to instantly revert every page
+# back to the old plain-table behaviour app-wide, with no template changes
+# needed - it's read by base.html (sets a body class) and by the templates
+# that opt individual tables into card view.
+MOBILE_FRIENDLY_UI_ENABLED = True
+
 
 def indian_number_format(value, decimals=2):
     """Format a number Indian-style: groups of 2 after the first 3 digits from the
@@ -413,6 +422,11 @@ def inject_current_user():
 @app.context_processor
 def inject_sale_due_helpers():
     return dict(sale_due_amount=sale_due_amount, sale_balance_due=sale_balance_due)
+
+
+@app.context_processor
+def inject_mobile_ui_flag():
+    return dict(MOBILE_FRIENDLY_UI_ENABLED=MOBILE_FRIENDLY_UI_ENABLED)
 
 
 @app.route("/")
