@@ -514,9 +514,17 @@ table.table.col-resize-active > tbody > tr > td {
     margin-right: .5rem;
   }
   /* A cell with no data-label (e.g. an action-button cell, or a colspan
-     "no rows" message) - shown plainly, full width, no label row. */
+     "no rows" message) - shown plainly, full width, no label row. Switched
+     from the base td's display:flex to display:block: a flex row forces its
+     children through flexbox sizing (a "width:100%" child's width is only
+     treated as a flex-basis, so with several full-width buttons in one cell
+     - e.g. Customers' History/Ledger/By Product/Edit - the row shrinks them
+     all to fit on one line instead of letting each take the full row and
+     wrap below the last, which is what actually produced the cramped
+     2-per-row button grid on phones). Plain block children respect
+     width:100% and stack normally, one per line, with no flex math involved. */
   body:not(.mobile-ui-off) table.table-cards-mobile td:not([data-label]) {
-    justify-content: flex-start;
+    display: block;
     text-align: left;
   }
   /* A totals/footer row (tfoot) is a single running summary, not another
@@ -583,13 +591,21 @@ table.table.col-resize-active > tbody > tr > td {
    width once a table is in card mode on a phone, but stay as a normal small
    inline button on desktop/tablet - NOT Bootstrap's .w-100, which applies at
    every width and breaks an action cell that has more than one button
-   (they'd each claim 100% and collide/overflow on a normal desktop table). */
+   (they'd each claim 100% and collide/overflow on a normal desktop table).
+   Selector includes "main.content" (matching the touch-target rule above)
+   so its specificity actually wins - a plain "body:not(.mobile-ui-off)
+   .mobile-btn-full" selector is LOWER specificity than that rule's
+   "body:not(.mobile-ui-off) main.content .btn" and was silently losing to
+   its display:inline-flex, leaving every button here sized to its own
+   content instead of full-width - that's what caused multiple action
+   buttons (e.g. Customers' History/Ledger/By Product/Edit) to wrap into a
+   cramped 2-per-row grid on phones instead of stacking one per row. */
 @media (max-width: 767.98px) {
-  body:not(.mobile-ui-off) .mobile-btn-full {
+  body:not(.mobile-ui-off) main.content .mobile-btn-full {
     display: block;
     width: 100%;
   }
-  body:not(.mobile-ui-off) .mobile-btn-full + .mobile-btn-full {
+  body:not(.mobile-ui-off) main.content .mobile-btn-full + .mobile-btn-full {
     margin-top: .35rem;
   }
 }
