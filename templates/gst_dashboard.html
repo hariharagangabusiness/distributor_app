@@ -39,15 +39,15 @@
       · <a href="{{ url_for('settings_form') }}">change</a></span>
   </div>
   <div class="table-responsive">
-  <table class="table mb-0">
+  <table class="table mb-0 table-cards-mobile">
     <thead><tr><th>Return</th><th>Period</th><th>Due Date</th><th>Notes</th></tr></thead>
     <tbody>
       {% for d in due_items %}
       <tr class="{% if d.due_date < today %}text-muted{% elif (d.due_date - today).days <= 3 %}table-danger{% elif (d.due_date - today).days <= 7 %}table-warning{% endif %}">
-        <td>{{ d.return_type }}</td>
-        <td>{{ d.period }}</td>
-        <td>{{ d.due_date.strftime('%d-%m-%Y') }}{% if d.due_date < today %} <span class="badge text-bg-secondary">past</span>{% endif %}</td>
-        <td class="small text-muted">{{ d.description }}</td>
+        <td data-label="Return">{{ d.return_type }}</td>
+        <td data-label="Period">{{ d.period }}</td>
+        <td data-label="Due Date">{{ d.due_date.strftime('%d-%m-%Y') }}{% if d.due_date < today %} <span class="badge text-bg-secondary">past</span>{% endif %}</td>
+        <td data-label="Notes" class="small text-muted">{{ d.description }}</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -67,14 +67,14 @@
 <div class="card">
   <div class="card-header">Recent GSTR-2B Uploads</div>
   <div class="table-responsive">
-  <table class="table mb-0">
+  <table class="table mb-0 table-cards-mobile">
     <thead><tr><th>Period</th><th>File</th><th>Status</th><th>ITC Total</th></tr></thead>
     <tbody>
       {% for u in recent_uploads %}
       <tr>
-        <td>{{ u.Period }}</td><td>{{ u.FileName }}</td>
-        <td>{% if u.ParseStatus == 'Parsed' %}<span class="badge text-bg-success">Parsed</span>{% else %}<span class="badge text-bg-danger">Failed</span>{% endif %}</td>
-        <td>{{ (u.ITCIntegrated + u.ITCCentral + u.ITCState)|inr(2) }}</td>
+        <td data-label="Period">{{ u.Period }}</td><td data-label="File">{{ u.FileName }}</td>
+        <td data-label="Status">{% if u.ParseStatus == 'Parsed' %}<span class="badge text-bg-success">Parsed</span>{% else %}<span class="badge text-bg-danger">Failed</span>{% endif %}</td>
+        <td data-label="ITC Total">{{ (u.ITCIntegrated + u.ITCCentral + u.ITCState)|inr(2) }}</td>
       </tr>
       {% endfor %}
     </tbody>

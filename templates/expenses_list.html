@@ -12,14 +12,14 @@
 </div>
 <div class="card">
   <div class="table-responsive">
-  <table class="table table-hover mb-0 align-middle" id="tbl-expense">
+  <table class="table table-hover mb-0 align-middle table-cards-mobile" id="tbl-expense">
     <thead><tr><th data-col="date">Date</th><th data-col="category">Category</th><th data-col="vehicle">Vehicle</th>
       <th data-col="paid_to">Paid To</th><th data-col="mode">Mode</th><th data-col="amount">Amount</th><th></th></tr></thead>
     <tbody>
       {% for e in expenses %}
       <tr>
-        <td data-col="date">{{ e.ExpenseDate|dmy }}</td><td data-col="category">{{ e.Category }}</td><td data-col="vehicle">{{ e.RegistrationNumber or '-' }}</td>
-        <td data-col="paid_to">{{ e.PaidTo or '-' }}</td><td data-col="mode">{{ e.PaymentMode or '-' }}</td><td data-col="amount">{{ (e.Amount)|inr(2) }}</td>
+        <td data-col="date" data-label="Date">{{ e.ExpenseDate|dmy }}</td><td data-col="category" data-label="Category">{{ e.Category }}</td><td data-col="vehicle" data-label="Vehicle">{{ e.RegistrationNumber or '-' }}</td>
+        <td data-col="paid_to" data-label="Paid To">{{ e.PaidTo or '-' }}</td><td data-col="mode" data-label="Mode">{{ e.PaymentMode or '-' }}</td><td data-col="amount" data-label="Amount">{{ (e.Amount)|inr(2) }}</td>
         <td class="text-end"><a href="{{ url_for('expense_form', eid=e.ExpenseID) }}" class="btn btn-sm btn-outline-secondary">Edit</a></td>
       </tr>
       {% else %}<tr><td colspan="7" class="text-center text-muted py-4">No expenses recorded yet.</td></tr>{% endfor %}
@@ -33,5 +33,5 @@
 window.LIST_COLUMNS_TABLE_ID = 'tbl-expense';
 window.LIST_COLUMNS_PREFS = {{ columns|tojson }};
 </script>
-<script src="{{ url_for('static', filename='js/list-columns.js') }}"></script>
+<script src="{{ url_for('static', filename='js/list-columns.js') }}" defer></script>
 {% endblock %}

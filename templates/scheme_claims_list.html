@@ -40,22 +40,22 @@
 
 <div class="card">
   <div class="table-responsive">
-  <table class="table table-hover mb-0 align-middle no-sort-table">
+  <table class="table table-hover mb-0 align-middle no-sort-table table-cards-mobile">
     <thead><tr><th>Scheme</th><th>Date</th><th>Applicable Products</th><th>Amount</th><th>Status</th><th>Received</th><th></th></tr></thead>
     <tbody>
       {% for c in claims %}
       <tr>
-        <td>{{ c.SchemeName }}{% if c.Description %}<br><span class="text-muted small">{{ c.Description }}</span>{% endif %}</td>
-        <td>{{ c.ClaimDate|dmy }}</td>
-        <td>{{ c.ApplicableProducts or '-' }}</td>
-        <td>{{ (c.ClaimAmount)|inr(2) }}</td>
-        <td>
+        <td data-label="Scheme">{{ c.SchemeName }}{% if c.Description %}<br><span class="text-muted small">{{ c.Description }}</span>{% endif %}</td>
+        <td data-label="Date">{{ c.ClaimDate|dmy }}</td>
+        <td data-label="Applicable Products">{{ c.ApplicableProducts or '-' }}</td>
+        <td data-label="Amount">{{ (c.ClaimAmount)|inr(2) }}</td>
+        <td data-label="Status">
           {% if c.Status=='Pending' %}<span class="badge badge-low">Pending</span>
           {% elif c.Status=='Claimed' %}<span class="badge badge-over">Claimed</span>
           {% elif c.Status=='Received' %}<span class="badge badge-ok">Received</span>
           {% else %}<span class="badge badge-ok">Completed</span>{% endif %}
         </td>
-        <td>{% if c.ReceivedAmount is not none %}{{ (c.ReceivedAmount)|inr(2) }}{% else %}-{% endif %}</td>
+        <td data-label="Received">{% if c.ReceivedAmount is not none %}{{ (c.ReceivedAmount)|inr(2) }}{% else %}-{% endif %}</td>
         <td class="text-end">
           <a href="{{ url_for('scheme_claim_form', claim_id=c.ClaimID) }}" class="btn btn-sm btn-outline-secondary">Edit</a>
           {% if c.Status=='Pending' %}

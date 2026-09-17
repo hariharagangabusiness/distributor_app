@@ -21,20 +21,20 @@
 <div class="card">
   <div class="card-header">Customer-wise Due Summary ({{ customer_summary|length }}) <span class="text-muted small fw-normal">— click a column heading to sort</span></div>
   <div class="table-responsive">
-  <table class="table mb-0 sortable-table" id="ar-summary-table">
+  <table class="table mb-0 sortable-table table-cards-mobile" id="ar-summary-table">
     <thead><tr><th>Customer</th><th>Phone</th><th>Zone</th><th># Invoices</th><th>Taxable Value</th><th>Invoiced (incl. GST)</th><th>Received</th><th>Due</th><th data-sort-type="date">Oldest Due Since</th></tr></thead>
     <tbody>
       {% for c in customer_summary %}
       <tr>
-        <td>{{ c.CustomerName }}</td>
-        <td>{{ c.Phone or '-' }}</td>
-        <td>{{ c.Zone or '-' }}</td>
-        <td>{{ c.invoice_count }}</td>
-        <td>{{ (c.taxable)|inr(2) }}</td>
-        <td>{{ (c.invoiced)|inr(2) }}</td>
-        <td>{{ (c.received)|inr(2) }}</td>
-        <td class="text-danger fw-bold">{{ (c.due)|inr(2) }}</td>
-        <td>{{ c.oldest_due_date|dmy if c.oldest_due_date else '-' }}</td>
+        <td data-label="Customer">{{ c.CustomerName }}</td>
+        <td data-label="Phone">{{ c.Phone or '-' }}</td>
+        <td data-label="Zone">{{ c.Zone or '-' }}</td>
+        <td data-label="# Invoices">{{ c.invoice_count }}</td>
+        <td data-label="Taxable Value">{{ (c.taxable)|inr(2) }}</td>
+        <td data-label="Invoiced (incl. GST)">{{ (c.invoiced)|inr(2) }}</td>
+        <td data-label="Received">{{ (c.received)|inr(2) }}</td>
+        <td data-label="Due" class="text-danger fw-bold">{{ (c.due)|inr(2) }}</td>
+        <td data-label="Oldest Due Since">{{ c.oldest_due_date|dmy if c.oldest_due_date else '-' }}</td>
       </tr>
       {% else %}<tr><td colspan="9" class="text-center text-muted py-4">No outstanding dues — everything's collected.</td></tr>{% endfor %}
     </tbody>
@@ -47,18 +47,18 @@
 <div class="card mb-3">
   <div class="card-header">Aging Buckets — by days overdue from Payment Due Date (or Sale Date if none was set) <span class="text-muted small fw-normal">— click a column heading to sort</span></div>
   <div class="table-responsive">
-  <table class="table mb-0 sortable-table">
+  <table class="table mb-0 sortable-table table-cards-mobile">
     <thead><tr><th>Customer</th><th>Zone</th><th>0-30 days</th><th>31-60 days</th><th>61-90 days</th><th>90+ days</th><th>Total Due</th></tr></thead>
     <tbody>
       {% for a in aging_rows %}
       <tr>
-        <td>{{ a.CustomerName }}</td>
-        <td>{{ a.Zone or '-' }}</td>
-        <td>{{ (a.b0_30)|inr(2) }}</td>
-        <td class="{% if a.b31_60 %}text-warning{% endif %}">{{ (a.b31_60)|inr(2) }}</td>
-        <td class="{% if a.b61_90 %}text-warning fw-bold{% endif %}">{{ (a.b61_90)|inr(2) }}</td>
-        <td class="{% if a.b90_plus %}text-danger fw-bold{% endif %}">{{ (a.b90_plus)|inr(2) }}</td>
-        <td class="fw-bold">{{ (a.total)|inr(2) }}</td>
+        <td data-label="Customer">{{ a.CustomerName }}</td>
+        <td data-label="Zone">{{ a.Zone or '-' }}</td>
+        <td data-label="0-30 days">{{ (a.b0_30)|inr(2) }}</td>
+        <td data-label="31-60 days" class="{% if a.b31_60 %}text-warning{% endif %}">{{ (a.b31_60)|inr(2) }}</td>
+        <td data-label="61-90 days" class="{% if a.b61_90 %}text-warning fw-bold{% endif %}">{{ (a.b61_90)|inr(2) }}</td>
+        <td data-label="90+ days" class="{% if a.b90_plus %}text-danger fw-bold{% endif %}">{{ (a.b90_plus)|inr(2) }}</td>
+        <td data-label="Total Due" class="fw-bold">{{ (a.total)|inr(2) }}</td>
       </tr>
       {% else %}<tr><td colspan="7" class="text-center text-muted py-4">No outstanding dues.</td></tr>{% endfor %}
     </tbody>
@@ -83,22 +83,22 @@
 <div class="card">
   <div class="card-header">Invoice-wise Due Detail ({{ invoice_rows|length }}) <span class="text-muted small fw-normal">— click a column heading to sort</span></div>
   <div class="table-responsive">
-  <table class="table mb-0 sortable-table">
+  <table class="table mb-0 sortable-table table-cards-mobile">
     <thead><tr><th>Invoice #</th><th>Customer</th><th data-sort-type="date">Sale Date</th><th data-sort-type="date">Due Date</th><th>Age (days)</th><th>Status</th><th>Taxable Value</th><th>Total (incl. GST)</th><th>Received</th><th>Due</th><th class="no-sort"></th></tr></thead>
     <tbody>
       {% for r in invoice_rows %}
       <tr>
-        <td>{{ r.InvoiceNumber }}</td>
-        <td>{{ r.CustomerName }}</td>
-        <td>{{ r.SaleDate|dmy }}</td>
-        <td>{{ r.PaymentDueDate|dmy if r.PaymentDueDate else '-' }}</td>
-        <td class="{% if r.AgeDays > 90 %}text-danger fw-bold{% elif r.AgeDays > 30 %}text-warning{% endif %}">{{ r.AgeDays }}</td>
-        <td><span class="badge {% if r.PaymentStatus=='Partial' %}text-bg-warning{% else %}text-bg-danger{% endif %}">{{ r.PaymentStatus }}</span></td>
-        <td>{{ (r.TaxableAmount)|inr(2) }}</td>
-        <td>{{ (r.TotalAmount)|inr(2) }}</td>
-        <td>{{ (r.AmountReceived)|inr(2) }}</td>
-        <td class="text-danger fw-bold">{{ (r.Due)|inr(2) }}</td>
-        <td><a href="{{ url_for('sale_view', sid=r.SaleID) }}" class="btn btn-sm btn-outline-secondary">View</a></td>
+        <td data-label="Invoice #">{{ r.InvoiceNumber }}</td>
+        <td data-label="Customer">{{ r.CustomerName }}</td>
+        <td data-label="Sale Date">{{ r.SaleDate|dmy }}</td>
+        <td data-label="Due Date">{{ r.PaymentDueDate|dmy if r.PaymentDueDate else '-' }}</td>
+        <td data-label="Age (days)" class="{% if r.AgeDays > 90 %}text-danger fw-bold{% elif r.AgeDays > 30 %}text-warning{% endif %}">{{ r.AgeDays }}</td>
+        <td data-label="Status"><span class="badge {% if r.PaymentStatus=='Partial' %}text-bg-warning{% else %}text-bg-danger{% endif %}">{{ r.PaymentStatus }}</span></td>
+        <td data-label="Taxable Value">{{ (r.TaxableAmount)|inr(2) }}</td>
+        <td data-label="Total (incl. GST)">{{ (r.TotalAmount)|inr(2) }}</td>
+        <td data-label="Received">{{ (r.AmountReceived)|inr(2) }}</td>
+        <td data-label="Due" class="text-danger fw-bold">{{ (r.Due)|inr(2) }}</td>
+        <td><a href="{{ url_for('sale_view', sid=r.SaleID) }}" class="btn btn-sm btn-outline-secondary w-100">View</a></td>
       </tr>
       {% else %}<tr><td colspan="11" class="text-center text-muted py-4">No unpaid or partially-paid invoices.</td></tr>{% endfor %}
     </tbody>
@@ -115,17 +115,17 @@
     <span class="text-danger fw-bold">{{ (g.due)|inr(2) }}</span>
   </div>
   <div class="table-responsive">
-  <table class="table mb-0 sortable-table">
+  <table class="table mb-0 sortable-table table-cards-mobile">
     <thead><tr><th>Customer</th><th>Phone</th><th># Invoices</th><th>Taxable Value</th><th>Received</th><th>Due</th></tr></thead>
     <tbody>
       {% for c in g.customers %}
       <tr>
-        <td>{{ c.CustomerName }}</td>
-        <td>{{ c.Phone or '-' }}</td>
-        <td>{{ c.invoice_count }}</td>
-        <td>{{ (c.taxable)|inr(2) }}</td>
-        <td>{{ (c.received)|inr(2) }}</td>
-        <td class="text-danger fw-bold">{{ (c.due)|inr(2) }}</td>
+        <td data-label="Customer">{{ c.CustomerName }}</td>
+        <td data-label="Phone">{{ c.Phone or '-' }}</td>
+        <td data-label="# Invoices">{{ c.invoice_count }}</td>
+        <td data-label="Taxable Value">{{ (c.taxable)|inr(2) }}</td>
+        <td data-label="Received">{{ (c.received)|inr(2) }}</td>
+        <td data-label="Due" class="text-danger fw-bold">{{ (c.due)|inr(2) }}</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -141,11 +141,11 @@
 <div class="card">
   <div class="card-header">Due by Salesperson <span class="text-muted small fw-normal">— click a column heading to sort</span></div>
   <div class="table-responsive">
-  <table class="table mb-0 sortable-table">
+  <table class="table mb-0 sortable-table table-cards-mobile">
     <thead><tr><th>Salesperson</th><th># Invoices</th><th>Due</th></tr></thead>
     <tbody>
       {% for s in salesperson_rows %}
-      <tr><td>{{ s.label }}</td><td>{{ s.invoice_count }}</td><td class="text-danger fw-bold">{{ (s.due)|inr(2) }}</td></tr>
+      <tr><td data-label="Salesperson">{{ s.label }}</td><td data-label="# Invoices">{{ s.invoice_count }}</td><td data-label="Due" class="text-danger fw-bold">{{ (s.due)|inr(2) }}</td></tr>
       {% else %}<tr><td colspan="3" class="text-center text-muted py-4">No outstanding dues.</td></tr>{% endfor %}
     </tbody>
   </table>

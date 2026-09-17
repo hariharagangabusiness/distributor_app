@@ -457,3 +457,105 @@ table.table.col-resize-active > tbody > tr > td {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ============ Mobile card-view tables (no horizontal scroll) ============
+   Opt-in via class="table-cards-mobile" on a <table>, with each <td> given
+   data-label="Column Name" matching its <th>. Below the phone breakpoint,
+   the table stops behaving like a table (no more scrolling sideways to read
+   a row) and each row instead renders as a small stacked card: the header
+   row is visually hidden and every cell shows its own column name as a
+   label above the value. Desktop/tablet layout (>767px) is untouched - this
+   only kicks in once .table-responsive would otherwise force a sideways
+   scroll on a phone. First rolled out to the Finance module (Accounts
+   Receivable, Expenses, GST, P&L, Scheme Claims); safe to reuse anywhere
+   else that lists rows of label/value pairs. */
+@media (max-width: 767.98px) {
+  table.table-cards-mobile thead { display: none; }
+  table.table-cards-mobile, table.table-cards-mobile tbody, table.table-cards-mobile tr, table.table-cards-mobile td {
+    display: block;
+    width: 100%;
+  }
+  table.table-cards-mobile tbody tr {
+    border: 1px solid var(--border);
+    border-radius: .5rem;
+    margin-bottom: .6rem;
+    padding: .5rem .75rem;
+    background: var(--surface);
+    position: static !important; /* undo the sticky-first-column rule above */
+    box-shadow: none !important;
+  }
+  table.table-cards-mobile tbody tr:last-child { margin-bottom: 0; }
+  table.table-cards-mobile td {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: .75rem;
+    text-align: right;
+    padding: .3rem 0;
+    border: none !important;
+    position: static !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    white-space: normal;
+  }
+  table.table-cards-mobile td[data-label]::before {
+    content: attr(data-label);
+    font-weight: 600;
+    color: var(--text-muted);
+    text-align: left;
+    flex: 0 0 auto;
+    margin-right: .5rem;
+  }
+  /* A cell with no data-label (e.g. an action-button cell, or a colspan
+     "no rows" message) - shown plainly, full width, no label row. */
+  table.table-cards-mobile td:not([data-label]) {
+    justify-content: flex-start;
+    text-align: left;
+  }
+  /* A totals/footer row (tfoot) is a single running summary, not another
+     record - keep it as a compact table rather than card-ifying it too. */
+  table.table-cards-mobile tfoot { display: table; width: 100%; }
+  table.table-cards-mobile tfoot tr { display: table-row; }
+  table.table-cards-mobile tfoot td {
+    display: table-cell;
+    text-align: inherit;
+    padding: .45rem .55rem;
+  }
+  table.table-cards-mobile tfoot td::before { content: none; }
+}
+
+/* ============ Touch targets (Finance module) ============
+   Buttons and nav-style links in the Finance pages (data-section="finance"
+   on <main>, set by base.html for every Finance-module URL) get a taller
+   minimum tap height on phones/small tablets, per the ~44-48px accessible
+   touch-target guideline - Bootstrap's stock .btn-sm/.nav-link are noticeably
+   smaller than that. Scoped to the Finance module for now (Accounts
+   Receivable, Expenses, GST Filing, P&L, Scheme Claims); the same rule can
+   be extended to other modules once rolled out there too. */
+@media (max-width: 767.98px) {
+  main.content[data-section="finance"] .btn,
+  main.content[data-section="finance"] .page-body .nav-tabs .nav-link {
+    min-height: 44px;
+    padding-top: .55rem;
+    padding-bottom: .55rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  main.content[data-section="finance"] .page-body .nav-tabs .nav-link {
+    display: flex;
+  }
+  /* Buttons packed edge-to-edge in an action cell (Edit / Mark Claimed /
+     delete icon on Scheme Claims, etc.) need breathing room between tap
+     targets, not just taller ones. */
+  main.content[data-section="finance"] td .btn + .btn,
+  main.content[data-section="finance"] td form + .btn,
+  main.content[data-section="finance"] td form + form {
+    margin-top: .35rem;
+  }
+  main.content[data-section="finance"] td .d-inline,
+  main.content[data-section="finance"] td .d-inline + .d-inline {
+    display: inline-block !important;
+    margin: .15rem 0;
+  }
+}
