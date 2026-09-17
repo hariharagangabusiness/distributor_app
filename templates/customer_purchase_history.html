@@ -61,7 +61,7 @@
         <td data-label="Total (incl. GST)">{{ (s.TotalAmount)|inr(2) }}</td>
         <td data-label="Received">{{ (s.AmountReceived)|inr(2) }}</td>
         <td class="{% if s.Due > 0.005 %}text-danger fw-bold{% endif %}" data-label="Due">{{ (s.Due)|inr(2) }}</td>
-        <td><a href="{{ url_for('sale_view', sid=s.SaleID) }}" class="btn btn-sm btn-outline-secondary w-100" onclick="event.stopPropagation()">View</a></td>
+        <td><a href="{{ url_for('sale_view', sid=s.SaleID) }}" class="btn btn-sm btn-outline-secondary mobile-btn-full" onclick="event.stopPropagation()">View</a></td>
       </tr>
       <tr class="collapse" id="lines-{{ s.SaleID }}"><td colspan="9" class="bg-light">
         <table class="table table-sm mb-0">

@@ -24,7 +24,7 @@
         <td data-col="balance" data-label="Balance">{{ (a.BalanceRemaining)|inr(2) }}</td>
         <td data-col="status" data-label="Status">{% if a.Status=='Active' %}<span class="badge badge-over">Active</span>{% else %}<span class="badge badge-ok">Closed</span>{% endif %}</td>
         <td class="text-end">
-          <a href="{{ url_for('advance_view', aid=a.AdvanceID) }}" class="btn btn-sm btn-outline-secondary w-100">View</a>
+          <a href="{{ url_for('advance_view', aid=a.AdvanceID) }}" class="btn btn-sm btn-outline-secondary mobile-btn-full">View</a>
           {% if a.Status=='Active' %}
           <form method="post" action="{{ url_for('advance_close', aid=a.AdvanceID) }}" onsubmit="return confirm('Write off remaining balance and close this advance?');" class="d-inline">
             <button class="btn btn-sm btn-outline-secondary" type="submit">Close</button>

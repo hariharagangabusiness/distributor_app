@@ -59,10 +59,10 @@
           {% else %}<span class="badge badge-ok">OK</span>{% endif %}
         </td>
         <td class="text-end">
-          <a href="{{ url_for('inventory_adjust', pid=p.ProductID) }}" class="btn btn-sm btn-outline-secondary w-100">Adjust</a>
-          <a href="{{ url_for('inventory_form', pid=p.ProductID) }}" class="btn btn-sm btn-outline-secondary w-100">Edit</a>
+          <a href="{{ url_for('inventory_adjust', pid=p.ProductID) }}" class="btn btn-sm btn-outline-secondary mobile-btn-full">Adjust</a>
+          <a href="{{ url_for('inventory_form', pid=p.ProductID) }}" class="btn btn-sm btn-outline-secondary mobile-btn-full">Edit</a>
           {% if current_user and current_user.Role == 'Admin' %}
-          <a href="{{ url_for('inventory_reconciliation_detail', pid=p.ProductID) }}" class="btn btn-sm btn-outline-secondary w-100">Reconcile</a>
+          <a href="{{ url_for('inventory_reconciliation_detail', pid=p.ProductID) }}" class="btn btn-sm btn-outline-secondary mobile-btn-full">Reconcile</a>
           {% endif %}
         </td>
       </tr>

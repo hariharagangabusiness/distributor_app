@@ -27,7 +27,7 @@
         <td data-col="puc" data-label="PUC" class="{{ 'text-danger fw-bold' if v.PUCExpiry and v.PUCExpiry <= today }}">{{ v.PUCExpiry or '-' }}</td>
         <td data-col="fitness" data-label="Fitness" class="{{ 'text-danger fw-bold' if v.FitnessExpiry and v.FitnessExpiry <= today }}">{{ v.FitnessExpiry or '-' }}</td>
         <td data-col="status" data-label="Status">{{ v.Status }}</td>
-        <td class="text-end"><a href="{{ url_for('vehicle_form', vid=v.VehicleID) }}" class="btn btn-sm btn-outline-secondary w-100">Edit</a></td>
+        <td class="text-end"><a href="{{ url_for('vehicle_form', vid=v.VehicleID) }}" class="btn btn-sm btn-outline-secondary mobile-btn-full">Edit</a></td>
       </tr>
       {% else %}<tr><td colspan="11" class="text-center text-muted py-4">No vehicles yet.</td></tr>{% endfor %}
     </tbody>

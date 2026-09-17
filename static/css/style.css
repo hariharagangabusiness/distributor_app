@@ -578,3 +578,18 @@ table.table.col-resize-active > tbody > tr > td {
 .auto-collapse-header { cursor: pointer; }
 .auto-collapse-chevron { transition: transform .2s ease; margin-left: .5rem; }
 .auto-collapse-header[aria-expanded="false"] .auto-collapse-chevron { transform: rotate(-90deg); }
+
+/* A table action button (View/Edit/Adjust/...) that should fill the row
+   width once a table is in card mode on a phone, but stay as a normal small
+   inline button on desktop/tablet - NOT Bootstrap's .w-100, which applies at
+   every width and breaks an action cell that has more than one button
+   (they'd each claim 100% and collide/overflow on a normal desktop table). */
+@media (max-width: 767.98px) {
+  body:not(.mobile-ui-off) .mobile-btn-full {
+    display: block;
+    width: 100%;
+  }
+  body:not(.mobile-ui-off) .mobile-btn-full + .mobile-btn-full {
+    margin-top: .35rem;
+  }
+}

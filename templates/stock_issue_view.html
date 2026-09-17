@@ -173,7 +173,7 @@
         <td data-label="Bank/UPI ₹">{{ (cs.BankAmount or 0)|inr(2) }}</td>
         <td data-label="Discount ₹">{{ (cs.Discount or 0)|inr(2) }}</td>
         <td data-label="Total ₹">{{ (cs.LineTotal or 0)|inr(2) }}</td>
-        <td><a href="{{ url_for('sale_view', sid=cs.SaleID) }}" class="btn btn-sm btn-outline-secondary w-100">View</a></td>
+        <td><a href="{{ url_for('sale_view', sid=cs.SaleID) }}" class="btn btn-sm btn-outline-secondary mobile-btn-full">View</a></td>
       </tr>
       {% endfor %}
     </tbody>

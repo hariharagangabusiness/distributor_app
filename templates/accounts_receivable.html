@@ -98,7 +98,7 @@
         <td data-label="Total (incl. GST)">{{ (r.TotalAmount)|inr(2) }}</td>
         <td data-label="Received">{{ (r.AmountReceived)|inr(2) }}</td>
         <td data-label="Due" class="text-danger fw-bold">{{ (r.Due)|inr(2) }}</td>
-        <td><a href="{{ url_for('sale_view', sid=r.SaleID) }}" class="btn btn-sm btn-outline-secondary w-100">View</a></td>
+        <td><a href="{{ url_for('sale_view', sid=r.SaleID) }}" class="btn btn-sm btn-outline-secondary mobile-btn-full">View</a></td>
       </tr>
       {% else %}<tr><td colspan="11" class="text-center text-muted py-4">No unpaid or partially-paid invoices.</td></tr>{% endfor %}
     </tbody>

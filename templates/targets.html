@@ -151,9 +151,9 @@
         <td class="fw-bold {% if t.incentive_amount_full %}text-success{% endif %}" data-label="Incentive Earned">{{ (t.incentive_amount_full)|inr(2) }}</td>
         {% if is_admin %}
         <td class="text-nowrap">
-          <a href="{{ url_for('targets_view', year=year, month=month, employee_id=selected_employee_id, edit=t.TargetID) }}#target-form" class="btn btn-sm btn-outline-secondary w-100">Edit</a>
+          <a href="{{ url_for('targets_view', year=year, month=month, employee_id=selected_employee_id, edit=t.TargetID) }}#target-form" class="btn btn-sm btn-outline-secondary mobile-btn-full">Edit</a>
           <form method="post" action="{{ url_for('target_delete', target_id=t.TargetID) }}" class="d-inline" onsubmit="return confirm('Delete this target?');">
-            <button type="submit" class="btn btn-sm btn-outline-danger w-100">Del</button>
+            <button type="submit" class="btn btn-sm btn-outline-danger mobile-btn-full">Del</button>
           </form>
         </td>
         {% endif %}

@@ -19,7 +19,7 @@
   <div class="col-md-3 col-6"><div class="stat-card"><div class="stat-value text-warning">{{ (totals.scheme)|inr(0) }}</div><div class="stat-label">Scheme Claim (claimable from company)</div></div></div>
 </div>
 
-<div class="card mb-3">
+<div class="card mb-3" data-collapsible>
   <div class="card-header"><i class="bi bi-cash-coin text-danger"></i> Pending Dues from Salespeople ({{ due_issues|length }})</div>
   <div class="table-responsive">
   <table class="table mb-0 table-cards-mobile">
@@ -32,7 +32,7 @@
         <td data-label="Collected">{{ (i.CashCollected or 0)|inr(2) }}</td>
         <td data-label="Due" class="text-danger fw-bold">{{ (i.AmountDue or 0)|inr(2) }}</td>
         <td data-label="Status"><span class="badge {% if i.PaymentStatus=='Partial' %}text-bg-warning{% else %}text-bg-danger{% endif %}">{{ i.PaymentStatus }}</span></td>
-        <td><a href="{{ url_for('stock_issue_view', issue_id=i.IssueID) }}" class="btn btn-sm btn-outline-secondary w-100">View</a></td>
+        <td><a href="{{ url_for('stock_issue_view', issue_id=i.IssueID) }}" class="btn btn-sm btn-outline-secondary mobile-btn-full">View</a></td>
       </tr>
       {% else %}<tr><td colspan="7" class="text-center text-muted py-3">No pending dues in this period.</td></tr>{% endfor %}
     </tbody>
@@ -40,7 +40,7 @@
   </div>
 </div>
 
-<div class="card mb-3">
+<div class="card mb-3" data-collapsible>
   <div class="card-header"><i class="bi bi-receipt text-warning"></i> Pending Scheme Claims from Company ({{ claim_pending|length }})</div>
   <div class="table-responsive">
   <table class="table mb-0 table-cards-mobile">
@@ -51,7 +51,7 @@
         <td data-label="Date">{{ i.IssueDate|dmy }}</td><td data-label="Salesperson">{{ i.EmployeeName }}</td>
         <td data-label="Scheme Amount">{{ (i.SchemeAmount or 0)|inr(2) }}</td>
         <td data-label="Claim Status"><span class="badge {% if i.ClaimStatus=='Claimed' %}text-bg-warning{% else %}text-bg-secondary{% endif %}">{{ i.ClaimStatus }}</span></td>
-        <td><a href="{{ url_for('stock_issue_view', issue_id=i.IssueID) }}" class="btn btn-sm btn-outline-secondary w-100">View</a></td>
+        <td><a href="{{ url_for('stock_issue_view', issue_id=i.IssueID) }}" class="btn btn-sm btn-outline-secondary mobile-btn-full">View</a></td>
       </tr>
       {% else %}<tr><td colspan="5" class="text-center text-muted py-3">No pending scheme claims in this period.</td></tr>{% endfor %}
     </tbody>
@@ -59,7 +59,7 @@
   </div>
 </div>
 
-<div class="card">
+<div class="card" data-collapsible>
   <div class="card-header"><i class="bi bi-gift text-info"></i> Discount / Free-Scheme Line Detail ({{ free_lines|length }})</div>
   <div class="table-responsive">
   <table class="table mb-0 table-cards-mobile">
@@ -78,7 +78,7 @@
   </div>
 </div>
 
-<div class="card mt-3">
+<div class="card mt-3" data-collapsible>
   <div class="card-header"><i class="bi bi-calendar3 text-secondary"></i> Day-wise Cost vs Sales</div>
   <div class="card-body pb-0">
     <p class="text-muted small mb-0">Plain day-wise view: Cost = qty sold × each product's Cost Price, Sales =

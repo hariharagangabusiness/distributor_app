@@ -122,9 +122,9 @@
         </td>
         <td class="text-end">
           {% if r.issue_ids %}
-          <a href="{{ url_for('stock_issue_view', issue_id=r.issue_ids[0]) }}" class="btn btn-sm btn-outline-secondary w-100">Issue</a>
+          <a href="{{ url_for('stock_issue_view', issue_id=r.issue_ids[0]) }}" class="btn btn-sm btn-outline-secondary mobile-btn-full">Issue</a>
           {% endif %}
-          <a href="{{ url_for('sales_list', employee_id=r.employee.EmployeeID, date=date_str) }}" class="btn btn-sm btn-outline-secondary w-100">Sales</a>
+          <a href="{{ url_for('sales_list', employee_id=r.employee.EmployeeID, date=date_str) }}" class="btn btn-sm btn-outline-secondary mobile-btn-full">Sales</a>
         </td>
       </tr>
       {% else %}

@@ -86,7 +86,7 @@
           <td class="text-end" data-label="Qty">{{ (-r.QtyChange)|round(2) }}</td>
           <td data-label="Sale Status">{% if r.SaleID and not r.CustomerName %}<span class="badge text-bg-danger">Sale not found</span>
               {% else %}{{ r.SaleStatus or '-' }}{% endif %}</td>
-          <td>{% if r.SaleID %}<a href="{{ url_for('sale_view', sid=r.SaleID) }}" target="_blank" class="btn btn-sm btn-outline-secondary w-100">View Sale</a>{% endif %}</td>
+          <td>{% if r.SaleID %}<a href="{{ url_for('sale_view', sid=r.SaleID) }}" target="_blank" class="btn btn-sm btn-outline-secondary mobile-btn-full">View Sale</a>{% endif %}</td>
         </tr>
         {% endfor %}
       </tbody>

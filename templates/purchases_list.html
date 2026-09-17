@@ -26,7 +26,7 @@
             {% elif p.PaymentStatus=='Partial' %}<span class="badge badge-over">Partial</span>
             {% else %}<span class="badge badge-low">Unpaid</span>{% endif %}</td>
         <td data-col="total" data-label="Total">{{ (p.TotalAmount)|inr(2) }}</td>
-        <td class="text-end"><a href="{{ url_for('purchase_view', pid=p.PurchaseID) }}" class="btn btn-sm btn-outline-secondary w-100">View</a></td>
+        <td class="text-end"><a href="{{ url_for('purchase_view', pid=p.PurchaseID) }}" class="btn btn-sm btn-outline-secondary mobile-btn-full">View</a></td>
       </tr>
       {% else %}<tr><td colspan="8" class="text-center text-muted py-4">No purchases recorded yet.</td></tr>{% endfor %}
     </tbody>
