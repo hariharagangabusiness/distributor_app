@@ -5882,33 +5882,63 @@ def accounts_receivable():
     payment_rows = []
     payment_totals = {"count": 0, "cash": 0, "bank": 0, "total": 0}
     if view == "payments":
-        pay_where = ["1=1"]
-        pay_args = []
-        if pay_date_from:
-            pay_where.append("sp.PaymentDate >= ?")
-            pay_args.append(pay_date_from)
-        if pay_date_to:
-            pay_where.append("sp.PaymentDate <= ?")
-            pay_args.append(pay_date_to)
-        payment_rows = db.query(f"""
+        # Two sources feed this list, combined into one chronological feed:
+        #  1. SalePayments - every payment logged via the "Record Payment" button
+        #     (added in this app on 17 Sep 2026), dated when it was actually
+        #     collected/recorded.
+        #  2. Every Sale's own CashAmount/BankAmount - the lump-sum split entered
+        #     directly on the Sale form at save time (create_sale()/sale_edit() set
+        #     these to add up to whatever AmountReceived was typed in). This is the
+        #     ONLY record of anything collected before the Record Payment feature
+        #     existed, so without folding it in here, every sale recorded prior to
+        #     that date would be invisible on this tab even though the money was
+        #     genuinely received - shown dated to the Sale's own date, with a note
+        #     explaining it predates per-payment logging.
+        # A sale can legitimately have both: its original at-sale-time collection
+        # (source 2) plus a later top-up logged afterward via Record Payment
+        # (source 1) - both show up as their own separate dated rows.
+        entries = []
+        sale_payment_rows = db.query("""
             SELECT sp.PaymentID, sp.PaymentDate, sp.Amount, sp.PaymentMethod, sp.Notes,
                    s.SaleID, s.InvoiceNumber, c.CustomerName
             FROM SalePayments sp
             JOIN Sales s ON s.SaleID = sp.SaleID
             JOIN Customers c ON c.CustomerID = s.CustomerID
-            WHERE {' AND '.join(pay_where)}
-            ORDER BY sp.PaymentDate DESC, sp.PaymentID DESC
-        """, tuple(pay_args))
-        payment_rows = [dict(r) for r in payment_rows]
-        for r in payment_rows:
-            # "Cash" is its own column; every other method (Bank/UPI/Cheque/Other) is
-            # money that moved through a bank/digital rail rather than physical cash,
-            # so it's rolled into "Bank ₹" here - same cash-vs-everything-else split
-            # already used for Stock Issue collections elsewhere in the app.
-            if (r["PaymentMethod"] or "Cash") == "Cash":
-                r["CashPortion"], r["BankPortion"] = r["Amount"], 0
-            else:
-                r["CashPortion"], r["BankPortion"] = 0, r["Amount"]
+            WHERE s.Status <> 'Cancelled'
+        """)
+        for r in sale_payment_rows:
+            method = r["PaymentMethod"] or "Cash"
+            cash_portion = r["Amount"] if method == "Cash" else 0
+            bank_portion = 0 if method == "Cash" else r["Amount"]
+            entries.append({
+                "PaymentDate": r["PaymentDate"], "CustomerName": r["CustomerName"],
+                "InvoiceNumber": r["InvoiceNumber"], "SaleID": r["SaleID"], "PaymentMethod": method,
+                "Amount": r["Amount"], "CashPortion": cash_portion, "BankPortion": bank_portion,
+                "Notes": r["Notes"] or "", "sort2": r["PaymentID"],
+            })
+
+        baseline_rows = db.query("""
+            SELECT s.SaleID, s.InvoiceNumber, s.SaleDate, s.CashAmount, s.BankAmount, c.CustomerName
+            FROM Sales s JOIN Customers c ON c.CustomerID = s.CustomerID
+            WHERE s.Status <> 'Cancelled' AND (COALESCE(s.CashAmount,0) + COALESCE(s.BankAmount,0)) > 0.005
+        """)
+        for r in baseline_rows:
+            cash, bank = round(r["CashAmount"] or 0, 2), round(r["BankAmount"] or 0, 2)
+            method = "Mixed" if (cash > 0.005 and bank > 0.005) else ("Bank" if bank > 0.005 else "Cash")
+            entries.append({
+                "PaymentDate": r["SaleDate"], "CustomerName": r["CustomerName"],
+                "InvoiceNumber": r["InvoiceNumber"], "SaleID": r["SaleID"], "PaymentMethod": method,
+                "Amount": round(cash + bank, 2), "CashPortion": cash, "BankPortion": bank,
+                "Notes": "Recorded with the sale (before per-payment logging)", "sort2": -1,
+            })
+
+        if pay_date_from:
+            entries = [e for e in entries if e["PaymentDate"] >= pay_date_from]
+        if pay_date_to:
+            entries = [e for e in entries if e["PaymentDate"] <= pay_date_to]
+        entries.sort(key=lambda e: (e["PaymentDate"], e["SaleID"], e["sort2"]), reverse=True)
+
+        payment_rows = entries
         payment_totals = {
             "count": len(payment_rows),
             "cash": round(sum(r["CashPortion"] for r in payment_rows), 2),
