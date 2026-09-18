@@ -15,6 +15,7 @@
   <li class="nav-item"><a class="nav-link {% if view=='invoices' %}active{% endif %}" href="{{ url_for('accounts_receivable', view='invoices') }}">Invoice-wise</a></li>
   <li class="nav-item"><a class="nav-link {% if view=='zone' %}active{% endif %}" href="{{ url_for('accounts_receivable', view='zone') }}">Zone-wise</a></li>
   <li class="nav-item"><a class="nav-link {% if view=='salesperson' %}active{% endif %}" href="{{ url_for('accounts_receivable', view='salesperson') }}">Salesperson-wise</a></li>
+  <li class="nav-item"><a class="nav-link {% if view=='payments' %}active{% endif %}" href="{{ url_for('accounts_receivable', view='payments') }}">Payments Recorded</a></li>
 </ul>
 
 {% if view == 'summary' %}
@@ -164,6 +165,54 @@
       {% for s in salesperson_rows %}
       <tr><td data-label="Salesperson">{{ s.label }}</td><td data-label="# Invoices">{{ s.invoice_count }}</td><td data-label="Due" class="text-danger fw-bold">{{ (s.due)|inr(2) }}</td></tr>
       {% else %}<tr><td colspan="3" class="text-center text-muted py-4">No outstanding dues.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endif %}
+
+{% if view == 'payments' %}
+<div class="card mb-3"><div class="card-body">
+  <form method="get" class="row g-3 align-items-end">
+    <input type="hidden" name="view" value="payments">
+    <div class="col-md-3"><label class="form-label">From</label>
+      <input type="date" name="from" class="form-control" value="{{ pay_date_from }}"></div>
+    <div class="col-md-3"><label class="form-label">To</label>
+      <input type="date" name="to" class="form-control" value="{{ pay_date_to }}"></div>
+    <div class="col-md-2"><button type="submit" class="btn btn-brand">Apply</button></div>
+    {% if pay_date_from or pay_date_to %}
+    <div class="col-md-2"><a href="{{ url_for('accounts_receivable', view='payments') }}" class="btn btn-outline-secondary">Clear</a></div>
+    {% endif %}
+  </form>
+</div></div>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-3 col-6"><div class="stat-card"><div class="stat-value">{{ payment_totals.count }}</div><div class="stat-label">Payments Recorded</div></div></div>
+  <div class="col-md-3 col-6"><div class="stat-card"><div class="stat-value">{{ (payment_totals.cash)|inr(0) }}</div><div class="stat-label">Cash</div></div></div>
+  <div class="col-md-3 col-6"><div class="stat-card"><div class="stat-value">{{ (payment_totals.bank)|inr(0) }}</div><div class="stat-label">Bank / UPI / Cheque / Other</div></div></div>
+  <div class="col-md-3 col-6"><div class="stat-card"><div class="stat-value">{{ (payment_totals.total)|inr(0) }}</div><div class="stat-label">Total Collected</div></div></div>
+</div>
+
+<div class="card">
+  <div class="card-header">Payments Recorded ({{ payment_rows|length }}) <span class="text-muted small fw-normal">— click a column heading to sort</span></div>
+  <div class="table-responsive">
+  <table class="table mb-0 sortable-table table-cards-mobile">
+    <thead><tr><th data-sort-type="date">Date Recorded</th><th>Customer</th><th>Invoice #</th><th>Method</th>
+      <th>Cash ₹</th><th>Bank ₹</th><th>Amount</th><th>Notes</th><th class="no-sort"></th></tr></thead>
+    <tbody>
+      {% for p in payment_rows %}
+      <tr>
+        <td data-label="Date Recorded">{{ p.PaymentDate|dmy }}</td>
+        <td data-label="Customer">{{ p.CustomerName }}</td>
+        <td data-label="Invoice #">{{ p.InvoiceNumber }}</td>
+        <td data-label="Method"><span class="badge {% if p.PaymentMethod=='Cash' %}text-bg-success{% else %}text-bg-info{% endif %}">{{ p.PaymentMethod or 'Cash' }}</span></td>
+        <td data-label="Cash ₹">{{ (p.CashPortion)|inr(2) if p.CashPortion else '-' }}</td>
+        <td data-label="Bank ₹">{{ (p.BankPortion)|inr(2) if p.BankPortion else '-' }}</td>
+        <td data-label="Amount" class="fw-bold">{{ (p.Amount)|inr(2) }}</td>
+        <td data-label="Notes" class="text-muted small">{{ p.Notes or '' }}</td>
+        <td><a href="{{ url_for('sale_view', sid=p.SaleID) }}" class="btn btn-sm btn-outline-secondary mobile-btn-full">View</a></td>
+      </tr>
+      {% else %}<tr><td colspan="9" class="text-center text-muted py-4">No payments recorded {% if pay_date_from or pay_date_to %}in this period{% endif %}.</td></tr>{% endfor %}
     </tbody>
   </table>
   </div>

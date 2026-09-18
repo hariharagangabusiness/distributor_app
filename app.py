@@ -5876,6 +5876,45 @@ def accounts_receivable():
     keeps as revenue owed to it, so it doesn't belong in what's chased as "due" here."""
     view = request.args.get("view", "summary")
     today_iso = date.today().isoformat()
+    pay_date_from = (request.args.get("from") or "").strip()
+    pay_date_to = (request.args.get("to") or "").strip()
+
+    payment_rows = []
+    payment_totals = {"count": 0, "cash": 0, "bank": 0, "total": 0}
+    if view == "payments":
+        pay_where = ["1=1"]
+        pay_args = []
+        if pay_date_from:
+            pay_where.append("sp.PaymentDate >= ?")
+            pay_args.append(pay_date_from)
+        if pay_date_to:
+            pay_where.append("sp.PaymentDate <= ?")
+            pay_args.append(pay_date_to)
+        payment_rows = db.query(f"""
+            SELECT sp.PaymentID, sp.PaymentDate, sp.Amount, sp.PaymentMethod, sp.Notes,
+                   s.SaleID, s.InvoiceNumber, c.CustomerName
+            FROM SalePayments sp
+            JOIN Sales s ON s.SaleID = sp.SaleID
+            JOIN Customers c ON c.CustomerID = s.CustomerID
+            WHERE {' AND '.join(pay_where)}
+            ORDER BY sp.PaymentDate DESC, sp.PaymentID DESC
+        """, tuple(pay_args))
+        payment_rows = [dict(r) for r in payment_rows]
+        for r in payment_rows:
+            # "Cash" is its own column; every other method (Bank/UPI/Cheque/Other) is
+            # money that moved through a bank/digital rail rather than physical cash,
+            # so it's rolled into "Bank ₹" here - same cash-vs-everything-else split
+            # already used for Stock Issue collections elsewhere in the app.
+            if (r["PaymentMethod"] or "Cash") == "Cash":
+                r["CashPortion"], r["BankPortion"] = r["Amount"], 0
+            else:
+                r["CashPortion"], r["BankPortion"] = 0, r["Amount"]
+        payment_totals = {
+            "count": len(payment_rows),
+            "cash": round(sum(r["CashPortion"] for r in payment_rows), 2),
+            "bank": round(sum(r["BankPortion"] for r in payment_rows), 2),
+            "total": round(sum(r["Amount"] for r in payment_rows), 2),
+        }
 
     base_rows = db.query("""
         SELECT s.SaleID, s.InvoiceNumber, s.SaleDate, s.PaymentDueDate, s.PaymentStatus,
@@ -5983,7 +6022,9 @@ def accounts_receivable():
                             total_due=total_due, customer_count=customer_count,
                             customer_summary=customer_summary, aging_rows=aging_rows,
                             aging_totals=aging_totals, invoice_rows=invoice_rows,
-                            zone_wise=zone_wise, salesperson_rows=salesperson_rows)
+                            zone_wise=zone_wise, salesperson_rows=salesperson_rows,
+                            payment_rows=payment_rows, payment_totals=payment_totals,
+                            pay_date_from=pay_date_from, pay_date_to=pay_date_to)
 
 
 @app.route("/reports/pnl")
