@@ -1282,7 +1282,7 @@ MODULE_COLUMNS = {
                  ("total", "Total")],
     "Sale": [("invoice_number", "Invoice #"), ("customer", "Customer"), ("date", "Date"),
              ("status", "Status"), ("payment", "Payment"), ("due_date", "Due Date"), ("total", "Taxable Amt"),
-             ("balance", "Balance"), ("salesperson", "Salesperson")],
+             ("balance", "Balance"), ("salesperson", "Salesperson"), ("cash", "Cash ₹"), ("bank", "Bank ₹")],
     "Expense": [("date", "Date"), ("category", "Category"), ("vehicle", "Vehicle"),
                 ("paid_to", "Paid To"), ("mode", "Mode"), ("amount", "Amount")],
     "Vehicle": [("reg_number", "Reg. No"), ("type", "Type"), ("make_model", "Make/Model"),

@@ -108,8 +108,17 @@
       // checkboxes/order numbers, etc.) hold live <input>/<select> state that
       // a text-based sort can't see and reordering rows on click would only
       // confuse someone trying to fill in a form - skip those automatically.
+      // An input/select tucked inside a hidden tr.collapse detail row (e.g.
+      // Accounts Receivable's per-invoice "Record Payment" form) doesn't
+      // count - it's not a persistent editable row alongside the sortable
+      // data, just an occasionally-opened action panel, so it shouldn't
+      // disable sorting for the whole table.
       var body = table.querySelector('tbody');
-      if (body && body.querySelector('input, select, textarea')) return;
+      var hasLiveDataEntry = body && Array.prototype.some.call(
+        body.querySelectorAll('input, select, textarea'),
+        function (el) { return !el.closest('tr.collapse'); }
+      );
+      if (hasLiveDataEntry) return;
       wireTable(table);
     });
   });
