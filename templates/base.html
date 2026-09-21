@@ -402,6 +402,7 @@
 {% block scripts %}{% endblock %}
 <script src="{{ url_for('static', filename='js/table-sort.js') }}" defer></script>
 <script src="{{ url_for('static', filename='js/column-resize.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/list-view-toggle.js') }}" defer></script>
 {% if current_user and current_user.Role in ('Staff', 'Supervisor', 'Manager') %}
 <script>
 window.LOCATION_TRACKING_ENABLED = true;
