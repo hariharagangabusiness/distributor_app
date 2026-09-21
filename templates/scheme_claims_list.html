@@ -45,11 +45,11 @@
     <tbody>
       {% for c in claims %}
       <tr>
-        <td data-label="Scheme">{{ c.SchemeName }}{% if c.Description %}<br><span class="text-muted small">{{ c.Description }}</span>{% endif %}</td>
+        <td data-label="Scheme" data-key-field="primary">{{ c.SchemeName }}{% if c.Description %}<br><span class="text-muted small">{{ c.Description }}</span>{% endif %}</td>
         <td data-label="Date">{{ c.ClaimDate|dmy }}</td>
         <td data-label="Applicable Products">{{ c.ApplicableProducts or '-' }}</td>
-        <td data-label="Amount">{{ (c.ClaimAmount)|inr(2) }}</td>
-        <td data-label="Status">
+        <td data-label="Amount" data-key-field="secondary">{{ (c.ClaimAmount)|inr(2) }}</td>
+        <td data-label="Status" data-key-field="meta">
           {% if c.Status=='Pending' %}<span class="badge badge-low">Pending</span>
           {% elif c.Status=='Claimed' %}<span class="badge badge-over">Claimed</span>
           {% elif c.Status=='Received' %}<span class="badge badge-ok">Received</span>

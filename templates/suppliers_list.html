@@ -18,9 +18,9 @@
     <tbody>
       {% for s in suppliers %}
       <tr>
-        <td data-col="name" data-label="Name">{{ s.SupplierName }}</td><td data-col="contact" data-label="Contact">{{ s.ContactPerson or '-' }}</td><td data-col="phone" data-label="Phone">{{ s.Phone or '-' }}</td>
+        <td data-col="name" data-label="Name" data-key-field="primary">{{ s.SupplierName }}</td><td data-col="contact" data-label="Contact">{{ s.ContactPerson or '-' }}</td><td data-col="phone" data-label="Phone" data-key-field="secondary">{{ s.Phone or '-' }}</td>
         <td data-col="email" data-label="Email">{{ s.Email or '-' }}</td><td data-col="gstin" data-label="GSTIN">{{ s.GSTIN or '-' }}</td>
-        <td data-col="status" data-label="Status">{% if s.Active %}<span class="badge badge-ok">Active</span>{% else %}<span class="badge text-bg-secondary">Inactive</span>{% endif %}</td>
+        <td data-col="status" data-label="Status" data-key-field="meta">{% if s.Active %}<span class="badge badge-ok">Active</span>{% else %}<span class="badge text-bg-secondary">Inactive</span>{% endif %}</td>
         <td class="text-end"><a href="{{ url_for('supplier_form', sid=s.SupplierID) }}" class="btn btn-sm btn-outline-secondary mobile-btn-full">Edit</a></td>
       </tr>
       {% else %}<tr><td colspan="7" class="text-center text-muted py-4">No suppliers yet.</td></tr>{% endfor %}

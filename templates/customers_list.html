@@ -28,10 +28,10 @@
       {% for c in customers %}
       <tr>
         <td data-label="Sl No">{{ loop.index }}</td>
-        <td data-col="name" data-label="Name">{{ c.CustomerName }}</td><td data-col="contact" data-label="Contact">{{ c.ContactPerson or '-' }}</td><td data-col="phone" data-label="Phone">{{ c.Phone or '-' }}</td>
+        <td data-col="name" data-label="Name" data-key-field="primary">{{ c.CustomerName }}</td><td data-col="contact" data-label="Contact">{{ c.ContactPerson or '-' }}</td><td data-col="phone" data-label="Phone" data-key-field="secondary">{{ c.Phone or '-' }}</td>
         <td data-col="zone" data-label="Zone">{{ c.Zone or '-' }}</td>
         <td data-col="credit_limit" data-label="Credit Limit">{{ (c.CreditLimit)|inr(0) }}</td><td data-col="credit_days" data-label="Credit Days">{{ c.CreditDays }} days</td>
-        <td data-col="status" data-label="Status">{% if c.Active %}<span class="badge badge-ok">Active</span>{% else %}<span class="badge text-bg-secondary">Inactive</span>{% endif %}</td>
+        <td data-col="status" data-label="Status" data-key-field="meta">{% if c.Active %}<span class="badge badge-ok">Active</span>{% else %}<span class="badge text-bg-secondary">Inactive</span>{% endif %}</td>
         <td class="text-end">
           <a href="{{ url_for('customer_purchase_history', cid=c.CustomerID) }}" class="btn btn-sm btn-outline-secondary mobile-btn-full">History</a>
           <a href="{{ url_for('customer_purchase_history', cid=c.CustomerID, view='ledger') }}" class="btn btn-sm btn-outline-secondary mobile-btn-full">Ledger</a>

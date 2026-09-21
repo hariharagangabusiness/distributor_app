@@ -20,9 +20,9 @@
     <tbody>
       {% for p in purchases %}
       <tr>
-        <td data-col="po_number" data-label="PO #">{{ p.PONumber }}</td><td data-col="supplier" data-label="Supplier">{{ p.SupplierName }}</td><td data-col="date" data-label="Date">{{ p.PurchaseDate|dmy }}</td>
+        <td data-col="po_number" data-label="PO #" data-key-field="primary">{{ p.PONumber }}</td><td data-col="supplier" data-label="Supplier" data-key-field="secondary">{{ p.SupplierName }}</td><td data-col="date" data-label="Date">{{ p.PurchaseDate|dmy }}</td>
         <td data-col="invoice_number" data-label="Invoice #">{{ p.InvoiceNumber or '-' }}</td><td data-col="status" data-label="Status">{{ p.Status }}</td>
-        <td data-col="payment" data-label="Payment">{% if p.PaymentStatus=='Paid' %}<span class="badge badge-ok">Paid</span>
+        <td data-col="payment" data-label="Payment" data-key-field="meta">{% if p.PaymentStatus=='Paid' %}<span class="badge badge-ok">Paid</span>
             {% elif p.PaymentStatus=='Partial' %}<span class="badge badge-over">Partial</span>
             {% else %}<span class="badge badge-low">Unpaid</span>{% endif %}</td>
         <td data-col="total" data-label="Total">{{ (p.TotalAmount)|inr(2) }}</td>

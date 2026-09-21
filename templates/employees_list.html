@@ -18,9 +18,9 @@
     <tbody>
       {% for e in employees %}
       <tr>
-        <td data-col="name" data-label="Name">{{ e.EmployeeName }}</td><td data-col="designation" data-label="Designation">{{ e.Designation or '-' }}</td><td data-col="phone" data-label="Phone">{{ e.Phone or '-' }}</td>
+        <td data-col="name" data-label="Name" data-key-field="primary">{{ e.EmployeeName }}</td><td data-col="designation" data-label="Designation" data-key-field="secondary">{{ e.Designation or '-' }}</td><td data-col="phone" data-label="Phone">{{ e.Phone or '-' }}</td>
         <td data-col="join_date" data-label="Join Date">{{ e.JoinDate|dmy if e.JoinDate else '-' }}</td><td data-col="monthly_salary" data-label="Monthly Salary">{{ (e.MonthlySalary)|inr(2) }}</td>
-        <td data-col="status" data-label="Status">{% if e.Status=='Active' %}<span class="badge badge-ok">Active</span>{% else %}<span class="badge text-bg-secondary">{{ e.Status }}</span>{% endif %}</td>
+        <td data-col="status" data-label="Status" data-key-field="meta">{% if e.Status=='Active' %}<span class="badge badge-ok">Active</span>{% else %}<span class="badge text-bg-secondary">{{ e.Status }}</span>{% endif %}</td>
         <td class="text-end"><a href="{{ url_for('employee_form', eid=e.EmployeeID) }}" class="btn btn-sm btn-outline-secondary mobile-btn-full">Edit</a></td>
       </tr>
       {% else %}<tr><td colspan="7" class="text-center text-muted py-4">No employees yet.</td></tr>{% endfor %}
