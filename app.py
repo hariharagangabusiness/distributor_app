@@ -29,6 +29,17 @@ app = Flask(__name__)
 # that opt individual tables into card view.
 MOBILE_FRIENDLY_UI_ENABLED = True
 
+# Master on/off switch for the List/Grid view switch on record-list pages
+# (Customers, Products, Suppliers, Purchases, Sales, Expenses, Vehicles,
+# Maintenance, Employees, Advances, Stock Issues, Scheme Claims, Users).
+# Flip this to False and redeploy to instantly pull the feature from every
+# page app-wide, with no template changes needed - it's read by base.html,
+# which only loads the toggle script when this is True. Without that script,
+# a table's data-view-toggle attribute and the .view-grid CSS are both
+# inert, so every list falls straight back to its original plain-table look,
+# even for a browser that had already saved a "grid" preference.
+LIST_VIEW_TOGGLE_ENABLED = True
+
 
 def indian_number_format(value, decimals=2):
     """Format a number Indian-style: groups of 2 after the first 3 digits from the
@@ -427,6 +438,11 @@ def inject_sale_due_helpers():
 @app.context_processor
 def inject_mobile_ui_flag():
     return dict(MOBILE_FRIENDLY_UI_ENABLED=MOBILE_FRIENDLY_UI_ENABLED)
+
+
+@app.context_processor
+def inject_list_view_toggle_flag():
+    return dict(LIST_VIEW_TOGGLE_ENABLED=LIST_VIEW_TOGGLE_ENABLED)
 
 
 @app.route("/")

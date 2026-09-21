@@ -539,6 +539,97 @@ table.table.col-resize-active > tbody > tr > td {
   body:not(.mobile-ui-off) table.table-cards-mobile tfoot td::before { content: none; }
 }
 
+/* ============ List / Grid view switch (desktop & tablet) ============
+   Wired up by static/js/list-view-toggle.js on any table carrying
+   data-view-toggle. List view is the plain table, unchanged. Grid view
+   reuses the same data-label cells the mobile card view above relies on,
+   just arranged as a responsive multi-column card grid instead of a
+   single stacked column - and, unlike the mobile rules above, this isn't
+   limited to narrow screens: it's the user's own explicit, saved choice,
+   so it has to work at any width. */
+.list-view-toggle-bar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: .5rem;
+}
+.list-view-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: .375rem;
+  overflow: hidden;
+}
+.list-view-toggle button {
+  display: flex;
+  align-items: center;
+  border: none;
+  background: var(--surface);
+  color: var(--brand-dark);
+  opacity: .55;
+  padding: .3rem .55rem;
+  cursor: pointer;
+  line-height: 1;
+}
+.list-view-toggle button + button { border-left: 1px solid var(--border); }
+.list-view-toggle button.active { background: var(--brand); color: #fff; opacity: 1; }
+.list-view-toggle button:not(.active):hover { opacity: .85; }
+
+table.table-cards-mobile.view-grid thead { display: none; }
+table.table-cards-mobile.view-grid tfoot { display: none; }
+table.table-cards-mobile.view-grid,
+table.table-cards-mobile.view-grid tbody {
+  display: block;
+  width: 100%;
+}
+table.table-cards-mobile.view-grid tbody {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: .75rem;
+}
+/* .collapse rows (e.g. an inline "mark received" sub-form) are left out of
+   the card grid entirely rather than turned into cards of their own - a
+   hidden one should stay hidden, and an expanded one reads fine as a plain
+   row, so neither needs the same grid-card treatment. */
+table.table-cards-mobile.view-grid tbody tr:not(.collapse) {
+  display: block;
+  border: 1px solid var(--border);
+  border-radius: .5rem;
+  padding: .65rem .85rem;
+  background: var(--surface);
+  position: static !important;
+  box-shadow: none !important;
+}
+table.table-cards-mobile.view-grid tbody tr:not(.collapse) td {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: .5rem;
+  text-align: right;
+  padding: .25rem 0;
+  border: none !important;
+  position: static !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  white-space: normal;
+}
+table.table-cards-mobile.view-grid tbody tr:not(.collapse) td[data-label]::before {
+  content: attr(data-label);
+  font-weight: 600;
+  color: var(--text-muted, #6c757d);
+  text-align: left;
+  flex: 0 0 auto;
+  margin-right: .5rem;
+}
+/* A cell with no data-label (typically the trailing actions column, or a
+   colspan "no rows yet" message) - shown as its own full-width block
+   beneath the labelled fields rather than squeezed into the label/value row. */
+table.table-cards-mobile.view-grid tbody tr:not(.collapse) td:not([data-label]) {
+  display: block;
+  text-align: left;
+  padding-top: .5rem;
+  margin-top: .35rem;
+  border-top: 1px dashed var(--border) !important;
+}
+
 /* ============ Touch targets (app-wide) ============
    Buttons and nav-style tabs get a taller minimum tap height on phones/small
    tablets, per the ~44-48px accessible touch-target guideline - Bootstrap's
