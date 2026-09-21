@@ -74,6 +74,23 @@
   <a href="{{ url_for('stock_issue_view', issue_id=stock_issue_credit.IssueID) }}">{{ sale.EmployeeName }}'s Stock Issue for {{ sale.SaleDate|dmy }}</a>
   instead of being deducted from warehouse stock separately.</div>
 {% endif %}
+{% if direct_sale_reviews %}
+<div class="alert alert-warning">
+  <strong><i class="bi bi-exclamation-triangle"></i> Direct warehouse deduction:</strong>
+  the stock below wasn't covered by an open Stock Issue for {{ sale.EmployeeName or 'this sale' }} on {{ sale.SaleDate|dmy }},
+  so it was deducted straight from warehouse stock and flagged for review.
+  <ul class="mb-0 mt-1">
+    {% for r in direct_sale_reviews %}
+    <li>{{ r.Qty|round(2) }} {{ r.Unit }} of {{ r.ProductName }}
+      <span class="badge {% if r.Status == 'Pending' %}text-bg-warning{% elif r.Status == 'Flagged' %}text-bg-danger{% else %}text-bg-success{% endif %}">{{ r.Status }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% if current_user.Role == 'Admin' %}
+  <a href="{{ url_for('direct_sale_review_list', status='All', q=sale.InvoiceNumber) }}" class="alert-link">Review in Direct Sale Review queue &raquo;</a>
+  {% endif %}
+</div>
+{% endif %}
 <div class="card">
   <div class="table-responsive">
   <table class="table mb-0 table-cards-mobile">

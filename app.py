@@ -3750,9 +3750,22 @@ def sale_view(sid):
                                    JOIN StockIssues si ON si.IssueID = sil.IssueID
                                    WHERE ssl.SaleID=?""", (sid,), one=True)
     payments = db.query("""SELECT * FROM SalePayments WHERE SaleID=? ORDER BY PaymentDate, PaymentID""", (sid,))
+    # Any line on this sale that couldn't be fully covered by an open (or
+    # capacity-remaining reconciled) Stock Issue gets posted as a direct
+    # warehouse deduction and parked in DirectSaleReviews for Admin review
+    # (see create_sale()). That queue lives under Inventory > Direct Sale
+    # Review, which is easy to miss - surface it right here on the sale
+    # itself so it isn't silently invisible.
+    direct_sale_reviews = db.query("""SELECT dsr.*, p.ProductName, p.Unit, -it.QtyChange AS Qty
+                                    FROM DirectSaleReviews dsr
+                                    JOIN InventoryTransactions it ON it.TransactionID = dsr.TransactionID
+                                    JOIN Products p ON p.ProductID = dsr.ProductID
+                                    WHERE it.RefType='Sale' AND it.RefID=?
+                                    ORDER BY dsr.ReviewID""", (sid,))
     return render_template("sale_view.html", sale=sale, lines=lines, balance_due=balance_due,
                             payments=payments, today=today_str(),
                             stock_issue_credit=stock_issue_credit if stock_issue_credit and stock_issue_credit["c"] else None,
+                            direct_sale_reviews=direct_sale_reviews,
                             custom_fields=custom_fields, custom_values=custom_values,
                             cf_record_id=sid, custom_attachments=get_custom_attachments("Sale", sid))
 
