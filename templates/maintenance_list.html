@@ -31,7 +31,7 @@
     <tbody>
       {% for r in records %}
       <tr>
-        <td data-col="vehicle" data-label="Vehicle">{{ r.RegistrationNumber }}</td><td data-col="service_type" data-label="Service Type">{{ r.ServiceType }}</td><td data-col="date" data-label="Date">{{ r.ServiceDate|dmy }}</td>
+        <td data-col="vehicle" data-label="Vehicle" data-key-field="primary">{{ r.RegistrationNumber }}</td><td data-col="service_type" data-label="Service Type" data-key-field="secondary">{{ r.ServiceType }}</td><td data-col="date" data-label="Date" data-key-field="meta">{{ r.ServiceDate|dmy }}</td>
         <td data-col="odometer" data-label="Odometer">{{ r.Odometer|round(0) if r.Odometer else '-' }}</td><td data-col="next_due_date" data-label="Next Due Date">{{ r.NextDueDate|dmy if r.NextDueDate else '-' }}</td>
         <td data-col="cost" data-label="Cost">{{ (r.Cost)|inr(2) }}</td><td data-col="service_center" data-label="Service Center">{{ r.ServiceCenter or '-' }}</td>
       </tr>

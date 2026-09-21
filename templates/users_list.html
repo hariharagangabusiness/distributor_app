@@ -14,8 +14,8 @@
       <tbody>
         {% for u in users %}
         <tr>
-          <td data-label="Username">{{ u.Username }}{% if current_user and u.UserID == current_user.UserID %} <span class="badge text-bg-secondary">You</span>{% endif %}</td>
-          <td data-label="Full Name">{{ u.FullName or '-' }}</td>
+          <td data-label="Username" data-key-field="primary">{{ u.Username }}{% if current_user and u.UserID == current_user.UserID %} <span class="badge text-bg-secondary">You</span>{% endif %}</td>
+          <td data-label="Full Name" data-key-field="secondary">{{ u.FullName or '-' }}</td>
           <td data-label="Role">
             <form method="post" action="{{ url_for('user_role_update', uid=u.UserID) }}" class="d-inline">
               <select name="role" class="form-select form-select-sm d-inline-block" style="width:auto"
@@ -37,7 +37,7 @@
               </select>
             </form>
           </td>
-          <td data-label="Status">{% if u.Active %}<span class="badge badge-ok">Active</span>{% else %}<span class="badge text-bg-secondary">Deactivated</span>{% endif %}</td>
+          <td data-label="Status" data-key-field="meta">{% if u.Active %}<span class="badge badge-ok">Active</span>{% else %}<span class="badge text-bg-secondary">Deactivated</span>{% endif %}</td>
           <td class="text-muted small" data-label="Last Login">{{ u.LastLoginAt|dmy if u.LastLoginAt else 'Never' }}</td>
           <td class="text-end">
             <a href="{{ url_for('user_reset_password', uid=u.UserID) }}" class="btn btn-sm btn-outline-secondary">Reset Password</a>

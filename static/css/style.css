@@ -539,6 +539,60 @@ table.table.col-resize-active > tbody > tr > td {
   body:not(.mobile-ui-off) table.table-cards-mobile tfoot td::before { content: none; }
 }
 
+/* ============ Compact grid cards on phones ============
+   Without this, List and Grid look identical on a phone: List already
+   stacks every field into one full-width card per row (the block above),
+   and Grid's desktop card width (see below) also only fits one column on
+   a narrow screen - so both converge on the same "every field, one column"
+   layout. This block gives Grid its own, genuinely different phone
+   layout: two narrower cards per row showing only the 2-3 fields each
+   template marks with data-key-field="primary|secondary|meta" (its title,
+   subtitle, and status/amount), with every other field hidden rather than
+   shown at a squeezed width. List is untouched - it's still the
+   comprehensive, one-row-per-record view.
+   Reversible the same way as the rest of this feature: turning off
+   LIST_VIEW_TOGGLE_ENABLED (app.py) stops the .view-grid class from ever
+   being applied, so none of this ever activates. */
+@media (max-width: 767.98px) {
+  body:not(.mobile-ui-off) table.table-cards-mobile.view-grid tbody {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: .5rem;
+  }
+  /* These next few match the "tbody tr:not(.collapse) td..." shape of the
+     unguarded desktop rules further below on purpose - it's what keeps
+     these mobile overrides winning on specificity regardless of source
+     order, without needing !important anywhere. */
+  body:not(.mobile-ui-off) table.table-cards-mobile.view-grid tbody tr:not(.collapse) {
+    margin-bottom: 0;
+    padding: .55rem .65rem;
+  }
+  body:not(.mobile-ui-off) table.table-cards-mobile.view-grid tbody tr:not(.collapse) td[data-label]:not([data-key-field]) {
+    display: none;
+  }
+  body:not(.mobile-ui-off) table.table-cards-mobile.view-grid tbody tr:not(.collapse) td[data-key-field] {
+    display: block;
+    text-align: left;
+    padding: .1rem 0;
+  }
+  body:not(.mobile-ui-off) table.table-cards-mobile.view-grid tbody tr:not(.collapse) td[data-key-field]::before {
+    content: none;
+  }
+  body:not(.mobile-ui-off) table.table-cards-mobile.view-grid td[data-key-field="primary"] {
+    font-weight: 600;
+    font-size: .9rem;
+    color: var(--brand-dark);
+  }
+  body:not(.mobile-ui-off) table.table-cards-mobile.view-grid td[data-key-field="secondary"] {
+    font-size: .78rem;
+    color: var(--text-muted, #6c757d);
+  }
+  body:not(.mobile-ui-off) table.table-cards-mobile.view-grid td[data-key-field="meta"] {
+    font-size: .78rem;
+    margin-top: .2rem;
+  }
+}
+
 /* ============ List / Grid view switch (desktop & tablet) ============
    Wired up by static/js/list-view-toggle.js on any table carrying
    data-view-toggle. List view is the plain table, unchanged. Grid view

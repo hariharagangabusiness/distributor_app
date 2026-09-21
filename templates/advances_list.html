@@ -19,10 +19,10 @@
     <tbody>
       {% for a in advances %}
       <tr>
-        <td data-col="employee" data-label="Employee">{{ a.EmployeeName }}</td><td data-col="date" data-label="Date">{{ a.AdvanceDate|dmy }}</td><td data-col="amount" data-label="Amount">{{ (a.Amount)|inr(2) }}</td>
+        <td data-col="employee" data-label="Employee" data-key-field="primary">{{ a.EmployeeName }}</td><td data-col="date" data-label="Date">{{ a.AdvanceDate|dmy }}</td><td data-col="amount" data-label="Amount" data-key-field="secondary">{{ (a.Amount)|inr(2) }}</td>
         <td data-col="reason" data-label="Reason">{{ a.Reason or '-' }}</td><td data-col="repay_months" data-label="Repay (months)">{{ a.RepaymentMonths }}</td><td data-col="monthly_deduction" data-label="Monthly Deduction">{{ (a.MonthlyDeduction)|inr(2) }}</td>
         <td data-col="balance" data-label="Balance">{{ (a.BalanceRemaining)|inr(2) }}</td>
-        <td data-col="status" data-label="Status">{% if a.Status=='Active' %}<span class="badge badge-over">Active</span>{% else %}<span class="badge badge-ok">Closed</span>{% endif %}</td>
+        <td data-col="status" data-label="Status" data-key-field="meta">{% if a.Status=='Active' %}<span class="badge badge-over">Active</span>{% else %}<span class="badge badge-ok">Closed</span>{% endif %}</td>
         <td class="text-end">
           <a href="{{ url_for('advance_view', aid=a.AdvanceID) }}" class="btn btn-sm btn-outline-secondary mobile-btn-full">View</a>
           {% if a.Status=='Active' %}
