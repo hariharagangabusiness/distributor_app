@@ -111,8 +111,12 @@ def main():
         if not issues:
             print("  (none - no Stock Issue exists for this employee on this date at all)")
         for iss in issues:
-            print(f"  Issue #{iss['IssueID']} - Status={iss['Status']} "
-                  f"(ReviewStatus={iss['ReviewStatus']}) - created {iss['CreatedAt']}")
+            print(f"  Issue #{iss['IssueID']} - Status={iss['Status']} (ReviewStatus={iss['ReviewStatus']})")
+            print(f"      Created (issued to salesperson): {iss['CreatedAt']}")
+            print(f"      Reconciled at                  : {iss['ReconciledAt'] or '-- not reconciled yet --'}")
+            if iss["Status"] == "Reconciled":
+                print(f"      At reconciliation - Expected: {iss['ExpectedAmount']}  Collected: {iss['CashCollected']}  "
+                      f"Discrepancy: {iss['Discrepancy']}")
             lines = conn.execute("""SELECT sil.*, p.ProductName FROM StockIssueLines sil
                                   JOIN Products p ON p.ProductID = sil.ProductID
                                   WHERE sil.IssueID=? ORDER BY p.ProductName""", (iss["IssueID"],)).fetchall()
@@ -147,7 +151,8 @@ def main():
         credited_qty = sum(c["QtyApplied"] for c in credit_rows)
         issue_ids = ", ".join(str(c["IssueID"]) for c in credit_rows) if credit_rows else "-"
 
-        direct_row = conn.execute("""SELECT it.TransactionID, COALESCE(-it.QtyChange, 0) AS q, dsr.Status AS ReviewStatus
+        direct_row = conn.execute("""SELECT it.TransactionID, COALESCE(-it.QtyChange, 0) AS q,
+                                          dsr.Status AS ReviewStatus, dsr.CreatedAt AS PostedAt
                                    FROM InventoryTransactions it
                                    LEFT JOIN DirectSaleReviews dsr ON dsr.TransactionID = it.TransactionID
                                    WHERE it.RefType='Sale' AND it.RefID=? AND it.ProductID=?
@@ -155,6 +160,7 @@ def main():
                                   (sale["SaleID"], l["ProductID"])).fetchone()
         direct_qty = direct_row["q"] if direct_row else 0
         review_status = direct_row["ReviewStatus"] if direct_row else None
+        posted_at = direct_row["PostedAt"] if direct_row else None
 
         remainder = round((l["Qty"] or 0) - credited_qty - direct_qty, 4)
 
@@ -183,7 +189,7 @@ def main():
             print(f"      Covered by reconciled Issue #{reconciled_issue['IssueID']}'s remaining capacity: {covered_qty}"
                   f"  (no ledger entry posted - avoids double-deducting stock already accounted for at reconciliation)")
         print(f"      Deducted directly from warehouse : {direct_qty}"
-              + (f"  [Direct Sale Review status: {review_status}]" if review_status else ""))
+              + (f"  [Direct Sale Review status: {review_status}, posted at {posted_at}]" if review_status else ""))
         if abs(remainder) > 0.01:
             print(f"      *** {remainder} unit(s) UNACCOUNTED FOR (neither credited, covered, nor deducted) - "
                   f"needs manual investigation ***")
