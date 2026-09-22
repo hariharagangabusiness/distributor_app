@@ -41,7 +41,33 @@ Usage:
 """
 import sys
 import sqlite3
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from db import DB_PATH
+
+IST = ZoneInfo("Asia/Kolkata")
+
+
+def to_ist(ts_str):
+    """Every timestamp column this script reads (StockIssues.CreatedAt via
+    SQLite's datetime('now'), StockIssues.ReconciledAt and DirectSaleReviews.
+    CreatedAt via Python's datetime.now().isoformat()) is stored as a NAIVE
+    string with no timezone marker, but is actually server-clock time - which
+    on this app's Railway deployment is UTC, not IST (see LOCATION_TZ in
+    app.py: business hours needing IST are converted there explicitly
+    precisely because the server clock is NOT already IST). Business here
+    runs on IST, so every timestamp is shown converted, never as the raw
+    UTC string, to avoid exactly the kind of "this doesn't match what I saw
+    happen at 7pm" confusion that prompted this fix."""
+    if not ts_str:
+        return None
+    try:
+        dt = datetime.fromisoformat(ts_str)
+    except ValueError:
+        return ts_str + " (unparseable timestamp, shown as-is)"
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(IST).strftime("%Y-%m-%d %H:%M:%S IST")
 
 
 def true_product_qty_sold(conn, employee_id, sale_date, product_id):
@@ -112,8 +138,8 @@ def main():
             print("  (none - no Stock Issue exists for this employee on this date at all)")
         for iss in issues:
             print(f"  Issue #{iss['IssueID']} - Status={iss['Status']} (ReviewStatus={iss['ReviewStatus']})")
-            print(f"      Created (issued to salesperson): {iss['CreatedAt']}")
-            print(f"      Reconciled at                  : {iss['ReconciledAt'] or '-- not reconciled yet --'}")
+            print(f"      Created (issued to salesperson): {to_ist(iss['CreatedAt'])}")
+            print(f"      Reconciled at                  : {to_ist(iss['ReconciledAt']) or '-- not reconciled yet --'}")
             if iss["Status"] == "Reconciled":
                 print(f"      At reconciliation - Expected: {iss['ExpectedAmount']}  Collected: {iss['CashCollected']}  "
                       f"Discrepancy: {iss['Discrepancy']}")
@@ -189,7 +215,7 @@ def main():
             print(f"      Covered by reconciled Issue #{reconciled_issue['IssueID']}'s remaining capacity: {covered_qty}"
                   f"  (no ledger entry posted - avoids double-deducting stock already accounted for at reconciliation)")
         print(f"      Deducted directly from warehouse : {direct_qty}"
-              + (f"  [Direct Sale Review status: {review_status}, posted at {posted_at}]" if review_status else ""))
+              + (f"  [Direct Sale Review status: {review_status}, posted at {to_ist(posted_at)}]" if review_status else ""))
         if abs(remainder) > 0.01:
             print(f"      *** {remainder} unit(s) UNACCOUNTED FOR (neither credited, covered, nor deducted) - "
                   f"needs manual investigation ***")
