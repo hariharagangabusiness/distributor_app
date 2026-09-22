@@ -111,7 +111,34 @@ def main():
     print(f"  Status          : {sale['Status']}")
     print(f"  Customer        : {sale['CustomerName']}")
     print(f"  Salesperson     : {sale['EmployeeName'] or '-- none set --'} (EmployeeID={sale['EmployeeID']})")
+    print(f"  Amount Received : {sale['AmountReceived']}   Payment Status: {sale['PaymentStatus']}")
     print()
+
+    # "Record Payment" (the dedicated button on the Sale detail page) only inserts a
+    # SalePayments row and updates Sales.AmountReceived/PaymentStatus directly - it never
+    # touches SalesLines, InventoryTransactions, DirectSaleReviews or Stock Issues. The
+    # full "Edit Sale" screen is different: ANY save there re-runs create_sale() with this
+    # SaleID, which deletes and recreates this sale's SalesLines/InventoryTransactions/
+    # DirectSaleReviews rows and recomputes the credited/covered/direct split from
+    # scratch, using whatever the Stock Issue looks like AT THAT MOMENT - not when the
+    # sale was first created. A SalePayments row here is proof the safe path was used for
+    # at least one payment; its CreatedAt, compared against each line's "posted at" below,
+    # shows whether anything reprocessed this sale's stock lines afterward (a real edit-
+    # triggered recompute changes the "posted at" timestamp on every line - it doesn't stay
+    # frozen at the original creation moment).
+    payments = conn.execute("SELECT * FROM SalePayments WHERE SaleID=? ORDER BY PaymentID",
+                            (sale["SaleID"],)).fetchall()
+    if payments:
+        print("Payments recorded via the 'Record Payment' button (safe - never touches stock/Stock Issues):")
+        for p in payments:
+            print(f"  {p['PaymentDate']}  Rs.{p['Amount']}  via {p['PaymentMethod']}  "
+                  f"(recorded {to_ist(p['CreatedAt'])})")
+        print()
+    else:
+        print("No SalePayments rows found for this invoice - if Amount Received/Payment Status were changed, "
+              "it was done through the full 'Edit Sale' screen instead of the 'Record Payment' button, which "
+              "DOES re-run the full stock-posting logic on save (see note above) - check the 'posted at' "
+              "timestamps below against when that edit happened.\n")
 
     if sale["Status"] != "Completed":
         print(f"  NOTE: Status is '{sale['Status']}', not 'Completed'. create_sale() only posts ANY stock "
