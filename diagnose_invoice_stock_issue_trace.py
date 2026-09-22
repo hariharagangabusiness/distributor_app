@@ -1,16 +1,26 @@
 """READ-ONLY deep trace. Makes NO changes.
 
 For ONE Sale (looked up by Invoice Number), traces every line item and
-shows exactly what happened to it in create_sale()'s stock-posting logic:
+shows exactly what happened to it in create_sale()'s stock-posting logic.
+Each line's Qty ends up in one of FOUR buckets:
   - CREDITED to a Stock Issue line (via SaleStockIssueLinks) - the normal
     path, when the salesperson had an open (Status='Issued') Stock Issue
     for that exact date, with that product already on it, and capacity
     (QtyIssued - QtySold - QtyReturned - QtyFree) still unaccounted-for
+  - COVERED BY AN ALREADY-RECONCILED ISSUE'S CAPACITY - a late sale entered
+    AFTER that day's Stock Issue was already reconciled doesn't get a
+    SaleStockIssueLinks row at all (that mechanism only exists for an open
+    issue) - instead create_sale() checks the reconciled issue's own
+    remaining unaccounted-for capacity and, if there's room, silently skips
+    posting ANY ledger entry for that portion (it was already deducted once
+    when the stock was issued, so posting a second deduction - or a link -
+    would double-count it). This is real, intentional stock, it's just not
+    recorded anywhere queryable, which is exactly what makes it look like a
+    mystery gap. This script recomputes that same capacity check to show it.
   - DEDUCTED DIRECTLY from warehouse stock (a plain InventoryTransactions
     row, RefType='Sale') and parked in DirectSaleReviews for Admin review -
-    happens for whatever portion of a line create_sale() could NOT cover
-    from an open Stock Issue
-  - UNACCOUNTED (neither) - would indicate a real data problem
+    whatever's left after the two paths above
+  - UNACCOUNTED (none of the above) - would indicate a real data problem
 
 Also prints every Stock Issue (any status) for the sale's salesperson on
 that date, with each line's Issued/Sold-so-far/Available capacity, so you
@@ -18,12 +28,13 @@ can see exactly what was open and how much room was left at query time.
 
 This directly answers "why doesn't this invoice show up in / count toward
 Stock Issues" - see find_open_stock_issue() and create_sale() in app.py for
-the exact rules being traced here. The single most common reason: the Sale
-has no EmployeeID (salesperson) attached at all, in which case
+the exact rules being traced here. The two most common reasons: (1) the
+Sale has no EmployeeID (salesperson) attached at all, in which case
 find_open_stock_issue() always returns None and 100% of the sale is
-deducted directly from warehouse stock, regardless of what Stock Issue was
-open that day for that person - a Stock Issue only gets credited by a Sale
-that's explicitly tied to that same salesperson.
+deducted directly from warehouse stock regardless of what was open that
+day; or (2) that day's Stock Issue was already Reconciled by the time this
+Sale was entered, so it falls into the "covered by reconciled capacity"
+bucket above instead of ever linking back to the issue.
 
 Usage:
     python diagnose_invoice_stock_issue_trace.py "HHG/2026-27/0320"
@@ -31,6 +42,18 @@ Usage:
 import sys
 import sqlite3
 from db import DB_PATH
+
+
+def true_product_qty_sold(conn, employee_id, sale_date, product_id):
+    """Mirrors app.py's true_product_qty_sold(): total Qty sold by this
+    employee, on this date, of this product, across every non-cancelled
+    Sale - independent of any Stock Issue line's QtySold field."""
+    row = conn.execute("""SELECT COALESCE(SUM(sl.Qty), 0) AS q FROM SalesLines sl
+                        JOIN Sales s ON s.SaleID = sl.SaleID
+                        WHERE s.EmployeeID=? AND s.SaleDate=? AND sl.ProductID=?
+                          AND s.Status <> 'Cancelled'""",
+                       (employee_id, sale_date, product_id)).fetchone()
+    return row["q"] or 0
 
 
 def main():
@@ -102,6 +125,14 @@ def main():
                       f"Returned={l['QtyReturned'] or 0}  Free={l['QtyFree'] or 0}  Available={available}")
         print()
 
+    # The most-recent Reconciled Stock Issue for this employee/date (if any) -
+    # mirrors create_sale()'s own `reconciled_issue` lookup exactly.
+    reconciled_issue = None
+    if sale["EmployeeID"]:
+        reconciled_issue = conn.execute("""SELECT * FROM StockIssues WHERE EmployeeID=? AND IssueDate=?
+                                         AND Status='Reconciled' ORDER BY IssueID DESC LIMIT 1""",
+                                        (sale["EmployeeID"], sale["SaleDate"])).fetchone()
+
     # Each SalesLine on this invoice - what actually happened to it.
     lines = conn.execute("""SELECT sl.*, p.ProductName, p.Unit FROM SalesLines sl
                           JOIN Products p ON p.ProductID = sl.ProductID
@@ -127,12 +158,34 @@ def main():
 
         remainder = round((l["Qty"] or 0) - credited_qty - direct_qty, 4)
 
+        # If anything's left unexplained, check whether it matches what create_sale()
+        # would have silently covered from an already-Reconciled issue's remaining
+        # capacity - that path posts NO SaleStockIssueLinks row and NO separate
+        # InventoryTransactions row (the stock already left the warehouse once, when
+        # it was originally issued), so it's otherwise invisible to any query.
+        covered_qty = 0.0
+        if abs(remainder) > 0.01 and reconciled_issue:
+            sil2 = conn.execute("""SELECT QtyIssued, QtySold, QtyReturned, QtyFree FROM StockIssueLines
+                                 WHERE IssueID=? AND ProductID=?""",
+                                (reconciled_issue["IssueID"], l["ProductID"])).fetchone()
+            if sil2:
+                already_sold_other = round((sil2["QtySold"] or 0)
+                                            + true_product_qty_sold(conn, sale["EmployeeID"], sale["SaleDate"], l["ProductID"])
+                                            - (l["Qty"] or 0), 4)
+                available2 = max((sil2["QtyIssued"] or 0) - (sil2["QtyReturned"] or 0)
+                                  - (sil2["QtyFree"] or 0) - already_sold_other, 0)
+                covered_qty = round(min(remainder, available2), 4)
+        remainder = round(remainder - covered_qty, 4)
+
         print(f"  {l['ProductName']}  (Qty={l['Qty']} {l['Unit']})")
-        print(f"      Credited to a Stock Issue     : {credited_qty}" + (f"  (Issue {issue_ids})" if credit_rows else ""))
-        print(f"      Deducted directly from warehouse: {direct_qty}"
+        print(f"      Credited to a Stock Issue        : {credited_qty}" + (f"  (Issue {issue_ids})" if credit_rows else ""))
+        if covered_qty > 0.01:
+            print(f"      Covered by reconciled Issue #{reconciled_issue['IssueID']}'s remaining capacity: {covered_qty}"
+                  f"  (no ledger entry posted - avoids double-deducting stock already accounted for at reconciliation)")
+        print(f"      Deducted directly from warehouse : {direct_qty}"
               + (f"  [Direct Sale Review status: {review_status}]" if review_status else ""))
         if abs(remainder) > 0.01:
-            print(f"      *** {remainder} unit(s) UNACCOUNTED FOR (neither credited nor deducted) - "
+            print(f"      *** {remainder} unit(s) UNACCOUNTED FOR (neither credited, covered, nor deducted) - "
                   f"needs manual investigation ***")
         print()
 
