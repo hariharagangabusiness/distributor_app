@@ -3174,6 +3174,19 @@ def todays_discrepancy_report():
                             issue_rows=issue_rows, total_understated=total_understated)
 
 
+class SaleStockIssueLockedError(Exception):
+    """Raised by create_sale() when editing a Sale would re-run its stock/credit posting
+    logic against a salesperson's Stock Issue that's already Reconciled - see the guard at
+    the top of create_sale()'s edit branch. Reconciled figures are meant to be a closed
+    book; blindly re-deriving them from whatever the world looks like at edit time (rather
+    than when the Sale was first entered) is exactly what silently corrupted a Stock
+    Issue's numbers once already. Callers should catch this and tell the user to use
+    'Reopen & Correct' on the named Stock Issue first."""
+    def __init__(self, issue_id):
+        self.issue_id = issue_id
+        super().__init__(f"Sale is entangled with reconciled Stock Issue #{issue_id}")
+
+
 def create_sale(customer_id, sale_date, status, payment_status, payment_due_date, amount_received, notes,
                  place_of_supply_code, lines, reverse_charge=False, invoice_no=None, sale_id=None,
                  post_inventory=True, employee_id=None, cash_amount=None, bank_amount=None,
@@ -3275,6 +3288,28 @@ def create_sale(customer_id, sale_date, status, payment_status, payment_due_date
                      round(taxable_total, 2), round(cgst_total, 2), round(sgst_total, 2), round(igst_total, 2),
                      round_off, 1 if reverse_charge else 0, employee_id, cash_amount, bank_amount))
     else:
+        # Guardrail: block editing a Sale that's entangled with an already-Reconciled Stock
+        # Issue (checked against BOTH the employee/date being submitted now and whatever was
+        # stored before this edit, in case that's what's changing) - re-running the credit/
+        # covered/direct-deduction logic below against "whatever the Stock Issue looks like
+        # right now" rather than when the Sale was first saved is exactly how one Reconciled
+        # issue's Qty Sold got silently double-counted. Only applies when this call would
+        # actually touch that logic (status Completed, post_inventory on) - the internal
+        # calls this same function gets from stock_issue_reconcile()'s auto-invoice and
+        # sale_reassign() always pass post_inventory=False and no employee_id, so they're
+        # naturally exempt.
+        if status == "Completed" and post_inventory:
+            existing_sale_row = db.query("SELECT EmployeeID, SaleDate FROM Sales WHERE SaleID=?", (sale_id,), one=True)
+            entangled_candidates = {(employee_id, sale_date)}
+            if existing_sale_row and existing_sale_row["EmployeeID"]:
+                entangled_candidates.add((existing_sale_row["EmployeeID"], existing_sale_row["SaleDate"]))
+            for emp_id, s_date in entangled_candidates:
+                if not emp_id:
+                    continue
+                locked_issue = db.query("""SELECT IssueID FROM StockIssues WHERE EmployeeID=? AND IssueDate=?
+                                         AND Status='Reconciled'""", (emp_id, s_date), one=True)
+                if locked_issue:
+                    raise SaleStockIssueLockedError(locked_issue["IssueID"])
         db.execute("""UPDATE Sales SET CustomerID=?, SaleDate=?, Status=?, PaymentStatus=?, PaymentDueDate=?,
                     TotalAmount=?, AmountReceived=?, Notes=?, PlaceOfSupplyState=?, PlaceOfSupplyStateCode=?,
                     IsInterState=?, TaxableAmount=?, CGSTAmount=?, SGSTAmount=?, IGSTAmount=?, RoundOff=?,
@@ -3556,13 +3591,22 @@ def sale_edit(sid):
         place_of_supply_code = f.get("place_of_supply_code", "") or company["StateCode"]
         employee_id = int(f["employee_id"]) if f.get("employee_id") else None
 
-        create_sale(
-            customer_id=customer_id, sale_date=f["sale_date"], status=f["status"],
-            payment_status=f["payment_status"], payment_due_date=f.get("payment_due_date"),
-            amount_received=amount_received, notes=f.get("notes", ""),
-            place_of_supply_code=place_of_supply_code, lines=lines,
-            reverse_charge=bool(f.get("reverse_charge")), invoice_no=existing["InvoiceNumber"], sale_id=sid,
-            employee_id=employee_id, cash_amount=cash_amount, bank_amount=bank_amount)
+        try:
+            create_sale(
+                customer_id=customer_id, sale_date=f["sale_date"], status=f["status"],
+                payment_status=f["payment_status"], payment_due_date=f.get("payment_due_date"),
+                amount_received=amount_received, notes=f.get("notes", ""),
+                place_of_supply_code=place_of_supply_code, lines=lines,
+                reverse_charge=bool(f.get("reverse_charge")), invoice_no=existing["InvoiceNumber"], sale_id=sid,
+                employee_id=employee_id, cash_amount=cash_amount, bank_amount=bank_amount)
+        except SaleStockIssueLockedError as e:
+            log_stock_issue_change(e.issue_id, "Blocked Edit Attempt", f"Invoice {existing['InvoiceNumber']}",
+                                    None, "edit blocked - this Stock Issue is Reconciled")
+            flash(f"Nothing was saved. This invoice's salesperson has an already-Reconciled Stock Issue "
+                  f"(#{e.issue_id}) covering this date - editing it would silently recompute that closed "
+                  f"reconciliation. Use 'Reopen & Correct' on Stock Issue #{e.issue_id} first, then retry "
+                  f"this edit.", "error")
+            return redirect(url_for("sale_edit", sid=sid))
         save_custom_fields("Sale", sid, f)
         credit_note = sale_stock_issue_credit_message(sid, plain=True)
         flash(f"Sale {existing['InvoiceNumber']} updated." + (f" {credit_note}" if credit_note else ""), "success")
@@ -4330,6 +4374,16 @@ def stock_issue_reconcile(issue_id):
 
     if request.method == "POST":
         f = request.form
+        # Guardrail: correcting an already-reconciled issue must be a deliberate, reasoned
+        # action, not a silent re-save - a "Reconciled" figure is supposed to be a closed
+        # book. Blocking here (before anything is touched) if no reason was given is what
+        # makes "Reopen & Correct" an explicit, logged step rather than indistinguishable
+        # from a fresh reconciliation (see the audit log entries posted below).
+        reopen_reason = (f.get("reopen_reason") or "").strip()
+        if is_reedit and not reopen_reason:
+            flash("A reason is required to correct an already-reconciled Stock Issue - enter what's being "
+                  "fixed and why in 'Reason for this correction', then save again. Nothing was changed.", "error")
+            return redirect(url_for("stock_issue_reconcile", issue_id=issue_id))
         # How much of each line's Qty Sold was already billed on a real customer's own
         # Sales-tab invoice - the auto-created "Unassigned" Sale below must only cover
         # whatever's LEFT beyond that, or it re-invoices the same units a second time
@@ -4376,6 +4430,7 @@ def stock_issue_reconcile(issue_id):
                             ClaimedAmount=NULL, ReceivedAt=NULL, ReceivedAmount=NULL, ClaimNotes=NULL
                             WHERE IssueID=?""", (issue_id,))
         sale_lines = []  # (product_id, qty_sold, effective_rate) - feeds the auto-created "Unassigned" Sale below
+        line_audit_entries = []  # collected here, written to StockIssueAuditLog once the save succeeds below
         for line in lines:
             qty_sold = float(f.get(f"qty_sold_{line['LineID']}") or 0)
             qty_returned = float(f.get(f"qty_returned_{line['LineID']}") or 0)
@@ -4383,6 +4438,12 @@ def stock_issue_reconcile(issue_id):
             discount_amount = float(f.get(f"discount_amount_{line['LineID']}") or 0)
             scheme_claim_amount = float(f.get(f"scheme_claim_{line['LineID']}") or 0)
             line_comments = (f.get(f"comments_{line['LineID']}") or "").strip()
+            if is_reedit and abs(qty_sold - (line["QtySold"] or 0)) > 0.001:
+                line_audit_entries.append((f"{line['ProductName']} — Qty Sold", line["QtySold"] or 0, qty_sold))
+            if is_reedit and abs(qty_returned - (line["QtyReturned"] or 0)) > 0.001:
+                line_audit_entries.append((f"{line['ProductName']} — Qty Returned", line["QtyReturned"] or 0, qty_returned))
+            if is_reedit and abs(discount_amount - (line["DiscountAmount"] or 0)) > 0.001:
+                line_audit_entries.append((f"{line['ProductName']} — Discount ₹", line["DiscountAmount"] or 0, discount_amount))
             db.execute("""UPDATE StockIssueLines SET QtySold=?, QtyReturned=?, QtyFree=?,
                         DiscountAmount=?, SchemeClaimAmount=?, LineComments=? WHERE LineID=?""",
                        (qty_sold, qty_returned, qty_free, discount_amount, scheme_claim_amount,
@@ -4430,6 +4491,23 @@ def stock_issue_reconcile(issue_id):
                    (cash_collected, cash_amount, bank_amount, expected_amount, discrepancy, amount_due,
                     payment_status, scheme_amount,
                     datetime.now().isoformat(timespec="seconds"), f.get("notes", issue["Notes"]), issue_id))
+
+        # Audit trail: every reconcile/re-reconcile is logged (shown on the issue's own
+        # Activity panel, collapsed by default). A re-edit additionally logs the mandatory
+        # reason and every figure that actually changed, so "Reconciled" numbers moving is
+        # never silent again - this is the guardrail from the front-end blocking above,
+        # completed on the back end.
+        if is_reedit:
+            log_stock_issue_change(issue_id, "Reopened & Re-Reconciled", "Reason", None, reopen_reason)
+            for field_name, old_val, new_val in line_audit_entries:
+                log_stock_issue_change(issue_id, "Line Corrected", field_name, f"{old_val:g}", f"{new_val:g}")
+            log_stock_issue_change(
+                issue_id, "Re-Reconciled", "Expected / Collected / Discrepancy",
+                f"₹{issue['ExpectedAmount'] or 0:.2f} / ₹{issue['CashCollected'] or 0:.2f} / ₹{issue['Discrepancy'] or 0:.2f}",
+                f"₹{expected_amount:.2f} / ₹{cash_collected:.2f} / ₹{discrepancy:.2f}")
+        else:
+            log_stock_issue_change(issue_id, "Reconciled", "Expected / Collected / Discrepancy", None,
+                                    f"₹{expected_amount:.2f} / ₹{cash_collected:.2f} / ₹{discrepancy:.2f}")
 
         # Auto-create (or, on re-edit, update in place) a real GST Sale for the sold units,
         # billed to the system "Unassigned" customer until someone reassigns it via

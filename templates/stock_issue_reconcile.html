@@ -3,8 +3,9 @@
 {% block page_title %}{% if is_reedit %}Edit Reconciliation{% else %}Reconcile{% endif %} — {{ issue.EmployeeName }}, {{ issue.IssueDate|dmy }}{% endblock %}
 {% block content %}
 {% if is_reedit %}
-<div class="alert alert-warning">Editing an already-reconciled stock issue (Admin only). Saving replaces the previous
-  sold/returned/free/discount figures and cash collected entirely — recompute carefully.</div>
+<div class="alert alert-warning">Correcting an already-reconciled Stock Issue (Admin only). This is a closed book —
+  saving requires a reason below, replaces the previous sold/returned/free/discount figures and cash collected
+  entirely, and is logged to this issue's Activity history. Recompute carefully.</div>
 {% endif %}
 {% if credited_sales %}
 <div class="alert alert-info p-0 overflow-hidden">
@@ -94,7 +95,9 @@
           {% if l.TrueQtySold is defined and l.TrueQtySold > (l.StoredQtySold or 0) + 0.01 and not is_reedit %}
           <div class="small text-warning">auto-corrected from {{ l.StoredQtySold|round(2) }} to the true total sold today ({{ l.TrueQtySold|round(2) }} {{ l.Unit }}) — some sales fell to a direct warehouse deduction when this line's capacity ran out mid-day; the figure above already includes it</div>
           {% elif l.TrueQtySold is defined and l.TrueQtySold > (l.StoredQtySold or 0) + 0.01 %}
-          <div class="small text-warning">true total sold today is {{ l.TrueQtySold|round(2) }} {{ l.Unit }} — the value above may need updating (not auto-corrected since this issue is already reconciled)</div>
+          <div class="small text-warning">the true total sold today for this product/salesperson is {{ l.TrueQtySold|round(2) }} {{ l.Unit }}, higher than the {{ l.StoredQtySold|round(2) }} on this issue —
+            <strong>do not just copy that number in.</strong> It may already include a later sale that was billed and paid for on its own separate invoice (check Direct Sale Review), which is already correctly accounted for outside this issue.
+            Only raise the figure above if the ORIGINAL reconciliation itself under-counted what this salesperson's own van stock sold.</div>
           {% elif l.TrueQtySold is defined %}
           <div class="small text-muted">matches actual sales total ({{ l.TrueQtySold|round(2) }} {{ l.Unit }})</div>
           {% endif %}
@@ -106,7 +109,7 @@
           {% if l.TrueDiscount is defined and l.TrueDiscount > (l.StoredDiscount or 0) + 0.01 and not is_reedit %}
           <div class="small text-warning">auto-corrected from {{ (l.StoredDiscount)|inr(2) }} to the true total discount given today ({{ (l.TrueDiscount)|inr(2) }}) — includes a sale that fell to a direct warehouse deduction and carries its own discount</div>
           {% elif l.TrueDiscount is defined and l.TrueDiscount > (l.StoredDiscount or 0) + 0.01 %}
-          <div class="small text-warning">true total discount given today is {{ (l.TrueDiscount)|inr(2) }} — the value above may need updating (not auto-corrected since this issue is already reconciled)</div>
+          <div class="small text-warning">true total discount given today is {{ (l.TrueDiscount)|inr(2) }} — same caution as Qty Sold above: don't copy this in if it's coming from a separately-invoiced later sale, only if the original reconciliation itself was wrong</div>
           {% endif %}
         </td>
         <td><input type="number" step="0.01" class="form-control scheme-claim-input" name="scheme_claim_{{ l.LineID }}" style="width:100px" value="{{ l.SchemeClaimAmount or 0 }}"></td>
@@ -159,8 +162,18 @@
       <input name="notes" class="form-control" value="{{ issue.Notes or '' }}"></div>
   </div>
 
+  {% if is_reedit %}
+  <div class="row g-3 mb-3">
+    <div class="col-md-12">
+      <label class="form-label">Reason for this correction <span class="text-danger">*</span></label>
+      <textarea name="reopen_reason" class="form-control" rows="2" required
+                placeholder="What was wrong with the original reconciliation, and what are you fixing? (required — logged to this issue's Activity history)"></textarea>
+    </div>
+  </div>
+  {% endif %}
+
   <div class="d-flex gap-2">
-    <button type="submit" class="btn btn-brand">Save Reconciliation</button>
+    <button type="submit" class="btn btn-brand">{% if is_reedit %}Save Correction{% else %}Save Reconciliation{% endif %}</button>
     <a href="{{ url_for('stock_issue_view', issue_id=issue.IssueID) }}" class="btn btn-outline-secondary">Cancel</a>
   </div>
 </form>
