@@ -24,6 +24,7 @@
   {% endif %}
 </div>
 <form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div class="row g-3 mb-3">
     <div class="col-md-3" style="{{ fstyle('invoice_number', header_fields) }}"><label class="form-label">Invoice Number</label>
       {% if sale %}

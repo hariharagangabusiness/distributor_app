@@ -4,6 +4,7 @@
 {% block content %}
 <div class="card" style="max-width:640px"><div class="card-body">
 <form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="return_to" value="{{ request.referrer or url_for('dashboard') }}">
   <p class="text-muted small">Choose which columns appear on the {{ module_label }} list and the order they appear in (lower number = shown first, left to right).</p>
   <div class="table-responsive">

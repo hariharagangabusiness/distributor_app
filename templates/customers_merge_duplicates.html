@@ -16,6 +16,7 @@
   <div class="card-header">"{{ group[0].CustomerName }}" — {{ group|length }} matching records</div>
   <div class="card-body">
     <form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="table-responsive mb-3">
       <table class="table align-middle mb-0">
         <thead><tr><th>Keep as primary</th><th>Customer</th><th>Address</th><th>Phone</th><th>Zone</th><th>Sales on record</th></tr></thead>

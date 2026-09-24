@@ -9,6 +9,7 @@
 
 <div class="card mb-3"><div class="card-body">
   <form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label class="form-label">SQL query</label>
     <textarea name="sql" class="form-control font-monospace" rows="5" placeholder="SELECT * FROM Sales WHERE InvoiceNumber = 'HHG/2026-27/0067'">{{ sql_text }}</textarea>
     <div class="d-flex justify-content-between align-items-center mt-2">

@@ -60,6 +60,7 @@
           <a href="{{ url_for('scheme_claim_form', claim_id=c.ClaimID) }}" class="btn btn-sm btn-outline-secondary">Edit</a>
           {% if c.Status=='Pending' %}
           <form method="post" action="{{ url_for('scheme_claim_mark', claim_id=c.ClaimID) }}" class="d-inline">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="status" value="Claimed">
             <button class="btn btn-sm btn-outline-secondary" type="submit">Mark Claimed</button>
           </form>
@@ -69,11 +70,13 @@
           {% endif %}
           {% if c.Status=='Received' %}
           <form method="post" action="{{ url_for('scheme_claim_mark', claim_id=c.ClaimID) }}" class="d-inline">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="status" value="Completed">
             <button class="btn btn-sm btn-outline-secondary" type="submit">Mark Completed</button>
           </form>
           {% endif %}
           <form method="post" action="{{ url_for('scheme_claim_delete', claim_id=c.ClaimID) }}" onsubmit="return confirm('Delete this scheme claim?');" class="d-inline">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button class="btn btn-sm btn-outline-danger" type="submit"><i class="bi bi-trash"></i></button>
           </form>
         </td>
@@ -82,6 +85,7 @@
       <tr class="collapse" id="recv-{{ c.ClaimID }}">
         <td colspan="7">
           <form method="post" action="{{ url_for('scheme_claim_mark', claim_id=c.ClaimID) }}" class="d-flex gap-2 align-items-end">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="status" value="Received">
             <div><label class="form-label small mb-0">Amount actually received</label>
               <input type="number" step="0.01" name="received_amount" class="form-control form-control-sm" value="{{ c.ClaimAmount }}" style="width:140px"></div>

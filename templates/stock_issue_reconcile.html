@@ -51,6 +51,7 @@
 {% endif %}
 <div class="card"><div class="card-body">
 <form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   {% if is_reedit and money_locked %}
   <div class="alert alert-warning">
     <strong>This issue already has a due payment and/or scheme claim recorded against it.</strong>

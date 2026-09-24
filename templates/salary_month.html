@@ -11,11 +11,13 @@
   <div class="d-flex gap-2">
     {% if missing %}
     <form method="post" action="{{ url_for('salary_generate') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="year" value="{{ year }}"><input type="hidden" name="month" value="{{ month }}">
       <button class="btn btn-brand" type="submit"><i class="bi bi-magic"></i> Generate Schedule for {{ missing|length }} Employee(s)</button>
     </form>
     {% endif %}
     <form method="post" action="{{ url_for('salary_refresh') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="year" value="{{ year }}"><input type="hidden" name="month" value="{{ month }}">
       <button class="btn btn-outline-secondary" type="submit" title="Re-pull active advances and recalculate pay for every Pending row (Join Date / attendance / leave policy). Paid rows are left untouched.">
         <i class="bi bi-arrow-clockwise"></i> Refresh
@@ -54,6 +56,7 @@
             <a href="{{ url_for('payslip_view', pid=r.PaymentID) }}" class="btn btn-sm btn-outline-secondary" title="View / Download Payslip"><i class="bi bi-file-earmark-text"></i> Payslip</a>
             {% if r.Status != 'Paid' %}
             <form method="post" action="{{ url_for('salary_pay', pid=r.PaymentID) }}" class="d-flex gap-1 justify-content-end">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <input type="date" name="payment_date" class="form-control form-control-sm" style="width:140px" value="{{ today }}">
               <select name="payment_mode" class="form-select form-select-sm" style="width:100px">
                 <option>Bank</option><option>Cash</option><option>UPI</option>

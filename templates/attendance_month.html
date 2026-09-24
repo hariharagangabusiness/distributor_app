@@ -31,6 +31,7 @@
   </div>
   <div class="card-body">
     <form method="post" action="{{ url_for('attendance_save') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="employee_id" value="{{ row.employee.EmployeeID }}">
       <input type="hidden" name="year" value="{{ year }}">
       <input type="hidden" name="month" value="{{ month }}">

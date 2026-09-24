@@ -8,6 +8,7 @@
 </div>
 <div class="card" style="max-width:640px"><div class="card-body">
 <form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="return_to" value="{{ request.referrer or url_for('sale_form') }}">
   <p class="text-muted small">Choose which fields appear on the New/Edit Sale form and the order they appear in
     (lower number = shown first). A few fields are always shown because the form can't work without them.

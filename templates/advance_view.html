@@ -6,6 +6,7 @@
   <a href="{{ url_for('advances_list') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left"></i> Back to Advances</a>
   {% if advance.Status=='Active' %}
   <form method="post" action="{{ url_for('advance_close', aid=advance.AdvanceID) }}" onsubmit="return confirm('Write off remaining balance and close this advance?');">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="return_to" value="{{ request.path }}">
     <button class="btn btn-sm btn-outline-danger" type="submit">Close Advance</button>
   </form>

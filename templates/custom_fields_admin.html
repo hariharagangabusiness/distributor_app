@@ -19,6 +19,7 @@
       <div class="card-header">Add a custom field to {{ module_label }}</div>
       <div class="card-body">
         <form method="post" action="{{ url_for('custom_field_add') }}" class="row g-2 align-items-end">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="module" value="{{ module }}">
           <div class="col-md-4">
             <label class="form-label">Field Label</label>
@@ -55,10 +56,12 @@
               <td>{% if f.Active %}<span class="badge badge-ok">Active</span>{% else %}<span class="badge text-bg-secondary">Hidden</span>{% endif %}</td>
               <td class="text-end">
                 <form method="post" action="{{ url_for('custom_field_toggle', field_id=f.FieldID) }}" class="d-inline">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                   <input type="hidden" name="module" value="{{ module }}">
                   <button class="btn btn-sm btn-outline-secondary" type="submit">{{ 'Hide' if f.Active else 'Unhide' }}</button>
                 </form>
                 <form method="post" action="{{ url_for('custom_field_delete', field_id=f.FieldID) }}" class="d-inline" onsubmit="return confirm('Delete this field and all its stored values? This cannot be undone.');">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                   <input type="hidden" name="module" value="{{ module }}">
                   <button class="btn btn-sm btn-outline-danger" type="submit">Delete</button>
                 </form>

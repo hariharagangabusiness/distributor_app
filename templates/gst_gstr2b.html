@@ -13,6 +13,7 @@
 
 <div class="card mb-3"><div class="card-body">
 <form method="post" action="{{ url_for('gst_gstr2b_upload') }}" enctype="multipart/form-data" class="row g-3 align-items-end">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div class="col-md-3"><label class="form-label">Return Period</label>
     <input type="month" name="period" class="form-control" value="{{ today[:7] }}" required></div>
   <div class="col-md-5"><label class="form-label">GSTR-2B Excel File (.xlsx)</label>
@@ -38,6 +39,7 @@
         <td data-label="Records">{{ u.RecordCount }}</td>
         <td>
           <form method="post" action="{{ url_for('gst_gstr2b_delete', upload_id=u.UploadID) }}" onsubmit="return confirm('Remove this upload? The file and its parsed totals will be deleted.');">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-sm btn-outline-danger">✕</button>
           </form>
         </td>
