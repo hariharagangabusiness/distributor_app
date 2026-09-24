@@ -1,3 +1,4 @@
+import glob
 import sqlite3
 import os
 import threading
@@ -29,13 +30,46 @@ def get_conn():
     return conn
 
 
+# migrate_auth.py is an interactive, one-time account-setup script (prompts
+# for a username/password), not a schema/data migration - it's never part
+# of the SchemaMigrations bootstrap or run_migrations.py's scope, and stays
+# something you run by hand per RAILWAY_DEPLOY.md.
+MIGRATION_EXCLUDED = {"migrate_auth.py"}
+
+
 def init_db():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = get_conn()
     with open(SCHEMA_PATH, "r") as f:
         conn.executescript(f.read())
     conn.commit()
+    _bootstrap_schema_migrations(conn)
     conn.close()
+
+
+def _bootstrap_schema_migrations(conn):
+    """One-time, one-way bootstrap for the SchemaMigrations tracker (added
+    well after this app already had ~30 migrate_*.py scripts behind it,
+    already applied to any real database). Runs only while the table is
+    still empty - on a database that's never seen this table before, every
+    migrate_*.py script that exists AT THAT MOMENT is recorded as already
+    applied (Bootstrapped=1) WITHOUT being executed, since re-running a
+    years-old data migration against data it's already transformed once
+    could silently corrupt it. Only migrate_*.py scripts added AFTER this
+    point are ever actually executed, by run_migrations.py. Never touches
+    the table again once it holds at least one row - safe to call on every
+    boot."""
+    count = conn.execute("SELECT COUNT(*) FROM SchemaMigrations").fetchone()[0]
+    if count:
+        return
+    scripts = sorted(
+        os.path.basename(p) for p in glob.glob(os.path.join(BASE_DIR, "migrate_*.py"))
+        if os.path.basename(p) not in MIGRATION_EXCLUDED
+    )
+    conn.executemany(
+        "INSERT INTO SchemaMigrations (Name, Bootstrapped) VALUES (?, 1)",
+        [(name,) for name in scripts])
+    conn.commit()
 
 
 _local = threading.local()

@@ -116,9 +116,16 @@ account you just created.
   listed files in your local copy of the repo, `git commit`, `git push`.
   Railway redeploys automatically. Since the database lives on the Volume
   (not in the repo), your data is untouched by this.
-- Any phase that ships a `migrate_*.py` script needs that script run once
-  after deploying, the same way as step 5 above (Shell → `python
-  migrate_whatever.py`), before using the new feature.
+- Any phase that ships a `migrate_*.py` script needs it run once after
+  deploying: Shell → `python run_migrations.py`. That runner tracks which
+  migration scripts have already been applied (the `SchemaMigrations`
+  table) and only runs the new one(s) - safe to run any time, including
+  repeatedly, since it always skips what's already applied. You no longer
+  need to figure out which specific `migrate_whatever.py` is new; just run
+  it after every deploy that might have shipped one, and it's a no-op if
+  there's nothing pending. (`migrate_auth.py` is the one exception - it's
+  an interactive account-setup script, not a schema migration, and is
+  still run by hand per step 5 above.)
 - The Procfile runs a single gunicorn worker (`--workers 1`) on purpose —
   SQLite doesn't handle many processes writing to the same file well, and
   this app is sized for a small distributor team, not high concurrency. If

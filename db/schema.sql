@@ -835,6 +835,16 @@ CREATE TABLE IF NOT EXISTS DirectSaleReviews (
     FOREIGN KEY (ProductID) REFERENCES Products(ProductID)
 );
 
+-- Tracks which migrate_*.py scripts (see run_migrations.py) have already
+-- been applied to this database, so it's safe to run the migration runner
+-- any time - already-applied ones (including everything that predates this
+-- table, bootstrapped once by db.init_db()) are skipped automatically.
+CREATE TABLE IF NOT EXISTS SchemaMigrations (
+    Name        TEXT PRIMARY KEY,   -- script filename, e.g. 'migrate_zones.py'
+    AppliedAt   TEXT NOT NULL DEFAULT (datetime('now')),
+    Bootstrapped INTEGER NOT NULL DEFAULT 0  -- 1 = assumed already applied when this table was introduced, not actually executed by run_migrations.py
+);
+
 -- =====================================================================
 -- Indexes
 -- =====================================================================
