@@ -1,9 +1,11 @@
 import os
 import re
+import time
 import uuid
 import logging
 import secrets
 import calendar
+import threading
 import mimetypes
 from functools import wraps
 from datetime import date, datetime, timedelta
@@ -11,6 +13,7 @@ from zoneinfo import ZoneInfo
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_from_directory, session, g
 from flask_wtf.csrf import CSRFProtect
 from werkzeug.exceptions import HTTPException
+from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -197,6 +200,13 @@ def _load_or_create_secret_key():
 app.secret_key = _load_or_create_secret_key()
 app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024  # 25MB cap per upload request
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
+
+# Railway (like most hosts) puts this app behind its own reverse proxy, so
+# every request's real remote_addr is that proxy's IP, not the visitor's -
+# ProxyFix reads the one hop of X-Forwarded-For that proxy adds and swaps it
+# in, so request.remote_addr (used below for login rate-limiting) reflects
+# the actual client instead of "everyone looks like the same IP."
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1)
 
 # CSRF protection: every POST form must submit a token proving it was rendered
 # by this app for this signed-in session, not from a malicious page tricking a
@@ -514,6 +524,58 @@ def home():
     return render_template("home.html")
 
 
+# Login rate-limiting: nothing previously stopped an attacker (or a script)
+# from hammering /login with unlimited password guesses. This is a simple
+# in-memory sliding-window lock, not a database table - the app runs as a
+# single gunicorn worker (see Procfile), so one process's memory is the
+# whole picture, and losing these counters on a redeploy just means a clean
+# slate, not a security hole. Tracked per *username* (so an attacker can't
+# brute-force one account forever) and per *IP* (so an attacker can't just
+# cycle through usernames from the same place) - either one tripping locks
+# the attempt out.
+LOGIN_MAX_ATTEMPTS = 5
+LOGIN_WINDOW_SECONDS = 15 * 60
+LOGIN_LOCKOUT_SECONDS = 15 * 60
+
+_login_lock = threading.Lock()
+_login_failures = {}  # "user:<username lower>" or "ip:<addr>" -> [failure timestamps]
+
+
+def _login_rate_keys(username, ip):
+    keys = [f"ip:{ip}"]
+    if username:
+        keys.append(f"user:{username.strip().lower()}")
+    return keys
+
+
+def _login_lockout_remaining(keys):
+    """Returns the number of seconds any of these keys is still locked out for, or None."""
+    now = time.time()
+    remaining = None
+    with _login_lock:
+        for key in keys:
+            attempts = [t for t in _login_failures.get(key, []) if now - t < LOGIN_WINDOW_SECONDS]
+            _login_failures[key] = attempts
+            if len(attempts) >= LOGIN_MAX_ATTEMPTS:
+                key_remaining = LOGIN_LOCKOUT_SECONDS - (now - attempts[-1])
+                if key_remaining > 0:
+                    remaining = max(remaining or 0, key_remaining)
+    return int(remaining) + 1 if remaining else None
+
+
+def _record_login_failure(keys):
+    now = time.time()
+    with _login_lock:
+        for key in keys:
+            _login_failures.setdefault(key, []).append(now)
+
+
+def _clear_login_failures(keys):
+    with _login_lock:
+        for key in keys:
+            _login_failures.pop(key, None)
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     current = get_current_user()
@@ -523,8 +585,16 @@ def login():
         username = (request.form.get("username") or "").strip()
         password = request.form.get("password") or ""
         remember = request.form.get("remember") == "on"
+        rate_keys = _login_rate_keys(username, request.remote_addr)
+        locked_for = _login_lockout_remaining(rate_keys)
+        if locked_for:
+            minutes = max(locked_for // 60, 1)
+            logger.warning("Login blocked by rate limit: username=%r ip=%s", username, request.remote_addr)
+            flash(f"Too many failed login attempts. Please try again in {minutes} minute(s).", "error")
+            return render_template("login.html", next=request.args.get("next", ""))
         user = db.query("SELECT * FROM Users WHERE Username=? COLLATE NOCASE", (username,), one=True)
         if user and user["Active"] and check_password_hash(user["PasswordHash"], password):
+            _clear_login_failures(rate_keys)
             session.clear()
             session["user_id"] = user["UserID"]
             session.permanent = remember
@@ -532,6 +602,7 @@ def login():
             nxt = request.form.get("next") or request.args.get("next")
             flash(f"Welcome back, {user['FullName'] or user['Username']}.", "success")
             return redirect(nxt if nxt and nxt.startswith("/") else default_landing_url(user))
+        _record_login_failure(rate_keys)
         flash("Incorrect username or password.", "error")
     return render_template("login.html", next=request.args.get("next", ""))
 
