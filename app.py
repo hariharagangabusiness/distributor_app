@@ -2729,25 +2729,58 @@ def purchase_import_confirm():
 # Sales
 # ---------------------------------------------------------------------
 
+SALES_LIST_PAGE_SIZE = 100
+
+
 @app.route("/sales")
 def sales_list():
-    sales = db.query("""SELECT s.*, c.CustomerName, c.IsUnassignedBucket, e.EmployeeName FROM Sales s
-                      JOIN Customers c ON c.CustomerID=s.CustomerID
-                      LEFT JOIN Employees e ON e.EmployeeID=s.EmployeeID
-                      ORDER BY s.SaleDate DESC, s.SaleID DESC""")
+    # Filtered in SQL (WHERE) and paginated (LIMIT/OFFSET) rather than fetching every
+    # Sale ever recorded into Python on every visit to this page and filtering there -
+    # that pattern (still used by several other list pages) doesn't scale: it gets
+    # slower and heavier on every render as the table grows, forever, with no ceiling.
+    # Sales specifically is the highest-value place to fix first since it's the
+    # fastest-growing table in the app (a new row every sale, every day).
     filt = request.args.get("filter", "")
-    if filt == "unassigned":
-        sales = [s for s in sales if s["IsUnassignedBucket"]]
     # Optional quick filters (linked from the Live Sales Monitor report) - narrow to one
     # salesperson and/or one date without needing a dedicated search form here.
     employee_id = request.args.get("employee_id", type=int)
     date_filter = request.args.get("date", "")
+    q = (request.args.get("q") or "").strip()
+    try:
+        page = max(int(request.args.get("page", 1)), 1)
+    except ValueError:
+        page = 1
+
+    where = ["1=1"]
+    params = []
+    if filt == "unassigned":
+        where.append("c.IsUnassignedBucket = 1")
     if employee_id:
-        sales = [s for s in sales if s["EmployeeID"] == employee_id]
+        where.append("s.EmployeeID = ?")
+        params.append(employee_id)
     if date_filter:
-        sales = [s for s in sales if s["SaleDate"] == date_filter]
+        where.append("s.SaleDate = ?")
+        params.append(date_filter)
+    if q:
+        where.append("""(s.InvoiceNumber LIKE ? OR c.CustomerName LIKE ? OR e.EmployeeName LIKE ?
+                       OR s.Status LIKE ? OR s.PaymentStatus LIKE ?)""")
+        like = f"%{q}%"
+        params.extend([like, like, like, like, like])
+    where_sql = " AND ".join(where)
+
+    from_clause = """FROM Sales s JOIN Customers c ON c.CustomerID=s.CustomerID
+                   LEFT JOIN Employees e ON e.EmployeeID=s.EmployeeID"""
+    total = db.query(f"SELECT COUNT(*) c {from_clause} WHERE {where_sql}", params, one=True)["c"]
+    total_pages = max((total + SALES_LIST_PAGE_SIZE - 1) // SALES_LIST_PAGE_SIZE, 1)
+    page = min(page, total_pages)
+    offset = (page - 1) * SALES_LIST_PAGE_SIZE
+
+    sales = db.query(f"""SELECT s.*, c.CustomerName, c.IsUnassignedBucket, e.EmployeeName {from_clause}
+                      WHERE {where_sql} ORDER BY s.SaleDate DESC, s.SaleID DESC LIMIT ? OFFSET ?""",
+                     params + [SALES_LIST_PAGE_SIZE, offset])
     return render_template("sales_list.html", sales=sales, columns=get_effective_columns("Sale"), filt=filt,
-                            employee_id=employee_id, date_filter=date_filter)
+                            employee_id=employee_id, date_filter=date_filter, q=q,
+                            page=page, total_pages=total_pages, total=total, page_size=SALES_LIST_PAGE_SIZE)
 
 
 @app.route("/sales/reports/day-wise")

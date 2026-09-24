@@ -26,10 +26,14 @@
 <div class="d-flex justify-content-end mb-2">
   <a href="{{ url_for('columns_customize', module='Sale') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-layout-three-columns"></i> Customize Columns</a>
 </div>
-<div class="mb-3 d-flex gap-2" style="max-width:460px">
-  <input type="text" id="sale-list-search" class="form-control" placeholder="Search by invoice #, customer, salesperson, or status…">
-  <button type="button" id="sale-list-search-btn" class="btn btn-brand"><i class="bi bi-search"></i> Search</button>
-</div>
+<form method="get" class="mb-3 d-flex gap-2" style="max-width:460px">
+  {% if filt %}<input type="hidden" name="filter" value="{{ filt }}">{% endif %}
+  {% if employee_id %}<input type="hidden" name="employee_id" value="{{ employee_id }}">{% endif %}
+  {% if date_filter %}<input type="hidden" name="date" value="{{ date_filter }}">{% endif %}
+  <input type="text" name="q" value="{{ q }}" class="form-control" placeholder="Search by invoice #, customer, salesperson, or status…">
+  <button type="submit" class="btn btn-brand"><i class="bi bi-search"></i> Search</button>
+  {% if q %}<a href="{{ url_for('sales_list', filter=filt, employee_id=employee_id, date=date_filter) }}" class="btn btn-outline-secondary">Clear</a>{% endif %}
+</form>
 <div class="card">
   <div class="table-responsive">
   <table class="table table-hover mb-0 align-middle table-cards-mobile" id="tbl-sale" data-view-toggle="Sale">
@@ -65,6 +69,20 @@
   </table>
   </div>
 </div>
+{% if total_pages and total_pages > 1 %}
+<div class="d-flex justify-content-between align-items-center mt-3">
+  <div class="text-muted small">
+    Showing {{ ((page - 1) * page_size) + 1 }}–{{ [page * page_size, total]|min }} of {{ total }} sale(s)
+  </div>
+  <div class="btn-group">
+    <a href="{{ url_for('sales_list', page=page-1, filter=filt, employee_id=employee_id, date=date_filter, q=q) }}"
+       class="btn btn-sm btn-outline-secondary {{ 'disabled' if page <= 1 }}">&laquo; Prev</a>
+    <span class="btn btn-sm btn-outline-secondary disabled">Page {{ page }} of {{ total_pages }}</span>
+    <a href="{{ url_for('sales_list', page=page+1, filter=filt, employee_id=employee_id, date=date_filter, q=q) }}"
+       class="btn btn-sm btn-outline-secondary {{ 'disabled' if page >= total_pages }}">Next &raquo;</a>
+  </div>
+</div>
+{% endif %}
 {% endblock %}
 {% block scripts %}
 <script>
@@ -72,21 +90,4 @@ window.LIST_COLUMNS_TABLE_ID = 'tbl-sale';
 window.LIST_COLUMNS_PREFS = {{ columns|tojson }};
 </script>
 <script src="{{ url_for('static', filename='js/list-columns.js') }}" defer></script>
-<script>
-(function () {
-  const input = document.getElementById('sale-list-search');
-  const btn = document.getElementById('sale-list-search-btn');
-  const table = document.getElementById('tbl-sale');
-  if (!input || !table) return;
-  function runSearch() {
-    const q = input.value.trim().toLowerCase();
-    table.querySelectorAll('tbody tr').forEach(row => {
-      row.style.display = !q || row.textContent.toLowerCase().includes(q) ? '' : 'none';
-    });
-  }
-  input.addEventListener('input', runSearch);
-  input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); runSearch(); } });
-  if (btn) btn.addEventListener('click', runSearch);
-})();
-</script>
 {% endblock %}
