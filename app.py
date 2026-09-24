@@ -1,6 +1,7 @@
 import os
 import re
 import uuid
+import logging
 import secrets
 import calendar
 import mimetypes
@@ -9,6 +10,7 @@ from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_from_directory, session, g
 from flask_wtf.csrf import CSRFProtect
+from werkzeug.exceptions import HTTPException
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -18,6 +20,15 @@ import gst_reminders
 import purchase_import
 import bulk_import
 import depreciation
+
+# Structured logging to stderr, which Railway (and any other host running
+# this under gunicorn/systemd) captures into its own log viewer - previously
+# nothing in this app called `logging` at all, so an unhandled error at 2am
+# left no trace anywhere except a user eventually reporting it. Format
+# mirrors gunicorn's own access-log style (timestamp, level, message) so
+# both interleave readably in the same log stream.
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(name)s] %(message)s")
+logger = logging.getLogger("distributor_app")
 
 app = Flask(__name__)
 
@@ -197,6 +208,44 @@ app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
 # integrity operation) and threading a token through that background fetch
 # call would add real complexity for no meaningful security gain.
 csrf = CSRFProtect(app)
+
+
+@app.errorhandler(Exception)
+def handle_unexpected_error(e):
+    # HTTPException covers Flask/Werkzeug's own intentional responses (404 Not
+    # Found, 403 Forbidden, a CSRF 400, etc.) - those already carry the right
+    # status code and message, so just let Flask render them normally rather
+    # than logging every routine 404 as if it were a crash.
+    if isinstance(e, HTTPException):
+        return e
+    # Everything else is a genuine unhandled bug. Logged with the full
+    # traceback plus who/what triggered it, so a night-time failure leaves a
+    # real trace in Railway's logs instead of only surfacing if/when a user
+    # happens to report it - this was the single biggest observability gap
+    # this app had (see the architecture review: multi-day investigations
+    # into "why did this number look wrong" that a log line would have
+    # answered immediately). Deliberately doesn't extend base.html for the
+    # response itself: that template depends on current_user/can_access via
+    # a context processor and other app state, which is exactly the kind of
+    # thing that might ALSO be broken during a genuine crash - the error
+    # page has to render with zero dependencies on anything that could fail.
+    try:
+        user = get_current_user()
+        who = user["Username"] if user else "anonymous"
+    except Exception:
+        who = "unknown"
+    logger.exception("Unhandled exception on %s %s (user=%s)", request.method, request.path, who)
+    return (
+        "<!DOCTYPE html><html><head><title>Something went wrong</title></head>"
+        "<body style=\"font-family:sans-serif;max-width:640px;margin:4rem auto;padding:0 1rem\">"
+        "<h1>Something went wrong</h1>"
+        "<p>An unexpected error occurred and has been logged. Please try again, "
+        "or contact an Admin if this keeps happening.</p>"
+        "<p><a href=\"/\">Return to the home page</a></p>"
+        "</body></html>",
+        500,
+    )
+
 
 UPLOAD_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
 
