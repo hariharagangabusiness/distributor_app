@@ -1,8 +1,9 @@
 # Daily backup script for Hari Hara Ganga (distributor_app).
 # Backs up: (1) the production database on Railway, (2) the laptop's local
 # database, (3) a snapshot of the app code — into a dated folder under
-# C:\distributor_app\backups\, and prunes backups older than 60 days so the
-# folder doesn't grow forever.
+# C:\distributor_app\backups\, (4) a copy of that same dated folder into
+# your Google Drive sync folder (see $driveBackupDir below), and prunes
+# local backups older than 60 days so that folder doesn't grow forever.
 #
 # Run manually any time with:  powershell -ExecutionPolicy Bypass -File C:\distributor_app\backup_daily.ps1
 # Set up to run automatically every day: see SETUP_BACKUP.md in this folder.
@@ -12,6 +13,16 @@ $root = "C:\distributor_app"
 $date = Get-Date -Format "yyyy-MM-dd"
 $backupDir = Join-Path $root "backups\$date"
 New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
+
+# Where Google Drive for Desktop mirrors your Drive to this PC - adjust this
+# ONE line to match your own setup (My Drive shows up under a folder named
+# "Google Drive" on older versions of the app, or directly as a lettered
+# drive like "G:\My Drive" on newer "Mirror" installs - check File Explorer
+# for which one you have). This is the only thing you need to configure;
+# everything else below just copies into whatever path you set here, and
+# Google's own sync client uploads it from there with no credentials or API
+# setup needed in this script at all. See SETUP_BACKUP.md for more detail.
+$driveBackupDir = "$env:USERPROFILE\Google Drive\My Drive\distributor_app_backups"
 
 $logFile = Join-Path $backupDir "backup_log.txt"
 "Backup started: $(Get-Date)" | Out-File -FilePath $logFile
@@ -62,13 +73,43 @@ try {
     "App code snapshot: FAILED - $($_.Exception.Message)" | Out-File -Append $logFile
 }
 
-# --- 4. Prune backups older than 60 days ------------------------------------
+# --- 4. Copy today's backup into Google Drive -------------------------------
+# This is the whole fix for "backups only ever lived on this one laptop":
+# Google Drive for Desktop watches $driveBackupDir and uploads anything
+# copied into it on its own, with no credentials or API calls in this
+# script at all. If that folder doesn't exist yet - Drive for Desktop isn't
+# installed, or $driveBackupDir above hasn't been pointed at your actual
+# Drive folder - this is skipped with a clear message rather than failing
+# the whole run (the local backup above still succeeded either way).
+try {
+    $driveParent = Split-Path $driveBackupDir -Parent
+    if (Test-Path $driveParent) {
+        $driveDateDir = Join-Path $driveBackupDir $date
+        New-Item -ItemType Directory -Force -Path $driveDateDir | Out-Null
+        Copy-Item (Join-Path $backupDir "*") $driveDateDir -Recurse -Force
+        "Google Drive copy: OK ($driveDateDir)" | Out-File -Append $logFile
+    } else {
+        "Google Drive copy: SKIPPED - '$driveParent' doesn't exist. Either Google Drive for " +
+        "Desktop isn't installed on this PC, or `$driveBackupDir` at the top of this script " +
+        "needs to be adjusted to match where it's actually mirroring your Drive to - check " +
+        "File Explorer for the real path, then update that one line." | Out-File -Append $logFile
+    }
+} catch {
+    "Google Drive copy: FAILED - $($_.Exception.Message)" | Out-File -Append $logFile
+}
+
+# --- 5. Prune backups older than 60 days (both local and Google Drive) ------
 try {
     $cutoff = (Get-Date).AddDays(-60)
     Get-ChildItem (Join-Path $root "backups") -Directory | Where-Object {
         $_.Name -match '^\d{4}-\d{2}-\d{2}$' -and [datetime]::ParseExact($_.Name, "yyyy-MM-dd", $null) -lt $cutoff
     } | Remove-Item -Recurse -Force
-    "Pruned backups older than 60 days." | Out-File -Append $logFile
+    if (Test-Path $driveBackupDir) {
+        Get-ChildItem $driveBackupDir -Directory | Where-Object {
+            $_.Name -match '^\d{4}-\d{2}-\d{2}$' -and [datetime]::ParseExact($_.Name, "yyyy-MM-dd", $null) -lt $cutoff
+        } | Remove-Item -Recurse -Force
+    }
+    "Pruned backups older than 60 days (local and Google Drive)." | Out-File -Append $logFile
 } catch {
     "Pruning old backups: FAILED - $($_.Exception.Message)" | Out-File -Append $logFile
 }
