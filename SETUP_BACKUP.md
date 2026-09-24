@@ -13,7 +13,42 @@ when you run it by hand).
 - `app_code.zip` — a snapshot of app.py, all other .py files, and the templates/static folders
 - `backup_log.txt` — what happened during that day's run (useful if something fails silently)
 
-Backups older than 60 days are automatically deleted so the folder doesn't grow forever.
+That same dated folder is then also copied into your Google Drive (see
+**Google Drive copy** below) — so a backup exists somewhere other than this
+one laptop, which until now was the single place both the "live" data and
+its only backup could be lost together if this machine's disk ever failed.
+
+Backups older than 60 days are automatically deleted (both the local copy
+and the Google Drive copy) so neither folder grows forever.
+
+## Google Drive copy (one-time setup, ~2 minutes)
+
+The script copies each day's backup folder into a path on this PC that
+Google Drive for Desktop watches and uploads on its own — no credentials,
+API keys, or extra script logic needed for the upload itself.
+
+1. If you don't already have it, install **Google Drive for Desktop**
+   (drive.google.com/drive/download) and sign in with the Google account
+   you want backups to land in.
+2. Open File Explorer and find where it mirrors your Drive to this PC —
+   depending on which mode you set it up in, that's either a folder named
+   something like `Google Drive` under your user profile, or a separate
+   lettered drive (e.g. `G:\My Drive`).
+3. Open `backup_daily.ps1` and find this line near the top:
+   ```powershell
+   $driveBackupDir = "$env:USERPROFILE\Google Drive\My Drive\distributor_app_backups"
+   ```
+   Change the path so it points at a `distributor_app_backups` folder
+   *inside* whatever you found in step 2 (it doesn't need to exist yet —
+   the script creates it). That's the only line you need to touch.
+4. Run the script once by hand (see **Testing it right away** below) and
+   check `backup_log.txt` for a line starting with `Google Drive copy:` —
+   it'll say `OK` with the folder it copied into, or `SKIPPED` with exactly
+   what's wrong if the path in step 3 doesn't match reality yet.
+
+If you'd rather not use Google Drive for Desktop at all, the same idea
+works with any similar sync client (OneDrive, Dropbox, etc.) — just point
+`$driveBackupDir` at whichever one's local sync folder instead.
 
 ## One-time setup
 
