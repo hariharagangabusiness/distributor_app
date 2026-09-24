@@ -9,6 +9,7 @@
     different vendor's export looks different, this may not parse it correctly.
   </p>
   <form method="post" enctype="multipart/form-data">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="row g-3">
       <div class="col-md-5">
         <label class="form-label">Supplier *</label>

@@ -27,6 +27,7 @@
           <a href="{{ url_for('advance_view', aid=a.AdvanceID) }}" class="btn btn-sm btn-outline-secondary mobile-btn-full">View</a>
           {% if a.Status=='Active' %}
           <form method="post" action="{{ url_for('advance_close', aid=a.AdvanceID) }}" onsubmit="return confirm('Write off remaining balance and close this advance?');" class="d-inline">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button class="btn btn-sm btn-outline-secondary" type="submit">Close</button>
           </form>
           {% endif %}

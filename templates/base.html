@@ -221,6 +221,7 @@
             <li><a class="dropdown-item" href="{{ url_for('change_password') }}"><i class="bi bi-key"></i> Change Password</a></li>
             <li>
               <form method="post" action="{{ url_for('logout') }}" class="m-0">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" class="dropdown-item"><i class="bi bi-box-arrow-right"></i> Logout</button>
               </form>
             </li>

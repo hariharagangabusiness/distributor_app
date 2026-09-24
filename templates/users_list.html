@@ -18,6 +18,7 @@
           <td data-label="Full Name" data-key-field="secondary">{{ u.FullName or '-' }}</td>
           <td data-label="Role">
             <form method="post" action="{{ url_for('user_role_update', uid=u.UserID) }}" class="d-inline">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <select name="role" class="form-select form-select-sm d-inline-block" style="width:auto"
                       onchange="this.form.submit()"
                       {% if current_user and u.UserID == current_user.UserID %}title="Change your own role carefully — you'll lose Admin access to this page if you're no longer Admin"{% endif %}>
@@ -29,6 +30,7 @@
           </td>
           <td data-label="Salesperson Link">
             <form method="post" action="{{ url_for('user_employee_update', uid=u.UserID) }}" class="d-inline">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <select name="employee_id" class="form-select form-select-sm d-inline-block" style="width:auto" onchange="this.form.submit()">
                 <option value="">-- none --</option>
                 {% for e in employees %}
@@ -43,6 +45,7 @@
             <a href="{{ url_for('user_reset_password', uid=u.UserID) }}" class="btn btn-sm btn-outline-secondary">Reset Password</a>
             <form method="post" action="{{ url_for('user_toggle', uid=u.UserID) }}" class="d-inline"
                   {% if current_user and u.UserID == current_user.UserID %}onsubmit="return false;"{% endif %}>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button class="btn btn-sm btn-outline-{{ 'danger' if u.Active else 'secondary' }}" type="submit"
                       {% if current_user and u.UserID == current_user.UserID %}disabled title="You can't deactivate your own account"{% endif %}>
                 {{ 'Deactivate' if u.Active else 'Reactivate' }}

@@ -153,6 +153,7 @@
         <td class="text-nowrap">
           <a href="{{ url_for('targets_view', year=year, month=month, employee_id=selected_employee_id, edit=t.TargetID) }}#target-form" class="btn btn-sm btn-outline-secondary mobile-btn-full">Edit</a>
           <form method="post" action="{{ url_for('target_delete', target_id=t.TargetID) }}" class="d-inline" onsubmit="return confirm('Delete this target?');">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-sm btn-outline-danger mobile-btn-full">Del</button>
           </form>
         </td>
@@ -171,6 +172,7 @@
   <div class="card-header">{% if edit_target %}Edit Target{% else %}Set a New Target{% endif %}</div>
   <div class="card-body">
     <form method="post" action="{{ url_for('target_save') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="target_id" value="{{ edit_target.TargetID if edit_target else '' }}">
       <div class="row g-3">
         <div class="col-md-3">

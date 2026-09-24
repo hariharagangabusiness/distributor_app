@@ -9,6 +9,7 @@
   <div class="card-header">Add a Zone</div>
   <div class="card-body">
     <form method="post" action="{{ url_for('zone_add') }}" class="row g-2 align-items-end">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="col-md-6">
         <label class="form-label">Zone Name</label>
         <input required name="zone_name" class="form-control" placeholder="e.g. North Zone">
@@ -30,6 +31,7 @@
         <tr>
           <td style="min-width:220px;">
             <form method="post" action="{{ url_for('zone_rename', zone_id=z.ZoneID) }}" class="d-flex gap-2">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <input name="zone_name" class="form-control form-control-sm" value="{{ z.ZoneName }}" required>
               <button class="btn btn-sm btn-outline-primary" type="submit">Save</button>
             </form>
@@ -37,9 +39,11 @@
           <td>{% if z.Active %}<span class="badge badge-ok">Active</span>{% else %}<span class="badge text-bg-secondary">Hidden</span>{% endif %}</td>
           <td class="text-end">
             <form method="post" action="{{ url_for('zone_toggle', zone_id=z.ZoneID) }}" class="d-inline">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button class="btn btn-sm btn-outline-secondary" type="submit">{{ 'Hide' if z.Active else 'Unhide' }}</button>
             </form>
             <form method="post" action="{{ url_for('zone_delete', zone_id=z.ZoneID) }}" class="d-inline" onsubmit="return confirm('Delete this zone? Customers already set to it keep the text value on their record, but it will no longer appear in the dropdown.');">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button class="btn btn-sm btn-outline-danger" type="submit">Delete</button>
             </form>
           </td>

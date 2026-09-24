@@ -60,6 +60,7 @@
         <td class="text-muted small" data-label="Reviewed by">{{ r.ReviewedByUsername or '' }}{% if r.ReviewedAt %} · {{ r.ReviewedAt }}{% endif %}</td>
         <td class="text-end">
           <form method="post" action="{{ url_for('direct_sale_review_mark', review_id=r.ReviewID) }}" class="d-flex gap-1 justify-content-end">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="return_status" value="{{ status_filter }}">
             {% if r.Status != 'Confirmed' %}
             <button class="btn btn-sm btn-outline-success" name="status" value="Confirmed" type="submit">Confirm</button>

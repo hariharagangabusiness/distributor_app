@@ -63,6 +63,7 @@
 
 <form method="post" action="{{ url_for('sale_delete', sid=sale.SaleID) }}"
       onsubmit="return confirm('Last check — permanently delete Sale {{ sale.InvoiceNumber }}? This cannot be undone.');">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div class="mb-3">
     <label class="form-label" for="delete_reason">Reason for deleting this sale <span class="text-danger">*</span></label>
     <textarea class="form-control" id="delete_reason" name="delete_reason" rows="2" required

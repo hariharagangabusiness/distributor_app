@@ -5,6 +5,7 @@
 <p class="text-muted">These details appear on every GST sales invoice — fill them in before generating your first invoice.</p>
 <div class="card" style="max-width:820px"><div class="card-body">
 <form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <h6 class="mb-3">Business Details</h6>
   <div class="row g-3 mb-3">
     <div class="col-md-8"><label class="form-label">Company / Distributor Name *</label>
@@ -121,6 +122,7 @@
 <h6 class="mb-2">Test the email reminder settings</h6>
 <p class="text-muted small">Save your SMTP settings above first, then send a test email to confirm they work.</p>
 <form method="post" action="{{ url_for('settings_gst_test_email') }}" class="d-flex gap-2" style="max-width:480px">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="email" name="test_email" class="form-control" placeholder="you@example.com" required>
   <button class="btn btn-outline-secondary" type="submit">Send Test Email</button>
 </form>

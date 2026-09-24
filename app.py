@@ -8,6 +8,7 @@ from functools import wraps
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_from_directory, session, g
+from flask_wtf.csrf import CSRFProtect
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -185,6 +186,17 @@ def _load_or_create_secret_key():
 app.secret_key = _load_or_create_secret_key()
 app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024  # 25MB cap per upload request
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
+
+# CSRF protection: every POST form must submit a token proving it was rendered
+# by this app for this signed-in session, not from a malicious page tricking a
+# logged-in browser into submitting a request here. Every form template
+# carries a hidden csrf_token() field (Flask-WTF injects that helper once this
+# is initialized) - the one JS-driven POST that isn't a form submit
+# (/api/location-ping) is exempted just below, right where it's defined, since
+# forging a location ping has no real stakes (it's not a financial or data-
+# integrity operation) and threading a token through that background fetch
+# call would add real complexity for no meaningful security gain.
+csrf = CSRFProtect(app)
 
 UPLOAD_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
 
@@ -5047,6 +5059,7 @@ def _within_location_tracking_hours(dt):
 
 
 @app.route("/api/location-ping", methods=["POST"])
+@csrf.exempt  # background JS fetch(), not a form submit - see the CSRFProtect setup comment above
 def api_location_ping():
     """Called every ~30 min by the location-tracking JS (see base.html) from
     any tracked-role user's open browser tab. Re-checks role and working

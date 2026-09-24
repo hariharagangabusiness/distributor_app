@@ -8,6 +8,7 @@
   reconciled at day's end.</div>
 <div class="card"><div class="card-body">
 <form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div class="row g-3 mb-3">
     <div class="col-md-4"><label class="form-label">Salesperson</label>
       <input class="form-control" value="{{ issue.EmployeeName }}" disabled></div>

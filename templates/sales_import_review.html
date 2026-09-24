@@ -3,6 +3,7 @@
 {% block page_title %}Review Sales Import{% endblock %}
 {% block content %}
 <form method="post" action="{{ url_for('sales_import_confirm') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="row_count" value="{{ rows|length }}">
   <input type="hidden" name="group_count" value="{{ groups|length }}">
 

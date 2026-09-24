@@ -20,6 +20,12 @@ os.environ.setdefault("DB_PATH", _BOOT_DB.name)
 import db  # noqa: E402 - must come after the DB_PATH env var is set
 import app as appmod  # noqa: E402 - ditto; this is where app.py's import-time db.init_db() runs
 
+# Tests post directly to routes without first fetching a page's rendered
+# csrf_token() - the standard Flask-WTF testing pattern is to disable
+# enforcement here rather than have every test scrape a token first. This
+# only affects this test process's copy of the app config, never production.
+appmod.app.config["WTF_CSRF_ENABLED"] = False
+
 
 class DBTestCase(unittest.TestCase):
     """Base class for any test that needs a real (temporary) database.

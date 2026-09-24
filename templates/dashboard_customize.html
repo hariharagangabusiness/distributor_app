@@ -4,6 +4,7 @@
 {% block content %}
 <div class="card" style="max-width:640px"><div class="card-body">
 <form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <p class="text-muted small">Choose which widgets appear on your dashboard and the order they appear in (lower number = shown first). Widgets are read left-to-right, then top-to-bottom.</p>
   <div class="table-responsive">
   <table class="table align-middle">

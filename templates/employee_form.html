@@ -4,6 +4,7 @@
 {% block content %}
 <div class="card" style="max-width:640px"><div class="card-body">
 <form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div class="row g-3">
     <div class="col-md-8"><label class="form-label">Employee Name *</label>
       <input required name="employee_name" class="form-control" value="{{ employee.EmployeeName if employee else '' }}"></div>

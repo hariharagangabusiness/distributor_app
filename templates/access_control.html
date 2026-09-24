@@ -8,6 +8,7 @@
   and aren't listed either. Assign roles to individual logins from Manage Users.</p>
 
 <form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div class="card mb-3">
     <div class="table-responsive">
       <table class="table mb-0 align-middle">
