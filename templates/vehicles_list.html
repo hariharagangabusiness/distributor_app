@@ -10,6 +10,11 @@
 <div class="d-flex justify-content-end mb-2">
   <a href="{{ url_for('columns_customize', module='Vehicle') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-layout-three-columns"></i> Customize Columns</a>
 </div>
+<form method="get" class="mb-3 d-flex gap-2" style="max-width:460px">
+  <input type="text" name="q" value="{{ q }}" class="form-control" placeholder="Search by reg. no, type, make, model or status">
+  <button type="submit" class="btn btn-brand"><i class="bi bi-search"></i> Search</button>
+  {% if q %}<a href="{{ url_for('vehicles_list') }}" class="btn btn-outline-secondary">Clear</a>{% endif %}
+</form>
 <div class="card">
   <div class="table-responsive">
   <table class="table table-hover mb-0 align-middle table-cards-mobile" id="tbl-vehicle" data-view-toggle="Vehicle">
@@ -34,6 +39,16 @@
   </table>
   </div>
 </div>
+{% if total_pages and total_pages > 1 %}
+<div class="d-flex justify-content-between align-items-center mt-3">
+  <div class="text-muted small">Showing {{ ((page - 1) * page_size) + 1 }}–{{ [page * page_size, total]|min }} of {{ total }} vehicle(s)</div>
+  <div class="btn-group">
+    <a href="{{ url_for('vehicles_list', page=page-1, q=q) }}" class="btn btn-sm btn-outline-secondary {{ 'disabled' if page <= 1 }}">&laquo; Prev</a>
+    <span class="btn btn-sm btn-outline-secondary disabled">Page {{ page }} of {{ total_pages }}</span>
+    <a href="{{ url_for('vehicles_list', page=page+1, q=q) }}" class="btn btn-sm btn-outline-secondary {{ 'disabled' if page >= total_pages }}">Next &raquo;</a>
+  </div>
+</div>
+{% endif %}
 {% endblock %}
 {% block scripts %}
 <script>
