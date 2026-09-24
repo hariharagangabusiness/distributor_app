@@ -666,18 +666,25 @@ def get_financial_year_label(d):
 def next_invoice_number():
     """Allocates the next sequential GST invoice number for the current
     financial year, formatted <Prefix>/<FY>/<0001>. Resets to 0001 when a
-    new financial year (1 Apr) begins."""
+    new financial year (1 Apr) begins.
+
+    Uses db.transaction() (reentrant) rather than opening its own separate
+    connection: create_sale() calls this from inside its own transaction()
+    block, which by then may already hold a write lock on that connection
+    (e.g. when called from stock_issue_reconcile(), well after several
+    other UPDATEs) - a second, independent connection trying to write here
+    would deadlock against that lock under SQLite's single-writer model
+    (the same thread waiting on itself, since nothing else will ever commit
+    to release it). Reentrant means a standalone call (no outer transaction
+    active) still gets its own short-lived one, same as before."""
     fy = get_financial_year_label(date.today())
-    conn = db.get_conn()
-    try:
-        row = conn.execute("SELECT NextInvoiceSeq, InvoiceSeqFY, InvoicePrefix FROM CompanySettings WHERE SettingsID=1").fetchone()
+    with db.transaction() as conn:
+        row = conn.execute(
+            "SELECT NextInvoiceSeq, InvoiceSeqFY, InvoicePrefix FROM CompanySettings WHERE SettingsID=1").fetchone()
         seq = row["NextInvoiceSeq"] if row["InvoiceSeqFY"] == fy else 1
         prefix = row["InvoicePrefix"] or "INV"
         invoice_no = f"{prefix}/{fy}/{seq:04d}"
         conn.execute("UPDATE CompanySettings SET NextInvoiceSeq=?, InvoiceSeqFY=? WHERE SettingsID=1", (seq + 1, fy))
-        conn.commit()
-    finally:
-        conn.close()
     return invoice_no
 
 
