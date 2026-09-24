@@ -2020,10 +2020,33 @@ def direct_sale_review_mark(review_id):
 # Suppliers
 # ---------------------------------------------------------------------
 
+SUPPLIERS_LIST_PAGE_SIZE = 200
+
+
 @app.route("/suppliers")
 def suppliers_list():
-    return render_template("suppliers_list.html", suppliers=db.query("SELECT * FROM Suppliers ORDER BY SupplierName"),
-                            columns=get_effective_columns("Supplier"))
+    q = (request.args.get("q") or "").strip()
+    try:
+        page = max(int(request.args.get("page", 1)), 1)
+    except ValueError:
+        page = 1
+
+    where = "1=1"
+    params = []
+    if q:
+        where = "(SupplierName LIKE ? OR ContactPerson LIKE ? OR Phone LIKE ? OR Email LIKE ? OR GSTIN LIKE ?)"
+        like = f"%{q}%"
+        params = [like, like, like, like, like]
+
+    total = db.query(f"SELECT COUNT(*) c FROM Suppliers WHERE {where}", params, one=True)["c"]
+    total_pages = max((total + SUPPLIERS_LIST_PAGE_SIZE - 1) // SUPPLIERS_LIST_PAGE_SIZE, 1)
+    page = min(page, total_pages)
+    offset = (page - 1) * SUPPLIERS_LIST_PAGE_SIZE
+
+    suppliers = db.query(f"""SELECT * FROM Suppliers WHERE {where} ORDER BY SupplierName
+                          LIMIT ? OFFSET ?""", params + [SUPPLIERS_LIST_PAGE_SIZE, offset])
+    return render_template("suppliers_list.html", suppliers=suppliers, columns=get_effective_columns("Supplier"),
+                            q=q, page=page, total_pages=total_pages, total=total, page_size=SUPPLIERS_LIST_PAGE_SIZE)
 
 
 @app.route("/suppliers/new", methods=["GET", "POST"])
@@ -6561,10 +6584,33 @@ def expense_form(eid=None):
 # Vehicles
 # ---------------------------------------------------------------------
 
+VEHICLES_LIST_PAGE_SIZE = 200
+
+
 @app.route("/vehicles")
 def vehicles_list():
-    return render_template("vehicles_list.html", vehicles=db.query("SELECT * FROM Vehicles ORDER BY RegistrationNumber"),
-                            today=today_str(), columns=get_effective_columns("Vehicle"))
+    q = (request.args.get("q") or "").strip()
+    try:
+        page = max(int(request.args.get("page", 1)), 1)
+    except ValueError:
+        page = 1
+
+    where = "1=1"
+    params = []
+    if q:
+        where = "(RegistrationNumber LIKE ? OR VehicleType LIKE ? OR Make LIKE ? OR Model LIKE ? OR Status LIKE ?)"
+        like = f"%{q}%"
+        params = [like, like, like, like, like]
+
+    total = db.query(f"SELECT COUNT(*) c FROM Vehicles WHERE {where}", params, one=True)["c"]
+    total_pages = max((total + VEHICLES_LIST_PAGE_SIZE - 1) // VEHICLES_LIST_PAGE_SIZE, 1)
+    page = min(page, total_pages)
+    offset = (page - 1) * VEHICLES_LIST_PAGE_SIZE
+
+    vehicles = db.query(f"""SELECT * FROM Vehicles WHERE {where} ORDER BY RegistrationNumber
+                         LIMIT ? OFFSET ?""", params + [VEHICLES_LIST_PAGE_SIZE, offset])
+    return render_template("vehicles_list.html", vehicles=vehicles, today=today_str(), columns=get_effective_columns("Vehicle"),
+                            q=q, page=page, total_pages=total_pages, total=total, page_size=VEHICLES_LIST_PAGE_SIZE)
 
 
 @app.route("/vehicles/new", methods=["GET", "POST"])
@@ -6648,10 +6694,33 @@ def get_active_leave_types():
     return db.query("SELECT * FROM LeaveTypes WHERE Active=1 ORDER BY DisplayOrder, LeaveTypeID")
 
 
+EMPLOYEES_LIST_PAGE_SIZE = 200
+
+
 @app.route("/employees")
 def employees_list():
-    return render_template("employees_list.html", employees=db.query("SELECT * FROM Employees ORDER BY EmployeeName"),
-                            columns=get_effective_columns("Employee"))
+    q = (request.args.get("q") or "").strip()
+    try:
+        page = max(int(request.args.get("page", 1)), 1)
+    except ValueError:
+        page = 1
+
+    where = "1=1"
+    params = []
+    if q:
+        where = "(EmployeeName LIKE ? OR Designation LIKE ? OR Phone LIKE ? OR Status LIKE ?)"
+        like = f"%{q}%"
+        params = [like, like, like, like]
+
+    total = db.query(f"SELECT COUNT(*) c FROM Employees WHERE {where}", params, one=True)["c"]
+    total_pages = max((total + EMPLOYEES_LIST_PAGE_SIZE - 1) // EMPLOYEES_LIST_PAGE_SIZE, 1)
+    page = min(page, total_pages)
+    offset = (page - 1) * EMPLOYEES_LIST_PAGE_SIZE
+
+    employees = db.query(f"""SELECT * FROM Employees WHERE {where} ORDER BY EmployeeName
+                          LIMIT ? OFFSET ?""", params + [EMPLOYEES_LIST_PAGE_SIZE, offset])
+    return render_template("employees_list.html", employees=employees, columns=get_effective_columns("Employee"),
+                            q=q, page=page, total_pages=total_pages, total=total, page_size=EMPLOYEES_LIST_PAGE_SIZE)
 
 
 @app.route("/employees/new", methods=["GET", "POST"])
@@ -6902,11 +6971,35 @@ def payslip_pdf_download(pid):
 # Advance payments
 # ---------------------------------------------------------------------
 
+ADVANCES_LIST_PAGE_SIZE = 100
+
+
 @app.route("/advances")
 def advances_list():
-    advances = db.query("""SELECT a.*, e.EmployeeName FROM AdvancePayments a
-                         JOIN Employees e ON e.EmployeeID=a.EmployeeID ORDER BY a.AdvanceDate DESC""")
-    return render_template("advances_list.html", advances=advances, columns=get_effective_columns("Advance"))
+    q = (request.args.get("q") or "").strip()
+    try:
+        page = max(int(request.args.get("page", 1)), 1)
+    except ValueError:
+        page = 1
+
+    where = "1=1"
+    params = []
+    if q:
+        where = "(e.EmployeeName LIKE ? OR a.Reason LIKE ? OR a.Status LIKE ?)"
+        like = f"%{q}%"
+        params = [like, like, like]
+
+    total = db.query(f"""SELECT COUNT(*) c FROM AdvancePayments a
+                       JOIN Employees e ON e.EmployeeID=a.EmployeeID WHERE {where}""", params, one=True)["c"]
+    total_pages = max((total + ADVANCES_LIST_PAGE_SIZE - 1) // ADVANCES_LIST_PAGE_SIZE, 1)
+    page = min(page, total_pages)
+    offset = (page - 1) * ADVANCES_LIST_PAGE_SIZE
+
+    advances = db.query(f"""SELECT a.*, e.EmployeeName FROM AdvancePayments a
+                         JOIN Employees e ON e.EmployeeID=a.EmployeeID WHERE {where} ORDER BY a.AdvanceDate DESC
+                         LIMIT ? OFFSET ?""", params + [ADVANCES_LIST_PAGE_SIZE, offset])
+    return render_template("advances_list.html", advances=advances, columns=get_effective_columns("Advance"),
+                            q=q, page=page, total_pages=total_pages, total=total, page_size=ADVANCES_LIST_PAGE_SIZE)
 
 
 @app.route("/advances/new", methods=["GET", "POST"])
