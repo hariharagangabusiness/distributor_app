@@ -3242,176 +3242,182 @@ def create_sale(customer_id, sale_date, status, payment_status, payment_due_date
     deducting warehouse stock a second time. Only sale_form()'s direct
     salesperson-locked entry point passes this — every other caller leaves
     it False so it never surprises a manual/imported/reconciliation sale."""
-    company = get_company_settings()
-    place_of_supply_name = STATE_NAME_BY_CODE.get(place_of_supply_code, "")
-    is_interstate = 1 if (company["StateCode"] and place_of_supply_code != company["StateCode"]) else 0
+    # The whole operation is one atomic transaction (see db.transaction()) -
+    # this function makes a dozen-plus separate inserts/updates (Sale header,
+    # lines, inventory postings, Stock Issue credits), and used to commit each
+    # one independently; an exception partway through left a permanently
+    # half-written Sale. Now either all of it lands, or none of it does.
+    with db.transaction():
+        company = get_company_settings()
+        place_of_supply_name = STATE_NAME_BY_CODE.get(place_of_supply_code, "")
+        is_interstate = 1 if (company["StateCode"] and place_of_supply_code != company["StateCode"]) else 0
 
-    if invoice_no is None:
-        invoice_no = next_invoice_number()
+        if invoice_no is None:
+            invoice_no = next_invoice_number()
 
-    taxable_total = cgst_total = sgst_total = igst_total = discount_total = 0.0
-    line_data = []
-    for line in lines:
-        prod_id, qty, price = line[0], line[1], line[2]
-        discount_per_unit = line[3] if len(line) > 3 else 0.0
-        discount = round(discount_per_unit * qty, 2)  # per-line total, for storage/aggregation
-        prod = db.query("SELECT HSNCode, GSTRate FROM Products WHERE ProductID=?", (prod_id,), one=True)
-        hsn = (prod["HSNCode"] or "") if prod else ""
-        gst_rate = (prod["GSTRate"] or 0) if prod else 0
-        taxable_value = round(max(qty * price - discount, 0), 2)
-        gst = compute_line_gst(taxable_value, gst_rate, is_interstate)
-        taxable_total += taxable_value
-        cgst_total += gst["cgst_amt"]
-        sgst_total += gst["sgst_amt"]
-        igst_total += gst["igst_amt"]
-        discount_total += discount
-        line_data.append((prod_id, qty, price, discount, taxable_value, hsn, gst_rate, gst))
+        taxable_total = cgst_total = sgst_total = igst_total = discount_total = 0.0
+        line_data = []
+        for line in lines:
+            prod_id, qty, price = line[0], line[1], line[2]
+            discount_per_unit = line[3] if len(line) > 3 else 0.0
+            discount = round(discount_per_unit * qty, 2)  # per-line total, for storage/aggregation
+            prod = db.query("SELECT HSNCode, GSTRate FROM Products WHERE ProductID=?", (prod_id,), one=True)
+            hsn = (prod["HSNCode"] or "") if prod else ""
+            gst_rate = (prod["GSTRate"] or 0) if prod else 0
+            taxable_value = round(max(qty * price - discount, 0), 2)
+            gst = compute_line_gst(taxable_value, gst_rate, is_interstate)
+            taxable_total += taxable_value
+            cgst_total += gst["cgst_amt"]
+            sgst_total += gst["sgst_amt"]
+            igst_total += gst["igst_amt"]
+            discount_total += discount
+            line_data.append((prod_id, qty, price, discount, taxable_value, hsn, gst_rate, gst))
 
-    raw_total = taxable_total + cgst_total + sgst_total + igst_total
-    grand_total = round(raw_total)
-    round_off = round(grand_total - raw_total, 2)
+        raw_total = taxable_total + cgst_total + sgst_total + igst_total
+        grand_total = round(raw_total)
+        round_off = round(grand_total - raw_total, 2)
 
-    if cash_amount is None and bank_amount is None:
-        cash_amount, bank_amount = amount_received, 0.0
-    cash_amount = round(cash_amount or 0, 2)
-    bank_amount = round(bank_amount or 0, 2)
+        if cash_amount is None and bank_amount is None:
+            cash_amount, bank_amount = amount_received, 0.0
+        cash_amount = round(cash_amount or 0, 2)
+        bank_amount = round(bank_amount or 0, 2)
 
-    if sale_id is None:
-        sale_id = db.execute("""INSERT INTO Sales (InvoiceNumber, CustomerID, SaleDate, Status, PaymentStatus,
-                    PaymentDueDate, TotalAmount, AmountReceived, Notes, PlaceOfSupplyState, PlaceOfSupplyStateCode,
-                    IsInterState, TaxableAmount, CGSTAmount, SGSTAmount, IGSTAmount, RoundOff, ReverseCharge, EmployeeID,
-                    CashAmount, BankAmount)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                    (invoice_no, customer_id, sale_date, status, payment_status,
-                     payment_due_date or None, grand_total, amount_received, notes,
-                     place_of_supply_name, place_of_supply_code, is_interstate,
-                     round(taxable_total, 2), round(cgst_total, 2), round(sgst_total, 2), round(igst_total, 2),
-                     round_off, 1 if reverse_charge else 0, employee_id, cash_amount, bank_amount))
-    else:
-        # Guardrail: block editing a Sale that's entangled with an already-Reconciled Stock
-        # Issue (checked against BOTH the employee/date being submitted now and whatever was
-        # stored before this edit, in case that's what's changing) - re-running the credit/
-        # covered/direct-deduction logic below against "whatever the Stock Issue looks like
-        # right now" rather than when the Sale was first saved is exactly how one Reconciled
-        # issue's Qty Sold got silently double-counted. Only applies when this call would
-        # actually touch that logic (status Completed, post_inventory on) - the internal
-        # calls this same function gets from stock_issue_reconcile()'s auto-invoice and
-        # sale_reassign() always pass post_inventory=False and no employee_id, so they're
-        # naturally exempt.
-        if status == "Completed" and post_inventory:
-            existing_sale_row = db.query("SELECT EmployeeID, SaleDate FROM Sales WHERE SaleID=?", (sale_id,), one=True)
-            entangled_candidates = {(employee_id, sale_date)}
-            if existing_sale_row and existing_sale_row["EmployeeID"]:
-                entangled_candidates.add((existing_sale_row["EmployeeID"], existing_sale_row["SaleDate"]))
-            for emp_id, s_date in entangled_candidates:
-                if not emp_id:
-                    continue
-                locked_issue = db.query("""SELECT IssueID FROM StockIssues WHERE EmployeeID=? AND IssueDate=?
-                                         AND Status='Reconciled'""", (emp_id, s_date), one=True)
-                if locked_issue:
-                    raise SaleStockIssueLockedError(locked_issue["IssueID"])
-        db.execute("""UPDATE Sales SET CustomerID=?, SaleDate=?, Status=?, PaymentStatus=?, PaymentDueDate=?,
-                    TotalAmount=?, AmountReceived=?, Notes=?, PlaceOfSupplyState=?, PlaceOfSupplyStateCode=?,
-                    IsInterState=?, TaxableAmount=?, CGSTAmount=?, SGSTAmount=?, IGSTAmount=?, RoundOff=?,
-                    ReverseCharge=?, EmployeeID=?, CashAmount=?, BankAmount=? WHERE SaleID=?""",
-                   (customer_id, sale_date, status, payment_status, payment_due_date or None,
-                    grand_total, amount_received, notes, place_of_supply_name, place_of_supply_code, is_interstate,
-                    round(taxable_total, 2), round(cgst_total, 2), round(sgst_total, 2), round(igst_total, 2),
-                    round_off, 1 if reverse_charge else 0, employee_id, cash_amount, bank_amount, sale_id))
-        db.execute("DELETE FROM SalesLines WHERE SaleID=?", (sale_id,))
-        # Delete any DirectSaleReviews rows for this Sale's old warehouse-deduction
-        # transactions first - PRAGMA foreign_keys=ON would otherwise block deleting
-        # the InventoryTransactions rows they reference.
-        db.execute("""DELETE FROM DirectSaleReviews WHERE TransactionID IN
-                    (SELECT TransactionID FROM InventoryTransactions WHERE RefType='Sale' AND RefID=?)""", (sale_id,))
-        db.execute("DELETE FROM InventoryTransactions WHERE RefType='Sale' AND RefID=?", (sale_id,))
-        # Undo whatever this Sale previously credited toward any Stock Issue's Qty Sold,
-        # before re-evaluating (below) what it should credit now - the employee, date, or
-        # quantities may all have changed since the last save.
-        reverse_sale_stock_issue_links(sale_id)
+        if sale_id is None:
+            sale_id = db.execute("""INSERT INTO Sales (InvoiceNumber, CustomerID, SaleDate, Status, PaymentStatus,
+                        PaymentDueDate, TotalAmount, AmountReceived, Notes, PlaceOfSupplyState, PlaceOfSupplyStateCode,
+                        IsInterState, TaxableAmount, CGSTAmount, SGSTAmount, IGSTAmount, RoundOff, ReverseCharge, EmployeeID,
+                        CashAmount, BankAmount)
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                        (invoice_no, customer_id, sale_date, status, payment_status,
+                         payment_due_date or None, grand_total, amount_received, notes,
+                         place_of_supply_name, place_of_supply_code, is_interstate,
+                         round(taxable_total, 2), round(cgst_total, 2), round(sgst_total, 2), round(igst_total, 2),
+                         round_off, 1 if reverse_charge else 0, employee_id, cash_amount, bank_amount))
+        else:
+            # Guardrail: block editing a Sale that's entangled with an already-Reconciled Stock
+            # Issue (checked against BOTH the employee/date being submitted now and whatever was
+            # stored before this edit, in case that's what's changing) - re-running the credit/
+            # covered/direct-deduction logic below against "whatever the Stock Issue looks like
+            # right now" rather than when the Sale was first saved is exactly how one Reconciled
+            # issue's Qty Sold got silently double-counted. Only applies when this call would
+            # actually touch that logic (status Completed, post_inventory on) - the internal
+            # calls this same function gets from stock_issue_reconcile()'s auto-invoice and
+            # sale_reassign() always pass post_inventory=False and no employee_id, so they're
+            # naturally exempt.
+            if status == "Completed" and post_inventory:
+                existing_sale_row = db.query("SELECT EmployeeID, SaleDate FROM Sales WHERE SaleID=?", (sale_id,), one=True)
+                entangled_candidates = {(employee_id, sale_date)}
+                if existing_sale_row and existing_sale_row["EmployeeID"]:
+                    entangled_candidates.add((existing_sale_row["EmployeeID"], existing_sale_row["SaleDate"]))
+                for emp_id, s_date in entangled_candidates:
+                    if not emp_id:
+                        continue
+                    locked_issue = db.query("""SELECT IssueID FROM StockIssues WHERE EmployeeID=? AND IssueDate=?
+                                             AND Status='Reconciled'""", (emp_id, s_date), one=True)
+                    if locked_issue:
+                        raise SaleStockIssueLockedError(locked_issue["IssueID"])
+            db.execute("""UPDATE Sales SET CustomerID=?, SaleDate=?, Status=?, PaymentStatus=?, PaymentDueDate=?,
+                        TotalAmount=?, AmountReceived=?, Notes=?, PlaceOfSupplyState=?, PlaceOfSupplyStateCode=?,
+                        IsInterState=?, TaxableAmount=?, CGSTAmount=?, SGSTAmount=?, IGSTAmount=?, RoundOff=?,
+                        ReverseCharge=?, EmployeeID=?, CashAmount=?, BankAmount=? WHERE SaleID=?""",
+                       (customer_id, sale_date, status, payment_status, payment_due_date or None,
+                        grand_total, amount_received, notes, place_of_supply_name, place_of_supply_code, is_interstate,
+                        round(taxable_total, 2), round(cgst_total, 2), round(sgst_total, 2), round(igst_total, 2),
+                        round_off, 1 if reverse_charge else 0, employee_id, cash_amount, bank_amount, sale_id))
+            db.execute("DELETE FROM SalesLines WHERE SaleID=?", (sale_id,))
+            # Delete any DirectSaleReviews rows for this Sale's old warehouse-deduction
+            # transactions first - PRAGMA foreign_keys=ON would otherwise block deleting
+            # the InventoryTransactions rows they reference.
+            db.execute("""DELETE FROM DirectSaleReviews WHERE TransactionID IN
+                        (SELECT TransactionID FROM InventoryTransactions WHERE RefType='Sale' AND RefID=?)""", (sale_id,))
+            db.execute("DELETE FROM InventoryTransactions WHERE RefType='Sale' AND RefID=?", (sale_id,))
+            # Undo whatever this Sale previously credited toward any Stock Issue's Qty Sold,
+            # before re-evaluating (below) what it should credit now - the employee, date, or
+            # quantities may all have changed since the last save.
+            reverse_sale_stock_issue_links(sale_id)
 
-    open_issue = find_open_stock_issue(employee_id, sale_date) if (status == "Completed" and post_inventory) else None
-    # A salesperson's Stock Issue for this exact date that's ALREADY been Reconciled, checked
-    # separately from open_issue above (which only matches Status='Issued') - used below purely
-    # to decide whether a late-entered or later-edited Sale for that employee/date should still
-    # post its own warehouse deduction. Its stock genuinely came from that same day's van stock,
-    # not a fresh warehouse pickup, so as long as the reconciled issue's own line still has
-    # capacity left unaccounted-for (QtyIssued minus whatever's already been returned, given
-    # free, or truly sold that day - see true_product_qty_sold()), this Sale should fill that
-    # gap instead of deducting warehouse stock a second time. StockIssueLines/SaleStockIssueLinks
-    # are deliberately left untouched for a Reconciled issue (its own figures stay frozen/
-    # historical, exactly as an Admin reconciled them) - only the ledger deduction decision uses
-    # this, recomputed fresh from true_product_qty_sold every time so multiple late sales against
-    # the same reconciled day correctly divide up whatever capacity remains between them.
-    reconciled_issue = None
-    if employee_id and status == "Completed" and post_inventory:
-        reconciled_issue = db.query("""SELECT * FROM StockIssues WHERE EmployeeID=? AND IssueDate=?
-                                     AND Status='Reconciled' ORDER BY IssueID DESC LIMIT 1""",
-                                    (employee_id, sale_date), one=True)
-    if open_issue is None and employee_id and auto_create_issue and status == "Completed" and post_inventory and line_data:
-        issue_id = auto_create_stock_issue_for_sale(employee_id, sale_date, line_data)
-        open_issue = db.query("SELECT * FROM StockIssues WHERE IssueID=?", (issue_id,), one=True)
-    elif open_issue is not None and open_issue["ReviewStatus"] == "Pending" and employee_id and status == "Completed" and post_inventory:
-        # A Pending (auto-created, not-yet-reviewed) issue can be silently topped up with a
-        # product it doesn't already have a line for, since a human hasn't looked at it yet.
-        existing_product_ids = {r["ProductID"] for r in db.query(
-            "SELECT ProductID FROM StockIssueLines WHERE IssueID=?", (open_issue["IssueID"],))}
-        for prod_id, qty, price, *_rest in line_data:
-            if prod_id not in existing_product_ids:
-                expand_pending_stock_issue_for_product(open_issue, prod_id, qty, price, sale_date)
-                existing_product_ids.add(prod_id)
+        open_issue = find_open_stock_issue(employee_id, sale_date) if (status == "Completed" and post_inventory) else None
+        # A salesperson's Stock Issue for this exact date that's ALREADY been Reconciled, checked
+        # separately from open_issue above (which only matches Status='Issued') - used below purely
+        # to decide whether a late-entered or later-edited Sale for that employee/date should still
+        # post its own warehouse deduction. Its stock genuinely came from that same day's van stock,
+        # not a fresh warehouse pickup, so as long as the reconciled issue's own line still has
+        # capacity left unaccounted-for (QtyIssued minus whatever's already been returned, given
+        # free, or truly sold that day - see true_product_qty_sold()), this Sale should fill that
+        # gap instead of deducting warehouse stock a second time. StockIssueLines/SaleStockIssueLinks
+        # are deliberately left untouched for a Reconciled issue (its own figures stay frozen/
+        # historical, exactly as an Admin reconciled them) - only the ledger deduction decision uses
+        # this, recomputed fresh from true_product_qty_sold every time so multiple late sales against
+        # the same reconciled day correctly divide up whatever capacity remains between them.
+        reconciled_issue = None
+        if employee_id and status == "Completed" and post_inventory:
+            reconciled_issue = db.query("""SELECT * FROM StockIssues WHERE EmployeeID=? AND IssueDate=?
+                                         AND Status='Reconciled' ORDER BY IssueID DESC LIMIT 1""",
+                                        (employee_id, sale_date), one=True)
+        if open_issue is None and employee_id and auto_create_issue and status == "Completed" and post_inventory and line_data:
+            issue_id = auto_create_stock_issue_for_sale(employee_id, sale_date, line_data)
+            open_issue = db.query("SELECT * FROM StockIssues WHERE IssueID=?", (issue_id,), one=True)
+        elif open_issue is not None and open_issue["ReviewStatus"] == "Pending" and employee_id and status == "Completed" and post_inventory:
+            # A Pending (auto-created, not-yet-reviewed) issue can be silently topped up with a
+            # product it doesn't already have a line for, since a human hasn't looked at it yet.
+            existing_product_ids = {r["ProductID"] for r in db.query(
+                "SELECT ProductID FROM StockIssueLines WHERE IssueID=?", (open_issue["IssueID"],))}
+            for prod_id, qty, price, *_rest in line_data:
+                if prod_id not in existing_product_ids:
+                    expand_pending_stock_issue_for_product(open_issue, prod_id, qty, price, sale_date)
+                    existing_product_ids.add(prod_id)
 
-    for prod_id, qty, price, discount, taxable_value, hsn, gst_rate, gst in line_data:
-        db.execute("""INSERT INTO SalesLines (SaleID, ProductID, Qty, UnitPrice, DiscountAmount, LineTotal, HSNCode,
-                    GSTRate, TaxableValue, CGSTRate, CGSTAmount, SGSTRate, SGSTAmount, IGSTRate, IGSTAmount)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                   (sale_id, prod_id, qty, price, discount, taxable_value, hsn, gst_rate, taxable_value,
-                    gst["cgst_rate"], gst["cgst_amt"], gst["sgst_rate"], gst["sgst_amt"],
-                    gst["igst_rate"], gst["igst_amt"]))
-        if status == "Completed" and post_inventory:
-            remaining_qty = qty
-            if open_issue:
-                sil = db.query("""SELECT LineID, QtyIssued, QtySold, QtyReturned, QtyFree FROM StockIssueLines
-                                WHERE IssueID=? AND ProductID=?""", (open_issue["IssueID"], prod_id), one=True)
-                if sil:
-                    available = max((sil["QtyIssued"] or 0) - (sil["QtySold"] or 0)
-                                     - (sil["QtyReturned"] or 0) - (sil["QtyFree"] or 0), 0)
-                    apply_qty = min(remaining_qty, available)
-                    if apply_qty > 0:
-                        discount_share = round((discount or 0) * (apply_qty / qty), 2) if qty else 0
-                        db.execute("""UPDATE StockIssueLines SET QtySold = COALESCE(QtySold, 0) + ?,
-                                    DiscountAmount = COALESCE(DiscountAmount, 0) + ? WHERE LineID=?""",
-                                   (apply_qty, discount_share, sil["LineID"]))
-                        db.execute("""INSERT INTO SaleStockIssueLinks (SaleID, StockIssueLineID, QtyApplied, DiscountApplied)
-                                    VALUES (?,?,?,?)""", (sale_id, sil["LineID"], apply_qty, discount_share))
-                        remaining_qty = round(remaining_qty - apply_qty, 4)
-            if remaining_qty > 0 and reconciled_issue:
-                sil2 = db.query("""SELECT QtyIssued, QtySold, QtyReturned, QtyFree FROM StockIssueLines
-                                 WHERE IssueID=? AND ProductID=?""", (reconciled_issue["IssueID"], prod_id), one=True)
-                if sil2:
-                    # true_product_qty_sold() filters by EmployeeID, so it only ever sees Sales
-                    # that actually carry this employee's ID - it does NOT see the reconciled
-                    # issue's own auto-invoiced "Unassigned" catch-all Sale (create_sale() there
-                    # is deliberately called with no employee_id, since that Sale bills the
-                    # system Unassigned customer, not a specific salesperson's own account). So
-                    # sil2["QtySold"] (this line's frozen, already-reconciled figure - which IS
-                    # what that anonymous catch-all Sale covers) has to be added in separately
-                    # here, on top of true_product_qty_sold's employee-linked total for every
-                    # OTHER (genuinely late) sale against this same day, or this capacity check
-                    # would overcount by the whole original reconciled QtySold every time.
-                    already_sold_other = round((sil2["QtySold"] or 0)
-                                                + true_product_qty_sold(employee_id, sale_date, prod_id) - qty, 4)
-                    available2 = max((sil2["QtyIssued"] or 0) - (sil2["QtyReturned"] or 0)
-                                      - (sil2["QtyFree"] or 0) - already_sold_other, 0)
-                    covered_qty = min(remaining_qty, available2)
-                    remaining_qty = round(remaining_qty - covered_qty, 4)
-            if remaining_qty > 0:
-                direct_sale_txn_id = db.execute("""INSERT INTO InventoryTransactions (ProductID, TransactionDate, TransactionType,
-                            QtyChange, RefType, RefID, Notes) VALUES (?,?,?,?,?,?,?)""",
-                           (prod_id, sale_date, "Sale", -remaining_qty, "Sale", sale_id, invoice_no))
-                db.execute("""INSERT INTO DirectSaleReviews (TransactionID, ProductID, Status)
-                            VALUES (?,?,'Pending')""", (direct_sale_txn_id, prod_id))
-    return sale_id
+        for prod_id, qty, price, discount, taxable_value, hsn, gst_rate, gst in line_data:
+            db.execute("""INSERT INTO SalesLines (SaleID, ProductID, Qty, UnitPrice, DiscountAmount, LineTotal, HSNCode,
+                        GSTRate, TaxableValue, CGSTRate, CGSTAmount, SGSTRate, SGSTAmount, IGSTRate, IGSTAmount)
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                       (sale_id, prod_id, qty, price, discount, taxable_value, hsn, gst_rate, taxable_value,
+                        gst["cgst_rate"], gst["cgst_amt"], gst["sgst_rate"], gst["sgst_amt"],
+                        gst["igst_rate"], gst["igst_amt"]))
+            if status == "Completed" and post_inventory:
+                remaining_qty = qty
+                if open_issue:
+                    sil = db.query("""SELECT LineID, QtyIssued, QtySold, QtyReturned, QtyFree FROM StockIssueLines
+                                    WHERE IssueID=? AND ProductID=?""", (open_issue["IssueID"], prod_id), one=True)
+                    if sil:
+                        available = max((sil["QtyIssued"] or 0) - (sil["QtySold"] or 0)
+                                         - (sil["QtyReturned"] or 0) - (sil["QtyFree"] or 0), 0)
+                        apply_qty = min(remaining_qty, available)
+                        if apply_qty > 0:
+                            discount_share = round((discount or 0) * (apply_qty / qty), 2) if qty else 0
+                            db.execute("""UPDATE StockIssueLines SET QtySold = COALESCE(QtySold, 0) + ?,
+                                        DiscountAmount = COALESCE(DiscountAmount, 0) + ? WHERE LineID=?""",
+                                       (apply_qty, discount_share, sil["LineID"]))
+                            db.execute("""INSERT INTO SaleStockIssueLinks (SaleID, StockIssueLineID, QtyApplied, DiscountApplied)
+                                        VALUES (?,?,?,?)""", (sale_id, sil["LineID"], apply_qty, discount_share))
+                            remaining_qty = round(remaining_qty - apply_qty, 4)
+                if remaining_qty > 0 and reconciled_issue:
+                    sil2 = db.query("""SELECT QtyIssued, QtySold, QtyReturned, QtyFree FROM StockIssueLines
+                                     WHERE IssueID=? AND ProductID=?""", (reconciled_issue["IssueID"], prod_id), one=True)
+                    if sil2:
+                        # true_product_qty_sold() filters by EmployeeID, so it only ever sees Sales
+                        # that actually carry this employee's ID - it does NOT see the reconciled
+                        # issue's own auto-invoiced "Unassigned" catch-all Sale (create_sale() there
+                        # is deliberately called with no employee_id, since that Sale bills the
+                        # system Unassigned customer, not a specific salesperson's own account). So
+                        # sil2["QtySold"] (this line's frozen, already-reconciled figure - which IS
+                        # what that anonymous catch-all Sale covers) has to be added in separately
+                        # here, on top of true_product_qty_sold's employee-linked total for every
+                        # OTHER (genuinely late) sale against this same day, or this capacity check
+                        # would overcount by the whole original reconciled QtySold every time.
+                        already_sold_other = round((sil2["QtySold"] or 0)
+                                                    + true_product_qty_sold(employee_id, sale_date, prod_id) - qty, 4)
+                        available2 = max((sil2["QtyIssued"] or 0) - (sil2["QtyReturned"] or 0)
+                                          - (sil2["QtyFree"] or 0) - already_sold_other, 0)
+                        covered_qty = min(remaining_qty, available2)
+                        remaining_qty = round(remaining_qty - covered_qty, 4)
+                if remaining_qty > 0:
+                    direct_sale_txn_id = db.execute("""INSERT INTO InventoryTransactions (ProductID, TransactionDate, TransactionType,
+                                QtyChange, RefType, RefID, Notes) VALUES (?,?,?,?,?,?,?)""",
+                               (prod_id, sale_date, "Sale", -remaining_qty, "Sale", sale_id, invoice_no))
+                    db.execute("""INSERT INTO DirectSaleReviews (TransactionID, ProductID, Status)
+                                VALUES (?,?,'Pending')""", (direct_sale_txn_id, prod_id))
+        return sale_id
 
 
 def sale_stock_issue_credit_message(sale_id, plain=False):
@@ -4396,154 +4402,161 @@ def stock_issue_reconcile(issue_id):
         # docstring), "already invoiced" must cover those too, or they'd get invoiced a
         # second time here. true_product_qty_sold() is exactly "how much of this product
         # was already invoiced anywhere today for this salesperson", so it's used directly.
-        already_invoiced_by_line = {
-            l["LineID"]: true_product_qty_sold(issue["EmployeeID"], issue["IssueDate"], l["ProductID"])
-            for l in lines
-        }
-        cash_amount = float(f.get("cash_amount") or 0)
-        bank_amount = float(f.get("bank_amount") or 0)
-        cash_collected = round(cash_amount + bank_amount, 2)
-        expected_amount = 0.0
-        scheme_amount = 0.0
-        if is_reedit:
-            # Remove the Return-In entries the previous reconciliation posted (but NOT the
-            # original Issue transaction) before re-posting a fresh one below. Also clean up
-            # any old-style "Free Scheme" row(s) this issue may still have from before the
-            # double-deduction fix (see migrate_fix_free_scheme_double_deduction.py) - and,
-            # if that migration already corrected them, the compensating "FreeSchemeFix"
-            # row(s) too, so re-editing doesn't leave an orphaned correction with nothing
-            # left for it to correct (which would overstate stock instead of just being
-            # neutral, now that fresh reconciles no longer post a Free Scheme row at all).
-            old_free_scheme_ids = [r["TransactionID"] for r in db.query(
-                """SELECT TransactionID FROM InventoryTransactions
-                   WHERE RefType='StockIssue' AND RefID=? AND TransactionType='Free Scheme'""", (issue_id,))]
-            db.execute("""DELETE FROM InventoryTransactions WHERE RefType='StockIssue' AND RefID=?
-                        AND TransactionType IN ('Return-In','Free Scheme')""", (issue_id,))
-            for old_id in old_free_scheme_ids:
-                db.execute("DELETE FROM InventoryTransactions WHERE RefType='FreeSchemeFix' AND RefID=?", (old_id,))
-            if money_locked and f.get("money_data_action") == "clear":
-                # Admin chose to clear existing due-payment/claim history rather than keep it,
-                # since it was based on figures this edit is about to change - reset it the same
-                # way Delete's reversal does, so nothing stale is left referencing old amounts.
-                db.execute("DELETE FROM StockIssueDuePayments WHERE IssueID=?", (issue_id,))
-                db.execute("""UPDATE StockIssues SET ClaimStatus='Not Claimed', ClaimedAt=NULL,
-                            ClaimedAmount=NULL, ReceivedAt=NULL, ReceivedAmount=NULL, ClaimNotes=NULL
-                            WHERE IssueID=?""", (issue_id,))
-        sale_lines = []  # (product_id, qty_sold, effective_rate) - feeds the auto-created "Unassigned" Sale below
-        line_audit_entries = []  # collected here, written to StockIssueAuditLog once the save succeeds below
-        for line in lines:
-            qty_sold = float(f.get(f"qty_sold_{line['LineID']}") or 0)
-            qty_returned = float(f.get(f"qty_returned_{line['LineID']}") or 0)
-            qty_free = float(f.get(f"qty_free_{line['LineID']}") or 0)
-            discount_amount = float(f.get(f"discount_amount_{line['LineID']}") or 0)
-            scheme_claim_amount = float(f.get(f"scheme_claim_{line['LineID']}") or 0)
-            line_comments = (f.get(f"comments_{line['LineID']}") or "").strip()
-            if is_reedit and abs(qty_sold - (line["QtySold"] or 0)) > 0.001:
-                line_audit_entries.append((f"{line['ProductName']} — Qty Sold", line["QtySold"] or 0, qty_sold))
-            if is_reedit and abs(qty_returned - (line["QtyReturned"] or 0)) > 0.001:
-                line_audit_entries.append((f"{line['ProductName']} — Qty Returned", line["QtyReturned"] or 0, qty_returned))
-            if is_reedit and abs(discount_amount - (line["DiscountAmount"] or 0)) > 0.001:
-                line_audit_entries.append((f"{line['ProductName']} — Discount ₹", line["DiscountAmount"] or 0, discount_amount))
-            db.execute("""UPDATE StockIssueLines SET QtySold=?, QtyReturned=?, QtyFree=?,
-                        DiscountAmount=?, SchemeClaimAmount=?, LineComments=? WHERE LineID=?""",
-                       (qty_sold, qty_returned, qty_free, discount_amount, scheme_claim_amount,
-                        line_comments, line["LineID"]))
-            expected_amount += (qty_sold * line["UnitPrice"]) - discount_amount
-            # Scheme Amount (claimable back from the company) is now driven purely by the
-            # directly-entered Scheme Claim Rs field, NOT by Discount Rs - a discount is a
-            # real margin reduction the distributor absorbs, never something the company
-            # reimburses, so it must never be counted as claimable.
-            scheme_amount += scheme_claim_amount
-            if qty_sold > 0:
-                effective_rate = round(max((qty_sold * line["UnitPrice"]) - discount_amount, 0) / qty_sold, 4)
-                already_invoiced = already_invoiced_by_line.get(line["LineID"], 0) or 0
-                auto_invoice_qty = round(max(qty_sold - already_invoiced, 0), 4)
-                if auto_invoice_qty > 0:
-                    sale_lines.append((line["ProductID"], auto_invoice_qty, effective_rate))
-            if qty_returned > 0:
-                db.execute("""INSERT INTO InventoryTransactions (ProductID, TransactionDate, TransactionType,
-                            QtyChange, RefType, RefID, Notes) VALUES (?,?,?,?,?,?,?)""",
-                           (line["ProductID"], today_str(), "Return-In", qty_returned, "StockIssue", issue_id,
-                            "Returned unsold from stock issue"))
-            # NOTE: qty_free posts NO InventoryTransactions row, same as qty_sold above - the
-            # original "Issue" transaction already deducted the FULL QtyIssued from the ledger
-            # at issue time, and units given away free (like units sold) never come back, so
-            # that original deduction already fully accounts for them. A previous version of
-            # this code also posted a "Free Scheme" -qty_free row here on top of that, which
-            # double-deducted every free-given unit from stock forever (see
-            # migrate_fix_free_scheme_double_deduction.py, which reverses the historical
-            # damage this caused - it's very likely most of what shows up as "missing"
-            # inventory on the Reconciliation report). Only qty_returned needs a transaction
-            # here, because that's the one outcome where stock genuinely comes back.
-        expected_amount = round(max(expected_amount, 0), 2)
-        scheme_amount = round(scheme_amount, 2)
-        discrepancy = round(cash_collected - expected_amount, 2)
-        amount_due = round(max(expected_amount - cash_collected, 0), 2)
-        if amount_due <= 0:
-            payment_status = "Paid"
-        elif cash_collected <= 0:
-            payment_status = "Unpaid"
-        else:
-            payment_status = "Partial"
-        db.execute("""UPDATE StockIssues SET Status='Reconciled', CashCollected=?, CashAmount=?, BankAmount=?,
-                    ExpectedAmount=?, Discrepancy=?, AmountDue=?, PaymentStatus=?, SchemeAmount=?, ReconciledAt=?, Notes=?
-                    WHERE IssueID=?""",
-                   (cash_collected, cash_amount, bank_amount, expected_amount, discrepancy, amount_due,
-                    payment_status, scheme_amount,
-                    datetime.now().isoformat(timespec="seconds"), f.get("notes", issue["Notes"]), issue_id))
+        # The whole reconcile/re-reconcile save is one atomic transaction (see
+        # db.transaction()) - it makes well over a dozen separate inserts/updates
+        # (StockIssueLines, StockIssues, inventory postings, the auto-invoiced
+        # Sale, audit log entries); a failure partway through used to leave a
+        # permanently half-corrected reconciliation. Now either all of it lands,
+        # or none of it does.
+        with db.transaction():
+            already_invoiced_by_line = {
+                l["LineID"]: true_product_qty_sold(issue["EmployeeID"], issue["IssueDate"], l["ProductID"])
+                for l in lines
+            }
+            cash_amount = float(f.get("cash_amount") or 0)
+            bank_amount = float(f.get("bank_amount") or 0)
+            cash_collected = round(cash_amount + bank_amount, 2)
+            expected_amount = 0.0
+            scheme_amount = 0.0
+            if is_reedit:
+                # Remove the Return-In entries the previous reconciliation posted (but NOT the
+                # original Issue transaction) before re-posting a fresh one below. Also clean up
+                # any old-style "Free Scheme" row(s) this issue may still have from before the
+                # double-deduction fix (see migrate_fix_free_scheme_double_deduction.py) - and,
+                # if that migration already corrected them, the compensating "FreeSchemeFix"
+                # row(s) too, so re-editing doesn't leave an orphaned correction with nothing
+                # left for it to correct (which would overstate stock instead of just being
+                # neutral, now that fresh reconciles no longer post a Free Scheme row at all).
+                old_free_scheme_ids = [r["TransactionID"] for r in db.query(
+                    """SELECT TransactionID FROM InventoryTransactions
+                       WHERE RefType='StockIssue' AND RefID=? AND TransactionType='Free Scheme'""", (issue_id,))]
+                db.execute("""DELETE FROM InventoryTransactions WHERE RefType='StockIssue' AND RefID=?
+                            AND TransactionType IN ('Return-In','Free Scheme')""", (issue_id,))
+                for old_id in old_free_scheme_ids:
+                    db.execute("DELETE FROM InventoryTransactions WHERE RefType='FreeSchemeFix' AND RefID=?", (old_id,))
+                if money_locked and f.get("money_data_action") == "clear":
+                    # Admin chose to clear existing due-payment/claim history rather than keep it,
+                    # since it was based on figures this edit is about to change - reset it the same
+                    # way Delete's reversal does, so nothing stale is left referencing old amounts.
+                    db.execute("DELETE FROM StockIssueDuePayments WHERE IssueID=?", (issue_id,))
+                    db.execute("""UPDATE StockIssues SET ClaimStatus='Not Claimed', ClaimedAt=NULL,
+                                ClaimedAmount=NULL, ReceivedAt=NULL, ReceivedAmount=NULL, ClaimNotes=NULL
+                                WHERE IssueID=?""", (issue_id,))
+            sale_lines = []  # (product_id, qty_sold, effective_rate) - feeds the auto-created "Unassigned" Sale below
+            line_audit_entries = []  # collected here, written to StockIssueAuditLog once the save succeeds below
+            for line in lines:
+                qty_sold = float(f.get(f"qty_sold_{line['LineID']}") or 0)
+                qty_returned = float(f.get(f"qty_returned_{line['LineID']}") or 0)
+                qty_free = float(f.get(f"qty_free_{line['LineID']}") or 0)
+                discount_amount = float(f.get(f"discount_amount_{line['LineID']}") or 0)
+                scheme_claim_amount = float(f.get(f"scheme_claim_{line['LineID']}") or 0)
+                line_comments = (f.get(f"comments_{line['LineID']}") or "").strip()
+                if is_reedit and abs(qty_sold - (line["QtySold"] or 0)) > 0.001:
+                    line_audit_entries.append((f"{line['ProductName']} — Qty Sold", line["QtySold"] or 0, qty_sold))
+                if is_reedit and abs(qty_returned - (line["QtyReturned"] or 0)) > 0.001:
+                    line_audit_entries.append((f"{line['ProductName']} — Qty Returned", line["QtyReturned"] or 0, qty_returned))
+                if is_reedit and abs(discount_amount - (line["DiscountAmount"] or 0)) > 0.001:
+                    line_audit_entries.append((f"{line['ProductName']} — Discount ₹", line["DiscountAmount"] or 0, discount_amount))
+                db.execute("""UPDATE StockIssueLines SET QtySold=?, QtyReturned=?, QtyFree=?,
+                            DiscountAmount=?, SchemeClaimAmount=?, LineComments=? WHERE LineID=?""",
+                           (qty_sold, qty_returned, qty_free, discount_amount, scheme_claim_amount,
+                            line_comments, line["LineID"]))
+                expected_amount += (qty_sold * line["UnitPrice"]) - discount_amount
+                # Scheme Amount (claimable back from the company) is now driven purely by the
+                # directly-entered Scheme Claim Rs field, NOT by Discount Rs - a discount is a
+                # real margin reduction the distributor absorbs, never something the company
+                # reimburses, so it must never be counted as claimable.
+                scheme_amount += scheme_claim_amount
+                if qty_sold > 0:
+                    effective_rate = round(max((qty_sold * line["UnitPrice"]) - discount_amount, 0) / qty_sold, 4)
+                    already_invoiced = already_invoiced_by_line.get(line["LineID"], 0) or 0
+                    auto_invoice_qty = round(max(qty_sold - already_invoiced, 0), 4)
+                    if auto_invoice_qty > 0:
+                        sale_lines.append((line["ProductID"], auto_invoice_qty, effective_rate))
+                if qty_returned > 0:
+                    db.execute("""INSERT INTO InventoryTransactions (ProductID, TransactionDate, TransactionType,
+                                QtyChange, RefType, RefID, Notes) VALUES (?,?,?,?,?,?,?)""",
+                               (line["ProductID"], today_str(), "Return-In", qty_returned, "StockIssue", issue_id,
+                                "Returned unsold from stock issue"))
+                # NOTE: qty_free posts NO InventoryTransactions row, same as qty_sold above - the
+                # original "Issue" transaction already deducted the FULL QtyIssued from the ledger
+                # at issue time, and units given away free (like units sold) never come back, so
+                # that original deduction already fully accounts for them. A previous version of
+                # this code also posted a "Free Scheme" -qty_free row here on top of that, which
+                # double-deducted every free-given unit from stock forever (see
+                # migrate_fix_free_scheme_double_deduction.py, which reverses the historical
+                # damage this caused - it's very likely most of what shows up as "missing"
+                # inventory on the Reconciliation report). Only qty_returned needs a transaction
+                # here, because that's the one outcome where stock genuinely comes back.
+            expected_amount = round(max(expected_amount, 0), 2)
+            scheme_amount = round(scheme_amount, 2)
+            discrepancy = round(cash_collected - expected_amount, 2)
+            amount_due = round(max(expected_amount - cash_collected, 0), 2)
+            if amount_due <= 0:
+                payment_status = "Paid"
+            elif cash_collected <= 0:
+                payment_status = "Unpaid"
+            else:
+                payment_status = "Partial"
+            db.execute("""UPDATE StockIssues SET Status='Reconciled', CashCollected=?, CashAmount=?, BankAmount=?,
+                        ExpectedAmount=?, Discrepancy=?, AmountDue=?, PaymentStatus=?, SchemeAmount=?, ReconciledAt=?, Notes=?
+                        WHERE IssueID=?""",
+                       (cash_collected, cash_amount, bank_amount, expected_amount, discrepancy, amount_due,
+                        payment_status, scheme_amount,
+                        datetime.now().isoformat(timespec="seconds"), f.get("notes", issue["Notes"]), issue_id))
 
-        # Audit trail: every reconcile/re-reconcile is logged (shown on the issue's own
-        # Activity panel, collapsed by default). A re-edit additionally logs the mandatory
-        # reason and every figure that actually changed, so "Reconciled" numbers moving is
-        # never silent again - this is the guardrail from the front-end blocking above,
-        # completed on the back end.
-        if is_reedit:
-            log_stock_issue_change(issue_id, "Reopened & Re-Reconciled", "Reason", None, reopen_reason)
-            for field_name, old_val, new_val in line_audit_entries:
-                log_stock_issue_change(issue_id, "Line Corrected", field_name, f"{old_val:g}", f"{new_val:g}")
-            log_stock_issue_change(
-                issue_id, "Re-Reconciled", "Expected / Collected / Discrepancy",
-                f"₹{issue['ExpectedAmount'] or 0:.2f} / ₹{issue['CashCollected'] or 0:.2f} / ₹{issue['Discrepancy'] or 0:.2f}",
-                f"₹{expected_amount:.2f} / ₹{cash_collected:.2f} / ₹{discrepancy:.2f}")
-        else:
-            log_stock_issue_change(issue_id, "Reconciled", "Expected / Collected / Discrepancy", None,
-                                    f"₹{expected_amount:.2f} / ₹{cash_collected:.2f} / ₹{discrepancy:.2f}")
+            # Audit trail: every reconcile/re-reconcile is logged (shown on the issue's own
+            # Activity panel, collapsed by default). A re-edit additionally logs the mandatory
+            # reason and every figure that actually changed, so "Reconciled" numbers moving is
+            # never silent again - this is the guardrail from the front-end blocking above,
+            # completed on the back end.
+            if is_reedit:
+                log_stock_issue_change(issue_id, "Reopened & Re-Reconciled", "Reason", None, reopen_reason)
+                for field_name, old_val, new_val in line_audit_entries:
+                    log_stock_issue_change(issue_id, "Line Corrected", field_name, f"{old_val:g}", f"{new_val:g}")
+                log_stock_issue_change(
+                    issue_id, "Re-Reconciled", "Expected / Collected / Discrepancy",
+                    f"₹{issue['ExpectedAmount'] or 0:.2f} / ₹{issue['CashCollected'] or 0:.2f} / ₹{issue['Discrepancy'] or 0:.2f}",
+                    f"₹{expected_amount:.2f} / ₹{cash_collected:.2f} / ₹{discrepancy:.2f}")
+            else:
+                log_stock_issue_change(issue_id, "Reconciled", "Expected / Collected / Discrepancy", None,
+                                        f"₹{expected_amount:.2f} / ₹{cash_collected:.2f} / ₹{discrepancy:.2f}")
 
-        # Auto-create (or, on re-edit, update in place) a real GST Sale for the sold units,
-        # billed to the system "Unassigned" customer until someone reassigns it via
-        # /sales/<id>/reassign. Stock is NOT deducted again here (post_inventory=False) -
-        # the Issue/Return-In/Free-Scheme transactions above already account for it.
-        company = get_company_settings()
-        existing_sale_id = issue["SaleID"]
-        if sale_lines:
-            existing_invoice = None
-            if existing_sale_id:
-                existing_row = db.query("SELECT InvoiceNumber FROM Sales WHERE SaleID=?", (existing_sale_id,), one=True)
-                existing_invoice = existing_row["InvoiceNumber"] if existing_row else None
-            new_sale_id = create_sale(
-                customer_id=get_unassigned_customer_id(), sale_date=issue["IssueDate"], status="Completed",
-                payment_status=payment_status, payment_due_date=None, amount_received=cash_collected,
-                notes=f"Auto-created from Stock Issue #{issue_id} reconciliation",
-                place_of_supply_code=company["StateCode"], lines=sale_lines,
-                invoice_no=existing_invoice, sale_id=existing_sale_id, post_inventory=False)
-            if new_sale_id != existing_sale_id:
-                db.execute("UPDATE StockIssues SET SaleID=? WHERE IssueID=?", (new_sale_id, issue_id))
-        elif existing_sale_id:
-            # Re-edited down to nothing sold - nothing left to bill, drop the link (the Sale
-            # itself is left as-is rather than deleted, since it may already have been
-            # reassigned/split to real customers by this point).
-            db.execute("UPDATE StockIssues SET SaleID=NULL WHERE IssueID=?", (issue_id,))
+            # Auto-create (or, on re-edit, update in place) a real GST Sale for the sold units,
+            # billed to the system "Unassigned" customer until someone reassigns it via
+            # /sales/<id>/reassign. Stock is NOT deducted again here (post_inventory=False) -
+            # the Issue/Return-In/Free-Scheme transactions above already account for it.
+            company = get_company_settings()
+            existing_sale_id = issue["SaleID"]
+            if sale_lines:
+                existing_invoice = None
+                if existing_sale_id:
+                    existing_row = db.query("SELECT InvoiceNumber FROM Sales WHERE SaleID=?", (existing_sale_id,), one=True)
+                    existing_invoice = existing_row["InvoiceNumber"] if existing_row else None
+                new_sale_id = create_sale(
+                    customer_id=get_unassigned_customer_id(), sale_date=issue["IssueDate"], status="Completed",
+                    payment_status=payment_status, payment_due_date=None, amount_received=cash_collected,
+                    notes=f"Auto-created from Stock Issue #{issue_id} reconciliation",
+                    place_of_supply_code=company["StateCode"], lines=sale_lines,
+                    invoice_no=existing_invoice, sale_id=existing_sale_id, post_inventory=False)
+                if new_sale_id != existing_sale_id:
+                    db.execute("UPDATE StockIssues SET SaleID=? WHERE IssueID=?", (new_sale_id, issue_id))
+            elif existing_sale_id:
+                # Re-edited down to nothing sold - nothing left to bill, drop the link (the Sale
+                # itself is left as-is rather than deleted, since it may already have been
+                # reassigned/split to real customers by this point).
+                db.execute("UPDATE StockIssues SET SaleID=NULL WHERE IssueID=?", (issue_id,))
 
-        msg = f"Reconciled — expected ₹{expected_amount:.2f}, collected ₹{cash_collected:.2f}"
-        if scheme_amount:
-            msg += f", ₹{scheme_amount:.2f} given as discount/free scheme (claimable from company)"
-        if amount_due > 0:
-            msg += f". ₹{amount_due:.2f} still due — record it later with 'Record Due Payment'."
-            flash(msg, "warning")
-        else:
-            msg += "."
-            flash(msg, "success")
-        return redirect(url_for("stock_issue_view", issue_id=issue_id))
+            msg = f"Reconciled — expected ₹{expected_amount:.2f}, collected ₹{cash_collected:.2f}"
+            if scheme_amount:
+                msg += f", ₹{scheme_amount:.2f} given as discount/free scheme (claimable from company)"
+            if amount_due > 0:
+                msg += f". ₹{amount_due:.2f} still due — record it later with 'Record Due Payment'."
+                flash(msg, "warning")
+            else:
+                msg += "."
+                flash(msg, "success")
+            return redirect(url_for("stock_issue_view", issue_id=issue_id))
 
     # Pre-fill each line's Qty Sold with the ground-truth total (SalesLines-based) whenever
     # it's higher than what's stored on StockIssueLines.QtySold - see true_product_qty_sold()
