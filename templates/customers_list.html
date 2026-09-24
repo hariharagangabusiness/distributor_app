@@ -14,10 +14,11 @@
   {% endif %}
   <a href="{{ url_for('columns_customize', module='Customer') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-layout-three-columns"></i> Customize Columns</a>
 </div>
-<div class="mb-3">
-  <input type="text" id="customer-list-search" class="form-control" style="max-width:340px"
-         placeholder="Search by name, contact, phone, or zone…">
-</div>
+<form method="get" class="mb-3 d-flex gap-2" style="max-width:460px">
+  <input type="text" name="q" value="{{ q }}" class="form-control" placeholder="Search by name, contact, phone, or zone…">
+  <button type="submit" class="btn btn-brand"><i class="bi bi-search"></i> Search</button>
+  {% if q %}<a href="{{ url_for('customers_list') }}" class="btn btn-outline-secondary">Clear</a>{% endif %}
+</form>
 <div class="card">
   <div class="table-responsive">
   <table class="table table-hover mb-0 align-middle table-cards-mobile" id="tbl-customer" data-view-toggle="Customer">
@@ -27,7 +28,7 @@
     <tbody>
       {% for c in customers %}
       <tr>
-        <td data-label="Sl No">{{ loop.index }}</td>
+        <td data-label="Sl No">{{ ((page - 1) * page_size) + loop.index }}</td>
         <td data-col="name" data-label="Name" data-key-field="primary">{{ c.CustomerName }}</td><td data-col="contact" data-label="Contact">{{ c.ContactPerson or '-' }}</td><td data-col="phone" data-label="Phone" data-key-field="secondary">{{ c.Phone or '-' }}</td>
         <td data-col="zone" data-label="Zone">{{ c.Zone or '-' }}</td>
         <td data-col="credit_limit" data-label="Credit Limit">{{ (c.CreditLimit)|inr(0) }}</td><td data-col="credit_days" data-label="Credit Days">{{ c.CreditDays }} days</td>
@@ -44,6 +45,18 @@
   </table>
   </div>
 </div>
+{% if total_pages and total_pages > 1 %}
+<div class="d-flex justify-content-between align-items-center mt-3">
+  <div class="text-muted small">
+    Showing {{ ((page - 1) * page_size) + 1 }}–{{ [page * page_size, total]|min }} of {{ total }} customer(s)
+  </div>
+  <div class="btn-group">
+    <a href="{{ url_for('customers_list', page=page-1, q=q) }}" class="btn btn-sm btn-outline-secondary {{ 'disabled' if page <= 1 }}">&laquo; Prev</a>
+    <span class="btn btn-sm btn-outline-secondary disabled">Page {{ page }} of {{ total_pages }}</span>
+    <a href="{{ url_for('customers_list', page=page+1, q=q) }}" class="btn btn-sm btn-outline-secondary {{ 'disabled' if page >= total_pages }}">Next &raquo;</a>
+  </div>
+</div>
+{% endif %}
 {% endblock %}
 {% block scripts %}
 <script>
@@ -51,17 +64,4 @@ window.LIST_COLUMNS_TABLE_ID = 'tbl-customer';
 window.LIST_COLUMNS_PREFS = {{ columns|tojson }};
 </script>
 <script src="{{ url_for('static', filename='js/list-columns.js') }}" defer></script>
-<script>
-(function () {
-  const input = document.getElementById('customer-list-search');
-  const table = document.getElementById('tbl-customer');
-  if (!input || !table) return;
-  input.addEventListener('input', () => {
-    const q = input.value.trim().toLowerCase();
-    table.querySelectorAll('tbody tr').forEach(row => {
-      row.style.display = !q || row.textContent.toLowerCase().includes(q) ? '' : 'none';
-    });
-  });
-})();
-</script>
 {% endblock %}

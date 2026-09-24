@@ -2006,10 +2006,38 @@ def supplier_form(sid=None):
 # Customers
 # ---------------------------------------------------------------------
 
+CUSTOMERS_LIST_PAGE_SIZE = 200
+
+
 @app.route("/customers")
 def customers_list():
-    return render_template("customers_list.html", customers=db.query("SELECT * FROM Customers ORDER BY CustomerName"),
-                            columns=get_effective_columns("Customer"))
+    # Same fix as sales_list()/purchases_list(): the search box here used to
+    # be client-side-only JS filtering every row already in the DOM, which
+    # only ever worked because every Customer was already fetched onto the
+    # page - once paginated, that would silently only search the current
+    # page. Now a real SQL search, with real pagination.
+    q = (request.args.get("q") or "").strip()
+    try:
+        page = max(int(request.args.get("page", 1)), 1)
+    except ValueError:
+        page = 1
+
+    where = "1=1"
+    params = []
+    if q:
+        where = "(CustomerName LIKE ? OR ContactPerson LIKE ? OR Phone LIKE ? OR Zone LIKE ?)"
+        like = f"%{q}%"
+        params = [like, like, like, like]
+
+    total = db.query(f"SELECT COUNT(*) c FROM Customers WHERE {where}", params, one=True)["c"]
+    total_pages = max((total + CUSTOMERS_LIST_PAGE_SIZE - 1) // CUSTOMERS_LIST_PAGE_SIZE, 1)
+    page = min(page, total_pages)
+    offset = (page - 1) * CUSTOMERS_LIST_PAGE_SIZE
+
+    customers = db.query(f"""SELECT * FROM Customers WHERE {where} ORDER BY CustomerName
+                          LIMIT ? OFFSET ?""", params + [CUSTOMERS_LIST_PAGE_SIZE, offset])
+    return render_template("customers_list.html", customers=customers, columns=get_effective_columns("Customer"),
+                            q=q, page=page, total_pages=total_pages, total=total, page_size=CUSTOMERS_LIST_PAGE_SIZE)
 
 
 @app.route("/customers/search")
@@ -2361,11 +2389,38 @@ def api_customer(cid):
 # Purchases
 # ---------------------------------------------------------------------
 
+PURCHASES_LIST_PAGE_SIZE = 100
+
+
 @app.route("/purchases")
 def purchases_list():
-    purchases = db.query("""SELECT p.*, s.SupplierName FROM Purchases p
-                          JOIN Suppliers s ON s.SupplierID = p.SupplierID ORDER BY p.PurchaseDate DESC, p.PurchaseID DESC""")
-    return render_template("purchases_list.html", purchases=purchases, columns=get_effective_columns("Purchase"))
+    # Same fix as sales_list(): filtered in SQL and paginated rather than
+    # fetching every Purchase ever recorded into Python on every visit.
+    q = (request.args.get("q") or "").strip()
+    try:
+        page = max(int(request.args.get("page", 1)), 1)
+    except ValueError:
+        page = 1
+
+    where = "1=1"
+    params = []
+    if q:
+        where = """(p.PONumber LIKE ? OR s.SupplierName LIKE ? OR p.InvoiceNumber LIKE ?
+                 OR p.Status LIKE ? OR p.PaymentStatus LIKE ?)"""
+        like = f"%{q}%"
+        params = [like, like, like, like, like]
+
+    from_clause = "FROM Purchases p JOIN Suppliers s ON s.SupplierID = p.SupplierID"
+    total = db.query(f"SELECT COUNT(*) c {from_clause} WHERE {where}", params, one=True)["c"]
+    total_pages = max((total + PURCHASES_LIST_PAGE_SIZE - 1) // PURCHASES_LIST_PAGE_SIZE, 1)
+    page = min(page, total_pages)
+    offset = (page - 1) * PURCHASES_LIST_PAGE_SIZE
+
+    purchases = db.query(f"""SELECT p.*, s.SupplierName {from_clause} WHERE {where}
+                          ORDER BY p.PurchaseDate DESC, p.PurchaseID DESC LIMIT ? OFFSET ?""",
+                         params + [PURCHASES_LIST_PAGE_SIZE, offset])
+    return render_template("purchases_list.html", purchases=purchases, columns=get_effective_columns("Purchase"),
+                            q=q, page=page, total_pages=total_pages, total=total, page_size=PURCHASES_LIST_PAGE_SIZE)
 
 
 def create_purchase(supplier_id, po_number, purchase_date, invoice_number, status, payment_status,
