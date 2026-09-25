@@ -1,0 +1,30 @@
+# systemd unit for running this app on a self-managed VM (Oracle Cloud or
+# any Ubuntu/Debian box). Copy to /etc/systemd/system/distributor.service,
+# adjust WorkingDirectory/User if you didn't follow provision.sh's default
+# layout, then:
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now distributor
+#
+# --workers 1: SQLite is single-writer anyway, and app.py starts a background
+# reminder thread at import time that would fire once per worker process if
+# this were increased (same reasoning as the project's own Dockerfile CMD).
+
+[Unit]
+Description=Distributor App
+After=network.target
+
+[Service]
+Type=simple
+User=distributor
+WorkingDirectory=/opt/distributor-app
+EnvironmentFile=/opt/distributor-app/.env
+ExecStart=/opt/distributor-app/venv/bin/gunicorn app:app --bind 127.0.0.1:5000 --workers 1 --threads 4 --timeout 120
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=30
+
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
