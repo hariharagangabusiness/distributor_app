@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Polls for new commits on master and deploys them automatically - meant to
-# run via root's crontab every few minutes:
+# Polls for new commits on master and deploys them automatically - wired
+# into root's crontab on the production VM (140.245.198.157) via:
 #   */5 * * * * /opt/distributor-app/deploy/oracle-cloud/auto-pull.sh >> /var/log/distributor-deploy.log 2>&1
 # Only touches anything (pip install, restart) when there's actually a new
 # commit, so most runs are a no-op. Runs git/pip as the distributor user
