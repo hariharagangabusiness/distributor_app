@@ -108,8 +108,8 @@
 <div class="card">
   <div class="table-responsive">
   <table class="table mb-0 table-cards-mobile">
-    <thead><tr><th>Product</th><th>Qty Issued</th><th>Unit Price</th>
-      {% if issue.Status == 'Reconciled' %}<th>Qty Sold</th><th>Qty Returned</th><th>Qty Free</th><th>Discount ₹ (margin)</th><th>Scheme Claim ₹</th><th>Unaccounted</th><th>Comments</th>{% endif %}
+    <thead><tr><th>Product</th><th>Qty Issued</th><th>Unit Price</th><th>Qty Sold{% if issue.Status != 'Reconciled' %} (so far){% endif %}</th>
+      {% if issue.Status == 'Reconciled' %}<th>Qty Returned</th><th>Qty Free</th><th>Discount ₹ (margin)</th><th>Scheme Claim ₹</th><th>Unaccounted</th><th>Comments</th>{% endif %}
     </tr></thead>
     <tbody>
       {% for l in lines %}
@@ -117,8 +117,8 @@
         <td data-label="Product">{{ l.ProductName }}</td>
         <td data-label="Qty Issued">{{ l.QtyIssued }} {{ l.Unit }}</td>
         <td data-label="Unit Price">{{ (l.UnitPrice)|inr(2) }}</td>
+        <td data-label="Qty Sold">{{ l.QtySold or 0 }} {{ l.Unit }}</td>
         {% if issue.Status == 'Reconciled' %}
-        <td data-label="Qty Sold">{{ l.QtySold }} {{ l.Unit }}</td>
         <td data-label="Qty Returned">{{ l.QtyReturned }} {{ l.Unit }}</td>
         <td data-label="Qty Free">{{ l.QtyFree or 0 }} {{ l.Unit }}</td>
         <td data-label="Discount ₹ (margin)">{{ (l.DiscountAmount or 0)|inr(2) }}</td>
@@ -136,8 +136,8 @@
         <td>Total</td>
         <td>{{ line_totals.qty_issued|round(2) }}</td>
         <td></td>
-        {% if issue.Status == 'Reconciled' %}
         <td>{{ line_totals.qty_sold|round(2) }}</td>
+        {% if issue.Status == 'Reconciled' %}
         <td>{{ line_totals.qty_returned|round(2) }}</td>
         <td>{{ line_totals.qty_free|round(2) }}</td>
         <td>{{ (line_totals.discount)|inr(2) }}</td>
