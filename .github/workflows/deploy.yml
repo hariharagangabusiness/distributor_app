@@ -1,0 +1,27 @@
+name: Deploy to production
+
+# Replaces the root crontab's */5 * * * * auto-pull.sh polling loop (see
+# deploy/oracle-cloud/auto-pull.sh) - that polled for new commits every 5
+# minutes whether or not anything had changed; this fires immediately on
+# every push to master instead, and shows up in the Actions tab with logs,
+# rather than only in /var/log/distributor-deploy.log on the server.
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH in and redeploy
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT || 22 }}
+          # Reuses the existing deploy/oracle-cloud/redeploy.sh already in
+          # this repo - same git pull + pip install + restart it always did,
+          # just triggered by a push instead of a cron tick.
+          script: sudo bash ${{ secrets.DEPLOY_PATH }}/deploy/oracle-cloud/redeploy.sh
