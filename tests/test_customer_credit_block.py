@@ -1,9 +1,9 @@
 """Regression tests for the customer-dues warning + credit block on the
 New/Edit Sale screens: get_customer_due_info() must match the Accounts
-Receivable report's own definition, check_credit_block() must only block a
-non-Admin (and only when CreditBlockDays > 0 and the oldest due is actually
-past that many days), and the /customers/<id>/due endpoint + the real
-/sales/new route must wire all of that together correctly.
+Receivable report's own definition, check_credit_block() must respect the
+3-way CreditControlMode (Informational / BlockAfterDays / BlockImmediate)
+and only ever block a non-Admin, and the /customers/<id>/due endpoint + the
+real /sales/new route must wire all of that together correctly.
 """
 from datetime import date, timedelta
 
@@ -94,14 +94,24 @@ class CustomerCreditBlockTests(DBTestCase):
         cust = self.make_customer()
         self.make_sale(cust, 1000, 0, days_ago=999, invoice="INV-OLD")
         company = db.query("SELECT * FROM CompanySettings WHERE SettingsID=1", one=True)
-        self.assertEqual(company["CreditBlockDays"], 0)
+        self.assertEqual(company["CreditControlMode"], "Informational")
+        with appmod.app.app_context():
+            appmod.check_credit_block(cust, company, {"Role": "Staff"})  # must not raise
+
+    def test_informational_mode_never_blocks_even_with_days_configured(self):
+        """Mode is the real gate - a leftover/positive CreditBlockDays value
+        must not matter at all while the mode is still Informational."""
+        cust = self.make_customer()
+        self.make_sale(cust, 1000, 0, days_ago=999, invoice="INV-INFO")
+        db.execute("UPDATE CompanySettings SET CreditControlMode='Informational', CreditBlockDays=1 WHERE SettingsID=1")
+        company = db.query("SELECT * FROM CompanySettings WHERE SettingsID=1", one=True)
         with appmod.app.app_context():
             appmod.check_credit_block(cust, company, {"Role": "Staff"})  # must not raise
 
     def test_non_admin_blocked_past_the_configured_days(self):
         cust = self.make_customer()
         self.make_sale(cust, 1000, 0, days_ago=45, invoice="INV-OLD2")
-        db.execute("UPDATE CompanySettings SET CreditBlockDays=30 WHERE SettingsID=1")
+        db.execute("UPDATE CompanySettings SET CreditControlMode='BlockAfterDays', CreditBlockDays=30 WHERE SettingsID=1")
         company = db.query("SELECT * FROM CompanySettings WHERE SettingsID=1", one=True)
         with appmod.app.app_context():
             with self.assertRaises(ValueError):
@@ -110,7 +120,7 @@ class CustomerCreditBlockTests(DBTestCase):
     def test_admin_bypasses_the_block(self):
         cust = self.make_customer()
         self.make_sale(cust, 1000, 0, days_ago=45, invoice="INV-OLD3")
-        db.execute("UPDATE CompanySettings SET CreditBlockDays=30 WHERE SettingsID=1")
+        db.execute("UPDATE CompanySettings SET CreditControlMode='BlockAfterDays', CreditBlockDays=30 WHERE SettingsID=1")
         company = db.query("SELECT * FROM CompanySettings WHERE SettingsID=1", one=True)
         with appmod.app.app_context():
             appmod.check_credit_block(cust, company, {"Role": "Admin"})  # must not raise
@@ -118,7 +128,24 @@ class CustomerCreditBlockTests(DBTestCase):
     def test_not_blocked_when_under_the_day_threshold(self):
         cust = self.make_customer()
         self.make_sale(cust, 1000, 0, days_ago=10, invoice="INV-RECENT")
-        db.execute("UPDATE CompanySettings SET CreditBlockDays=30 WHERE SettingsID=1")
+        db.execute("UPDATE CompanySettings SET CreditControlMode='BlockAfterDays', CreditBlockDays=30 WHERE SettingsID=1")
+        company = db.query("SELECT * FROM CompanySettings WHERE SettingsID=1", one=True)
+        with appmod.app.app_context():
+            appmod.check_credit_block(cust, company, {"Role": "Staff"})  # must not raise
+
+    def test_block_immediate_mode_blocks_with_no_grace_period(self):
+        cust = self.make_customer()
+        self.make_sale(cust, 1000, 0, days_ago=1, invoice="INV-IMM")  # barely overdue
+        db.execute("UPDATE CompanySettings SET CreditControlMode='BlockImmediate' WHERE SettingsID=1")
+        company = db.query("SELECT * FROM CompanySettings WHERE SettingsID=1", one=True)
+        with appmod.app.app_context():
+            with self.assertRaises(ValueError):
+                appmod.check_credit_block(cust, company, {"Role": "Staff"})
+
+    def test_block_immediate_mode_does_not_block_a_fully_paid_customer(self):
+        cust = self.make_customer()
+        self.make_sale(cust, 1000, 1000, days_ago=100, invoice="INV-IMM-PAID")
+        db.execute("UPDATE CompanySettings SET CreditControlMode='BlockImmediate' WHERE SettingsID=1")
         company = db.query("SELECT * FROM CompanySettings WHERE SettingsID=1", one=True)
         with appmod.app.app_context():
             appmod.check_credit_block(cust, company, {"Role": "Staff"})  # must not raise
@@ -129,7 +156,7 @@ class CustomerCreditBlockTests(DBTestCase):
         prod = self.make_product()
         cust = self.make_customer("Overdue Customer")
         self.make_sale(cust, 1000, 0, days_ago=45, invoice="INV-E2E-1")
-        db.execute("UPDATE CompanySettings SET CreditBlockDays=30 WHERE SettingsID=1")
+        db.execute("UPDATE CompanySettings SET CreditControlMode='BlockAfterDays', CreditBlockDays=30 WHERE SettingsID=1")
 
         client = self.make_staff_client()
         resp = client.post("/sales/new", data={
@@ -148,7 +175,7 @@ class CustomerCreditBlockTests(DBTestCase):
         prod = self.make_product()
         cust = self.make_customer("Overdue Customer Admin")
         self.make_sale(cust, 1000, 0, days_ago=45, invoice="INV-E2E-2")
-        db.execute("UPDATE CompanySettings SET CreditBlockDays=30 WHERE SettingsID=1")
+        db.execute("UPDATE CompanySettings SET CreditControlMode='BlockAfterDays', CreditBlockDays=30 WHERE SettingsID=1")
 
         client = self.make_admin_client()
         resp = client.post("/sales/new", data={

@@ -58,14 +58,34 @@
   </div>
 
   <h6 class="mb-3">Customer Credit Control</h6>
+  <p class="text-muted small">The New/Edit Sale screens always show a red field + warning banner for any
+    customer with a positive due, regardless of the mode below. This only controls whether a non-Admin is
+    also <strong>blocked</strong> from saving a new sale — Admin accounts can always save regardless of mode.</p>
   <div class="row g-3 mb-3">
-    <div class="col-md-4"><label class="form-label">Block sales for overdue customers after (days)</label>
-      <input type="number" min="0" name="credit_block_days" class="form-control" value="{{ company.CreditBlockDays or 0 }}">
-      <div class="form-text">If a customer's oldest unpaid invoice has been due longer than this many days,
-        a non-Admin can't save a NEW sale for them (Admin accounts can always save regardless). Leave at 0 to
-        turn this off — the New/Edit Sale screens still show a warning for any customer with dues, this only
-        controls whether it's also blocked.</div></div>
+    <div class="col-md-5"><label class="form-label">Mode</label>
+      <select name="credit_control_mode" id="credit_control_mode" class="form-select">
+        <option value="Informational" {% if (company.CreditControlMode or 'Informational') == 'Informational' %}selected{% endif %}>
+          Informational only — never block, warning only</option>
+        <option value="BlockAfterDays" {% if company.CreditControlMode == 'BlockAfterDays' %}selected{% endif %}>
+          Block after the customer is overdue a set number of days</option>
+        <option value="BlockImmediate" {% if company.CreditControlMode == 'BlockImmediate' %}selected{% endif %}>
+          Complete block — block immediately on any due, no grace period</option>
+      </select></div>
+    <div class="col-md-3" id="credit_block_days_wrap"><label class="form-label">Overdue days before blocking</label>
+      <input type="number" min="1" name="credit_block_days" class="form-control" value="{{ company.CreditBlockDays or 30 }}">
+      <div class="form-text">Only used in "Block after N days overdue" mode.</div></div>
   </div>
+  <script>
+    (function () {
+      var modeSelect = document.getElementById('credit_control_mode');
+      var daysWrap = document.getElementById('credit_block_days_wrap');
+      function syncDaysVisibility() {
+        daysWrap.style.display = modeSelect.value === 'BlockAfterDays' ? '' : 'none';
+      }
+      modeSelect.addEventListener('change', syncDaysVisibility);
+      syncDaysVisibility();
+    })();
+  </script>
 
   <div class="alert alert-info small">
     <strong>Note on e-invoicing:</strong> if your business's aggregate turnover has crossed the government's
