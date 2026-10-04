@@ -27,12 +27,22 @@ import importlib
 import os
 import sys
 
+import db
 from db import DB_PATH, MIGRATION_EXCLUDED
 import sqlite3
 
 
 def main():
     list_only = "--list" in sys.argv
+    # Prints the actual database file being used - the one thing that would
+    # have caught a DATA_DIR mismatch (wrong environment, missing .env)
+    # immediately instead of a confusing "no such table" error. init_db() is
+    # idempotent (CREATE TABLE IF NOT EXISTS) - safe to call even against an
+    # already-up-to-date database; it also guarantees SchemaMigrations
+    # exists before the query below, rather than assuming some earlier
+    # process already created it in this exact location.
+    print(f"Using database: {DB_PATH}")
+    db.init_db()
     conn = sqlite3.connect(DB_PATH)
     try:
         applied = {r[0] for r in conn.execute("SELECT Name FROM SchemaMigrations").fetchall()}
