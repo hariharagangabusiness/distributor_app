@@ -116,11 +116,18 @@ CREATE TABLE IF NOT EXISTS CompanySettings (
     SmtpPassword          TEXT,
     SmtpFromEmail         TEXT,
     SmtpUseTLS            INTEGER NOT NULL DEFAULT 1,
-    -- Customer credit control: a non-Admin can't save a NEW sale for a
-    -- customer whose oldest unpaid invoice has been due longer than this
-    -- many days (0 = block off, only the informational warning shows).
-    -- Admin accounts always bypass this and can save regardless.
-    CreditBlockDays       INTEGER NOT NULL DEFAULT 0
+    -- Customer credit control (New/Edit Sale): the warning (red field +
+    -- banner) always shows for any customer with a positive due, regardless
+    -- of mode. CreditControlMode decides whether a non-Admin is also
+    -- BLOCKED from saving a NEW sale for that customer - Admin accounts
+    -- always bypass any block and can save regardless.
+    --   'Informational' - never blocked, warning only (the default)
+    --   'BlockAfterDays' - blocked once the oldest unpaid invoice has been
+    --                      due longer than CreditBlockDays days
+    --   'BlockImmediate' - blocked immediately on any positive due, no
+    --                      grace period
+    CreditControlMode     TEXT NOT NULL DEFAULT 'Informational',
+    CreditBlockDays       INTEGER NOT NULL DEFAULT 0   -- only used when CreditControlMode='BlockAfterDays'
 );
 
 INSERT OR IGNORE INTO CompanySettings (SettingsID) VALUES (1);

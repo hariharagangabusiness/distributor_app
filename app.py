@@ -191,22 +191,31 @@ def get_customer_due_info(customer_id):
 
 def check_credit_block(customer_id, company, user):
     """Raises ValueError (caught the same way as any other Sale-form
-    validation error) if this customer's oldest unpaid invoice has been due
-    longer than the Admin-configured CreditBlockDays setting. 0/blank means
-    the block is off - only the client-side warning banner applies. An
-    Admin account always bypasses this and can save the sale regardless,
-    matching how editing a Sale is already Admin-only elsewhere."""
-    days_limit = company["CreditBlockDays"] or 0
-    if days_limit <= 0:
+    validation error) if the Admin-configured CreditControlMode says this
+    customer's due should block a NEW sale. 'Informational' never blocks -
+    only the client-side warning banner applies. An Admin account always
+    bypasses any block and can save the sale regardless, matching how
+    editing a Sale is already Admin-only elsewhere."""
+    mode = company["CreditControlMode"] or "Informational"
+    if mode == "Informational":
         return
     if user and user["Role"] == "Admin":
         return
     info = get_customer_due_info(customer_id)
-    if info["due"] > 0 and info["days_overdue"] > days_limit:
+    if info["due"] <= 0:
+        return
+    if mode == "BlockImmediate":
         raise ValueError(
-            f"This customer has an outstanding balance of ₹{info['due']:.2f} overdue for "
-            f"{info['days_overdue']} days, past the {days_limit}-day limit set in Company Settings. "
+            f"This customer has an outstanding balance of ₹{info['due']:.2f}. New sales are blocked "
+            f"for any customer with a due balance (Complete Block mode, set in Company Settings). "
             f"An Admin account can save this sale to override.")
+    if mode == "BlockAfterDays":
+        days_limit = company["CreditBlockDays"] or 0
+        if days_limit > 0 and info["days_overdue"] > days_limit:
+            raise ValueError(
+                f"This customer has an outstanding balance of ₹{info['due']:.2f} overdue for "
+                f"{info['days_overdue']} days, past the {days_limit}-day limit set in Company Settings. "
+                f"An Admin account can save this sale to override.")
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -6213,7 +6222,7 @@ def settings_form():
                     BankAccountNumber=?, BankIFSC=?, BankBranch=?, InvoicePrefix=?, InvoiceTerms=?,
                     GstFilingScheme=?, GstRemindersEnabled=?, GstReminderEmails=?, GstReminderDaysBefore=?,
                     SmtpHost=?, SmtpPort=?, SmtpUsername=?, SmtpPassword=?, SmtpFromEmail=?, SmtpUseTLS=?,
-                    CreditBlockDays=?
+                    CreditControlMode=?, CreditBlockDays=?
                     WHERE SettingsID=1""",
                    (f["company_name"], f["gstin"], f["pan"], f["address"], f["city"],
                     STATE_NAME_BY_CODE.get(f.get("state_code", ""), ""), f.get("state_code", ""), f["pincode"],
@@ -6225,6 +6234,8 @@ def settings_form():
                     f.get("smtp_host", "").strip(), int(f.get("smtp_port") or 587),
                     f.get("smtp_username", "").strip(), f.get("smtp_password", ""),
                     f.get("smtp_from_email", "").strip(), 1 if f.get("smtp_use_tls") else 0,
+                    f.get("credit_control_mode") if f.get("credit_control_mode") in
+                        ("Informational", "BlockAfterDays", "BlockImmediate") else "Informational",
                     max(int(f.get("credit_block_days") or 0), 0)))
         flash("Company settings saved. These details now appear on every GST invoice.", "success")
         return redirect(url_for("settings_form"))
