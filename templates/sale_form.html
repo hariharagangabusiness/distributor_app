@@ -293,9 +293,14 @@ function selectCustomer(c) {
 const customerDueWarning = document.getElementById('customer-due-warning');
 
 function setCustomerDueHighlight(hasDue) {
+  // bg-danger-subtle fills the whole box with a light red tint (not just a border or the
+  // typed text) - border-2/border-danger gives it a solid, clearly red outline on top.
+  // Both are Bootstrap 5.3 theme-aware utilities, so this looks right in dark mode too.
   [customerSearchInput, customerNameInput].forEach(el => {
     if (!el) return;
+    el.classList.toggle('bg-danger-subtle', hasDue);
     el.classList.toggle('border-danger', hasDue);
+    el.classList.toggle('border-2', hasDue);
     el.classList.toggle('text-danger', hasDue);
   });
 }
