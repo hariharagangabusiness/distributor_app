@@ -115,7 +115,12 @@ CREATE TABLE IF NOT EXISTS CompanySettings (
     SmtpUsername          TEXT,
     SmtpPassword          TEXT,
     SmtpFromEmail         TEXT,
-    SmtpUseTLS            INTEGER NOT NULL DEFAULT 1
+    SmtpUseTLS            INTEGER NOT NULL DEFAULT 1,
+    -- Customer credit control: a non-Admin can't save a NEW sale for a
+    -- customer whose oldest unpaid invoice has been due longer than this
+    -- many days (0 = block off, only the informational warning shows).
+    -- Admin accounts always bypass this and can save regardless.
+    CreditBlockDays       INTEGER NOT NULL DEFAULT 0
 );
 
 INSERT OR IGNORE INTO CompanySettings (SettingsID) VALUES (1);

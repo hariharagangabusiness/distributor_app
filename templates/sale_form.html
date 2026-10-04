@@ -16,6 +16,9 @@
   invoice was already handed to the customer, reprint it after saving so it matches.
 </div>
 {% endif %}
+{# Populated/shown by checkCustomerDue() in the script below, whenever the selected customer
+   has any positive outstanding balance (same definition as the Accounts Receivable report). #}
+<div id="customer-due-warning" class="alert alert-danger" style="display:none"></div>
 {% macro fstyle(key, dict_) %}order:{{ dict_[key].order }};{% if not dict_[key].visible %}display:none !important;{% endif %}{% endmacro %}
 <div class="card"><div class="card-body">
 <div class="d-flex justify-content-end mb-2">
@@ -278,8 +281,49 @@ function selectCustomer(c) {
   }
   if (c.StateCode) posSelect.value = c.StateCode;
   hideCustomerResults();
+  checkCustomerDue(c.CustomerID);
   recalc();
 }
+
+// Outstanding-balance warning: fetched once a specific customer is picked (not on every
+// typeahead keystroke) - turns the Customer field(s) red and shows a banner near the top
+// of the screen, above the invoice line items, whenever that customer has any positive due.
+// Purely informational here; CreditBlockDays (see Company Settings) is enforced server-side
+// on save, separately, and isn't duplicated client-side.
+const customerDueWarning = document.getElementById('customer-due-warning');
+
+function setCustomerDueHighlight(hasDue) {
+  [customerSearchInput, customerNameInput].forEach(el => {
+    if (!el) return;
+    el.classList.toggle('border-danger', hasDue);
+    el.classList.toggle('text-danger', hasDue);
+  });
+}
+
+function checkCustomerDue(customerId) {
+  if (!customerId) {
+    setCustomerDueHighlight(false);
+    customerDueWarning.style.display = 'none';
+    return;
+  }
+  fetch(`/customers/${customerId}/due`)
+    .then(r => r.json())
+    .then(info => {
+      if (info.due > 0) {
+        setCustomerDueHighlight(true);
+        customerDueWarning.textContent =
+          `⚠ This customer has an outstanding balance of ₹${info.due.toFixed(2)} ` +
+          `from previous invoices (overdue ${info.days_overdue} day${info.days_overdue === 1 ? '' : 's'}).`;
+        customerDueWarning.style.display = '';
+      } else {
+        setCustomerDueHighlight(false);
+        customerDueWarning.style.display = 'none';
+      }
+    })
+    .catch(() => {});
+}
+
+if (customerIdInput.value) checkCustomerDue(customerIdInput.value);
 
 function hideCustomerResults() {
   customerResultsBox.style.display = 'none';
@@ -310,6 +354,7 @@ if (customerSearchInput) {
     // Any manual edit invalidates a previously-picked match — it becomes a "new
     // customer" typed name again unless a fresh match is picked from the list.
     customerIdInput.value = '';
+    checkCustomerDue('');
     const q = customerSearchInput.value.trim();
     customerNameInput.value = customerSearchInput.value;
     if (customerSearchTimer) clearTimeout(customerSearchTimer);

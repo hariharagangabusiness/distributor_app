@@ -169,6 +169,46 @@ def sale_balance_due(sale):
     return round(sale_due_amount(sale) - (sale["AmountReceived"] or 0), 2)
 
 
+def get_customer_due_info(customer_id):
+    """Outstanding balance + oldest unpaid invoice age for one customer -
+    deliberately the same definition the Accounts Receivable report uses
+    (TaxableAmount - AmountReceived, summed across every non-Cancelled sale;
+    PaymentDueDate falling back to SaleDate for aging), so a number shown
+    here always matches what that report would show for the same customer.
+    Used by the New/Edit Sale "customer has dues" warning and credit block."""
+    rows = db.query("""SELECT s.PaymentDueDate, s.SaleDate, (s.TaxableAmount - s.AmountReceived) AS Due
+                     FROM Sales s WHERE s.CustomerID=? AND s.Status <> 'Cancelled'
+                       AND (s.TaxableAmount - s.AmountReceived) > 0.005""", (customer_id,))
+    due = round(sum(r["Due"] for r in rows), 2)
+    oldest_due_date = None
+    for r in rows:
+        d = r["PaymentDueDate"] or r["SaleDate"]
+        if d and (oldest_due_date is None or d < oldest_due_date):
+            oldest_due_date = d
+    days_overdue = (date.today() - date.fromisoformat(oldest_due_date)).days if oldest_due_date else 0
+    return {"due": due, "oldest_due_date": oldest_due_date, "days_overdue": days_overdue}
+
+
+def check_credit_block(customer_id, company, user):
+    """Raises ValueError (caught the same way as any other Sale-form
+    validation error) if this customer's oldest unpaid invoice has been due
+    longer than the Admin-configured CreditBlockDays setting. 0/blank means
+    the block is off - only the client-side warning banner applies. An
+    Admin account always bypasses this and can save the sale regardless,
+    matching how editing a Sale is already Admin-only elsewhere."""
+    days_limit = company["CreditBlockDays"] or 0
+    if days_limit <= 0:
+        return
+    if user and user["Role"] == "Admin":
+        return
+    info = get_customer_due_info(customer_id)
+    if info["due"] > 0 and info["days_overdue"] > days_limit:
+        raise ValueError(
+            f"This customer has an outstanding balance of ₹{info['due']:.2f} overdue for "
+            f"{info['days_overdue']} days, past the {days_limit}-day limit set in Company Settings. "
+            f"An Admin account can save this sale to override.")
+
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SECRET_KEY_FILE = os.path.join(BASE_DIR, "secret_key.txt")
 
@@ -2200,6 +2240,18 @@ def customers_search():
     return jsonify([dict(r) for r in rows])
 
 
+@app.route("/customers/<int:customer_id>/due")
+def customer_due_info(customer_id):
+    """JSON lookup used by the New/Edit Sale form: once a specific customer is
+    selected (not on every typeahead keystroke), fetch their current
+    outstanding due so the form can show the red "customer has dues"
+    warning. See get_customer_due_info() for the exact definition."""
+    customer = db.query("SELECT CustomerID FROM Customers WHERE CustomerID=?", (customer_id,), one=True)
+    if not customer:
+        return jsonify({"due": 0, "oldest_due_date": None, "days_overdue": 0}), 404
+    return jsonify(get_customer_due_info(customer_id))
+
+
 @app.route("/customers/merge-duplicates", methods=["GET", "POST"])
 @admin_required
 def customers_merge_duplicates():
@@ -3767,6 +3819,7 @@ def sale_form():
             bank_amount = parse_form_number(f.get("bank_amount") or "0", "Bank Amount")
             amount_received = round(cash_amount + bank_amount, 2)
             customer_id = resolve_sale_customer(f)
+            check_credit_block(customer_id, company, get_current_user())
         except ValueError as e:
             flash(str(e), "error")
             return redirect(url_for("sale_form"))
@@ -3840,6 +3893,7 @@ def sale_edit(sid):
             bank_amount = parse_form_number(f.get("bank_amount") or "0", "Bank Amount")
             amount_received = round(cash_amount + bank_amount, 2)
             customer_id = resolve_sale_customer(f)
+            check_credit_block(customer_id, company, get_current_user())
         except ValueError as e:
             flash(str(e), "error")
             return redirect(url_for("sale_edit", sid=sid))
@@ -6158,7 +6212,8 @@ def settings_form():
                     State=?, StateCode=?, Pincode=?, Phone=?, Email=?, BankName=?, BankAccountName=?,
                     BankAccountNumber=?, BankIFSC=?, BankBranch=?, InvoicePrefix=?, InvoiceTerms=?,
                     GstFilingScheme=?, GstRemindersEnabled=?, GstReminderEmails=?, GstReminderDaysBefore=?,
-                    SmtpHost=?, SmtpPort=?, SmtpUsername=?, SmtpPassword=?, SmtpFromEmail=?, SmtpUseTLS=?
+                    SmtpHost=?, SmtpPort=?, SmtpUsername=?, SmtpPassword=?, SmtpFromEmail=?, SmtpUseTLS=?,
+                    CreditBlockDays=?
                     WHERE SettingsID=1""",
                    (f["company_name"], f["gstin"], f["pan"], f["address"], f["city"],
                     STATE_NAME_BY_CODE.get(f.get("state_code", ""), ""), f.get("state_code", ""), f["pincode"],
@@ -6169,7 +6224,8 @@ def settings_form():
                     int(f.get("gst_reminder_days_before") or 3),
                     f.get("smtp_host", "").strip(), int(f.get("smtp_port") or 587),
                     f.get("smtp_username", "").strip(), f.get("smtp_password", ""),
-                    f.get("smtp_from_email", "").strip(), 1 if f.get("smtp_use_tls") else 0))
+                    f.get("smtp_from_email", "").strip(), 1 if f.get("smtp_use_tls") else 0,
+                    max(int(f.get("credit_block_days") or 0), 0)))
         flash("Company settings saved. These details now appear on every GST invoice.", "success")
         return redirect(url_for("settings_form"))
     company = get_company_settings()
