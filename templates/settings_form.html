@@ -57,6 +57,16 @@
       <textarea name="invoice_terms" class="form-control" rows="3">{{ company.InvoiceTerms or '' }}</textarea></div>
   </div>
 
+  <h6 class="mb-3">Customer Credit Control</h6>
+  <div class="row g-3 mb-3">
+    <div class="col-md-4"><label class="form-label">Block sales for overdue customers after (days)</label>
+      <input type="number" min="0" name="credit_block_days" class="form-control" value="{{ company.CreditBlockDays or 0 }}">
+      <div class="form-text">If a customer's oldest unpaid invoice has been due longer than this many days,
+        a non-Admin can't save a NEW sale for them (Admin accounts can always save regardless). Leave at 0 to
+        turn this off — the New/Edit Sale screens still show a warning for any customer with dues, this only
+        controls whether it's also blocked.</div></div>
+  </div>
+
   <div class="alert alert-info small">
     <strong>Note on e-invoicing:</strong> if your business's aggregate turnover has crossed the government's
     e-invoicing threshold, invoices also need a live IRN + QR code generated through the GST e-invoice portal —
