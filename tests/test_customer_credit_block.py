@@ -26,6 +26,9 @@ class CustomerCreditBlockTests(DBTestCase):
         client = appmod.app.test_client()
         resp = client.post("/login", data={"username": username, "password": password}, follow_redirects=True)
         assert resp.status_code == 200, f"login failed: {resp.status_code}"
+        # Staff is a tracked role - must accept the location-tracking consent gate (see
+        # require_login() in app.py) before reaching /sales/new or anything else.
+        client.post("/location-consent", data={}, follow_redirects=True)
         return client
 
     def make_sale(self, customer_id, taxable, received, status="Completed", days_ago=0, invoice="INV-TEST-1"):

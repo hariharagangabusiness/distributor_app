@@ -1,10 +1,12 @@
 // Captures this device's location every 30 minutes and sends it to the
 // server, for as long as this tab stays open on a tracked-role login (Staff/
 // Supervisor/Manager - see base.html, which only includes this file for
-// those roles). Only fires during working hours (9 AM-8 PM, Tuesday-Sunday,
+// those roles). Only fires during the working days/hours configured in
+// Company Settings (window.LOCATION_WORKING_DAYS, injected by base.html),
 // by the DEVICE's own clock/day - the server independently re-checks its
-// own clock before storing anything, so a wrong device clock can only cause
-// a missed or extra attempt, never a bad write).
+// own clock (and its own copy of the same setting) before storing anything,
+// so a wrong device clock can only cause a missed or extra attempt, never a
+// bad write.
 //
 // Limits, by the nature of a website (not a native app): this can only run
 // while the tab is open and in a browser that's still executing JS for it -
@@ -24,7 +26,10 @@
   var PING_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
   var WORK_START_HOUR = 9;
   var WORK_END_HOUR = 20;   // 8 PM
-  var CLOSED_DAY = 1;       // Date.getDay(): Sunday=0 ... Monday=1 - the one day off
+  // Date.getDay(): Sunday=0, Monday=1, ... Saturday=6.
+  var DAY_ABBR = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  var WORKING_DAYS = (window.LOCATION_WORKING_DAYS && window.LOCATION_WORKING_DAYS.length)
+    ? window.LOCATION_WORKING_DAYS : ['Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
   var pill = null;
   function showStatus(text, kind) {
@@ -48,7 +53,8 @@
 
   function withinWorkingHours() {
     var d = new Date();
-    return d.getDay() !== CLOSED_DAY && d.getHours() >= WORK_START_HOUR && d.getHours() < WORK_END_HOUR;
+    return WORKING_DAYS.indexOf(DAY_ABBR[d.getDay()]) !== -1
+      && d.getHours() >= WORK_START_HOUR && d.getHours() < WORK_END_HOUR;
   }
 
   if (!navigator.geolocation) {
@@ -58,7 +64,7 @@
 
   function sendPing() {
     if (!withinWorkingHours()) {
-      showStatus('Location tracking paused (outside 9 AM–8 PM, Tue–Sun)', 'wait');
+      showStatus('Location tracking paused (outside 9 AM–8 PM, ' + WORKING_DAYS.join('/') + ')', 'wait');
       return;
     }
     showStatus('Capturing location…', 'wait');
