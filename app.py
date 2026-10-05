@@ -536,6 +536,15 @@ def require_login():
     user = get_current_user()
     if not user:
         return redirect(url_for("login", next=request.path))
+    # Location-tracking consent: a hard gate, not a dismissible banner - a tracked-role
+    # user can't reach ANYTHING else until they accept it, every single login (the
+    # session flag is set only by location_consent()'s POST, and session.clear() at
+    # login already wipes it, so this is naturally re-asked each time they sign in).
+    # ("logout" never reaches here at all - it's already in PUBLIC_ENDPOINTS above -
+    # so declining consent always leaves a way out without a redirect loop.)
+    if (user["Role"] in LOCATION_TRACKED_ROLES and not session.get("location_consent_ok")
+            and request.endpoint != "location_consent"):
+        return redirect(url_for("location_consent", next=request.path))
     if user["Role"] != "Admin":
         tab_key = _tab_key_for_path(request.path)
         if tab_key and not user_can_access(user, tab_key):
@@ -563,6 +572,17 @@ def inject_mobile_ui_flag():
 @app.context_processor
 def inject_list_view_toggle_flag():
     return dict(LIST_VIEW_TOGGLE_ENABLED=LIST_VIEW_TOGGLE_ENABLED)
+
+
+@app.context_processor
+def inject_location_tracking_working_days():
+    """For base.html's location-tracking.js - only computed for a tracked role
+    (an extra CompanySettings query otherwise unused by everyone else)."""
+    user = get_current_user()
+    if user and user["Role"] in LOCATION_TRACKED_ROLES:
+        configured = _location_working_days()
+        return dict(location_working_days=[d for d in LOCATION_WEEKDAY_ABBR if d in configured])
+    return dict(location_working_days=[])
 
 
 @app.route("/")
@@ -5307,16 +5327,40 @@ def sales_live_report():
 LOCATION_TRACKED_ROLES = {"Staff", "Supervisor", "Manager"}
 LOCATION_WORK_START_HOUR = 9    # 9 AM
 LOCATION_WORK_END_HOUR = 20     # 8 PM
-LOCATION_CLOSED_WEEKDAY = 0     # Python weekday(): Monday=0 - the one day off (Tue-Sun open)
 LOCATION_TZ = ZoneInfo("Asia/Kolkata")  # business hours are IST regardless of the server's own OS clock/timezone
+# Index matches Python's dt.weekday() (Monday=0) - used instead of dt.strftime('%a') so this
+# never depends on the server process's OS locale (which could render day names in a different
+# language and silently break the comparison against CompanySettings.LocationTrackingWorkingDays).
+LOCATION_WEEKDAY_ABBR = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+DEFAULT_LOCATION_WORKING_DAYS = "Tue,Wed,Thu,Fri,Sat,Sun"  # the app's original hardcoded rule
+DEFAULT_LOCATION_CONSENT_TEXT = (
+    "As part of your role, this application records your device's GPS location periodically "
+    "during the working days and hours configured by your employer. Location is captured only "
+    "while you are logged in and this browser tab remains open - it is never tracked outside "
+    "configured working hours, on a configured day off, or after you log out.\n\n"
+    "This is used for operational purposes: confirming field visits, route verification, and "
+    "locating you in the event of a work-related emergency during working hours.\n\n"
+    "By clicking \"I Accept\", you acknowledge and consent to this location tracking for the "
+    "duration of this login session. You may decline by logging out instead, though continued "
+    "use of this application during working hours requires accepting this notice at every login."
+)
 
 
 def _now_ist():
     return datetime.now(LOCATION_TZ)
 
 
-def _within_location_tracking_hours(dt):
-    return dt.weekday() != LOCATION_CLOSED_WEEKDAY and LOCATION_WORK_START_HOUR <= dt.hour < LOCATION_WORK_END_HOUR
+def _location_working_days(company=None):
+    """{'Mon', 'Wed', ...} from CompanySettings.LocationTrackingWorkingDays, falling back to
+    the app's original hardcoded rule (every day except Monday) if blank/not yet migrated."""
+    company = company or get_company_settings()
+    raw = company["LocationTrackingWorkingDays"] or DEFAULT_LOCATION_WORKING_DAYS
+    return {d.strip() for d in raw.split(",") if d.strip()}
+
+
+def _within_location_tracking_hours(dt, company=None):
+    today_abbr = LOCATION_WEEKDAY_ABBR[dt.weekday()]
+    return today_abbr in _location_working_days(company) and LOCATION_WORK_START_HOUR <= dt.hour < LOCATION_WORK_END_HOUR
 
 
 @app.route("/api/location-ping", methods=["POST"])
@@ -5352,6 +5396,26 @@ def api_location_ping():
     return jsonify(ok=True)
 
 
+@app.route("/location-consent", methods=["GET", "POST"])
+def location_consent():
+    """Mandatory accept-to-continue screen, re-shown at every login for a
+    tracked role (require_login() redirects here until session['location_consent_ok']
+    is set, and that flag is wiped by session.clear() at login - see login())."""
+    user = get_current_user()
+    if not user:
+        return redirect(url_for("login"))
+    if user["Role"] not in LOCATION_TRACKED_ROLES:
+        return redirect(default_landing_url(user))  # not a tracked role - nothing to consent to
+    nxt = request.values.get("next", "")
+    if request.method == "POST":
+        session["location_consent_ok"] = True
+        db.execute("INSERT INTO LocationConsentLog (UserID) VALUES (?)", (user["UserID"],))
+        return redirect(nxt if nxt.startswith("/") else default_landing_url(user))
+    company = get_company_settings()
+    consent_text = company["LocationConsentText"] or DEFAULT_LOCATION_CONSENT_TEXT
+    return render_template("location_consent.html", consent_text=consent_text, next=nxt)
+
+
 @app.route("/location-tracking")
 def location_tracking_view():
     date_str = request.args.get("date") or today_str()
@@ -5381,11 +5445,14 @@ def location_tracking_view():
 
     is_today = date_str == today_str()
     tracking_active_now = is_today and _within_location_tracking_hours(_now_ist())
+    configured_days = _location_working_days()
+    working_days_display = ", ".join(d for d in LOCATION_WEEKDAY_ABBR if d in configured_days)
 
     return render_template("location_tracking.html", date_str=date_str, today=today_str(),
                             tracked_users=tracked_users, employee_id=employee_id,
                             by_user=by_user, point_count=len(points),
-                            tracking_active_now=tracking_active_now)
+                            tracking_active_now=tracking_active_now,
+                            working_days_display=working_days_display)
 
 
 # ---------------------------------------------------------------------
@@ -6222,7 +6289,7 @@ def settings_form():
                     BankAccountNumber=?, BankIFSC=?, BankBranch=?, InvoicePrefix=?, InvoiceTerms=?,
                     GstFilingScheme=?, GstRemindersEnabled=?, GstReminderEmails=?, GstReminderDaysBefore=?,
                     SmtpHost=?, SmtpPort=?, SmtpUsername=?, SmtpPassword=?, SmtpFromEmail=?, SmtpUseTLS=?,
-                    CreditControlMode=?, CreditBlockDays=?
+                    CreditControlMode=?, CreditBlockDays=?, LocationTrackingWorkingDays=?, LocationConsentText=?
                     WHERE SettingsID=1""",
                    (f["company_name"], f["gstin"], f["pan"], f["address"], f["city"],
                     STATE_NAME_BY_CODE.get(f.get("state_code", ""), ""), f.get("state_code", ""), f["pincode"],
@@ -6236,11 +6303,17 @@ def settings_form():
                     f.get("smtp_from_email", "").strip(), 1 if f.get("smtp_use_tls") else 0,
                     f.get("credit_control_mode") if f.get("credit_control_mode") in
                         ("Informational", "BlockAfterDays", "BlockImmediate") else "Informational",
-                    max(int(f.get("credit_block_days") or 0), 0)))
+                    max(int(f.get("credit_block_days") or 0), 0),
+                    ",".join(d for d in LOCATION_WEEKDAY_ABBR if d in set(request.form.getlist("working_day")))
+                        or DEFAULT_LOCATION_WORKING_DAYS,
+                    f.get("location_consent_text", "").strip() or None))
         flash("Company settings saved. These details now appear on every GST invoice.", "success")
         return redirect(url_for("settings_form"))
     company = get_company_settings()
-    return render_template("settings_form.html", company=company, states=INDIAN_STATES)
+    working_days_set = _location_working_days(company)
+    return render_template("settings_form.html", company=company, states=INDIAN_STATES,
+                            location_weekdays=LOCATION_WEEKDAY_ABBR, working_days_set=working_days_set,
+                            default_location_consent_text=DEFAULT_LOCATION_CONSENT_TEXT)
 
 
 @app.route("/settings/gst-test-email", methods=["POST"])

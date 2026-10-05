@@ -409,6 +409,7 @@
 {% if current_user and current_user.Role in ('Staff', 'Supervisor', 'Manager') %}
 <script>
 window.LOCATION_TRACKING_ENABLED = true;
+window.LOCATION_WORKING_DAYS = {{ location_working_days|tojson }};
 </script>
 <script src="{{ url_for('static', filename='js/location-tracking.js') }}" defer></script>
 {% endif %}

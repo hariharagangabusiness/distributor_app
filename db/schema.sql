@@ -127,7 +127,18 @@ CREATE TABLE IF NOT EXISTS CompanySettings (
     --   'BlockImmediate' - blocked immediately on any positive due, no
     --                      grace period
     CreditControlMode     TEXT NOT NULL DEFAULT 'Informational',
-    CreditBlockDays       INTEGER NOT NULL DEFAULT 0   -- only used when CreditControlMode='BlockAfterDays'
+    CreditBlockDays       INTEGER NOT NULL DEFAULT 0,  -- only used when CreditControlMode='BlockAfterDays'
+    -- Location tracking (Staff/Supervisor/Manager only - see the Location
+    -- Tracking section further down in this file/app.py). Comma-separated
+    -- 3-letter day abbreviations (Mon/Tue/.../Sun) - default matches the
+    -- app's original hardcoded behaviour (every day except Monday) so an
+    -- existing install's behaviour doesn't silently change on migration.
+    LocationTrackingWorkingDays TEXT NOT NULL DEFAULT 'Tue,Wed,Thu,Fri,Sat,Sun',
+    -- Shown as a mandatory accept-to-continue screen at every login for a
+    -- tracked role. NULL/blank falls back to a built-in placeholder - see
+    -- DEFAULT_LOCATION_CONSENT_TEXT in app.py. Admin should replace this
+    -- with their own legally reviewed wording from Company / GST Settings.
+    LocationConsentText   TEXT
 );
 
 INSERT OR IGNORE INTO CompanySettings (SettingsID) VALUES (1);
@@ -492,6 +503,18 @@ CREATE TABLE IF NOT EXISTS LocationLogs (
     RecordedDate    TEXT NOT NULL,         -- 'YYYY-MM-DD', for fast per-day filtering
     FOREIGN KEY (UserID) REFERENCES Users(UserID),
     FOREIGN KEY (EmployeeID) REFERENCES Employees(EmployeeID)
+);
+
+-- Permanent audit trail of every time a tracked-role user accepted the
+-- location-tracking consent screen (required at every login - see
+-- require_login()/location_consent() in app.py). Never deleted or updated;
+-- proof of "who agreed, and when" independent of the session flag that
+-- actually gates navigation.
+CREATE TABLE IF NOT EXISTS LocationConsentLog (
+    ConsentID       INTEGER PRIMARY KEY AUTOINCREMENT,
+    UserID          INTEGER NOT NULL,
+    ConsentedAt     TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (UserID) REFERENCES Users(UserID)
 );
 
 -- ---------------------------------------------------------------------

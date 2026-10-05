@@ -93,3 +93,22 @@ class DBTestCase(unittest.TestCase):
         resp = client.post("/login", data={"username": username, "password": password}, follow_redirects=True)
         assert resp.status_code == 200, f"login failed: {resp.status_code}"
         return client
+
+    def make_role_client(self, role, username=None, password="TestPass123!", accept_location_consent=True):
+        """Like make_admin_client() but for any role. Tracked roles (Staff/
+        Supervisor/Manager) must accept the location-tracking consent gate
+        before reaching anything else (see require_login() in app.py) -
+        accept_location_consent=True (the default) does that automatically so
+        most tests get a client that's immediately usable, same as a real
+        user who already clicked through it. Pass False to get a freshly
+        logged-in, NOT-yet-consented client, e.g. to test the gate itself."""
+        from werkzeug.security import generate_password_hash
+        username = username or f"test_{role.lower()}"
+        db.execute("INSERT INTO Users (Username, PasswordHash, Role, Active) VALUES (?, ?, ?, 1)",
+                   (username, generate_password_hash(password), role))
+        client = appmod.app.test_client()
+        resp = client.post("/login", data={"username": username, "password": password}, follow_redirects=True)
+        assert resp.status_code == 200, f"login failed: {resp.status_code}"
+        if accept_location_consent and role in ("Staff", "Supervisor", "Manager"):
+            client.post("/location-consent", data={}, follow_redirects=True)
+        return client

@@ -87,6 +87,27 @@
     })();
   </script>
 
+  <h6 class="mb-3">Location Tracking</h6>
+  <p class="text-muted small">Applies to Staff/Supervisor/Manager logins only (Admin accounts are never
+    tracked). Location is captured every 30 minutes, 9 AM–8 PM IST, on the working days checked below.</p>
+  <div class="row g-3 mb-3">
+    <div class="col-12"><label class="form-label">Working days</label>
+      <div class="d-flex flex-wrap gap-3">
+        {% for abbr in location_weekdays %}
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" name="working_day" value="{{ abbr }}" id="wd_{{ abbr }}"
+                 {% if abbr in working_days_set %}checked{% endif %}>
+          <label class="form-check-label" for="wd_{{ abbr }}">{{ abbr }}</label>
+        </div>
+        {% endfor %}
+      </div></div>
+    <div class="col-12"><label class="form-label">Consent notice shown at every login (Staff/Supervisor/Manager)</label>
+      <textarea name="location_consent_text" class="form-control" rows="6">{{ company.LocationConsentText or default_location_consent_text }}</textarea>
+      <div class="form-text">Shown as a mandatory accept-to-continue screen each time a tracked-role user logs
+        in — they can't use the app until they accept it. <strong>The text shown above is a placeholder</strong>,
+        not reviewed legal language — replace it with your own legally approved wording before relying on it.</div></div>
+  </div>
+
   <div class="alert alert-info small">
     <strong>Note on e-invoicing:</strong> if your business's aggregate turnover has crossed the government's
     e-invoicing threshold, invoices also need a live IRN + QR code generated through the GST e-invoice portal —
