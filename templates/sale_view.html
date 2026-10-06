@@ -22,7 +22,9 @@
   <div class="row">
     <div class="col-md-4"><strong>Customer:</strong> {{ sale.CustomerName }}<br>{{ sale.Phone or '' }}<br>{{ sale.Address or '' }}
       {% if sale.Zone %}<br><strong>Zone:</strong> {{ sale.Zone }}{% endif %}</div>
-    <div class="col-md-4"><strong>Date:</strong> {{ sale.SaleDate|dmy }}<br><strong>Due Date:</strong> {{ sale.PaymentDueDate|dmy if sale.PaymentDueDate else '-' }}<br>
+    <div class="col-md-4"><strong>Date:</strong> {{ sale.SaleDate|dmy }}
+      {% if sale.CreatedAt %}<span class="text-muted">(booked {{ sale.CreatedAt[11:16] }} IST)</span>{% endif %}
+      <br><strong>Due Date:</strong> {{ sale.PaymentDueDate|dmy if sale.PaymentDueDate else '-' }}<br>
       <strong>Place of Supply:</strong> {{ sale.PlaceOfSupplyState or '-' }} ({{ sale.PlaceOfSupplyStateCode or '-' }})
       {% if sale.EmployeeName %}<br><strong>Salesperson:</strong> {{ sale.EmployeeName }}{% endif %}</div>
     <div class="col-md-4"><strong>Status:</strong> {{ sale.Status }}<br><strong>Payment:</strong> {{ sale.PaymentStatus }} (Received {{ (sale.AmountReceived)|inr(2) }})<br>

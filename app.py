@@ -3617,13 +3617,14 @@ def create_sale(customer_id, sale_date, status, payment_status, payment_due_date
             sale_id = db.execute("""INSERT INTO Sales (InvoiceNumber, CustomerID, SaleDate, Status, PaymentStatus,
                         PaymentDueDate, TotalAmount, AmountReceived, Notes, PlaceOfSupplyState, PlaceOfSupplyStateCode,
                         IsInterState, TaxableAmount, CGSTAmount, SGSTAmount, IGSTAmount, RoundOff, ReverseCharge, EmployeeID,
-                        CashAmount, BankAmount)
-                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                        CashAmount, BankAmount, CreatedAt)
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                         (invoice_no, customer_id, sale_date, status, payment_status,
                          payment_due_date or None, grand_total, amount_received, notes,
                          place_of_supply_name, place_of_supply_code, is_interstate,
                          round(taxable_total, 2), round(cgst_total, 2), round(sgst_total, 2), round(igst_total, 2),
-                         round_off, 1 if reverse_charge else 0, employee_id, cash_amount, bank_amount))
+                         round_off, 1 if reverse_charge else 0, employee_id, cash_amount, bank_amount,
+                         _now_ist().strftime("%Y-%m-%d %H:%M:%S")))
         else:
             # Guardrail: block editing a Sale that's entangled with an already-Reconciled Stock
             # Issue (checked against BOTH the employee/date being submitted now and whatever was
