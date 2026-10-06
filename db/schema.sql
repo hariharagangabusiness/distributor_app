@@ -256,6 +256,13 @@ CREATE TABLE IF NOT EXISTS Sales (
     CashAmount              REAL NOT NULL DEFAULT 0,  -- portion of AmountReceived collected as cash
     BankAmount              REAL NOT NULL DEFAULT 0,  -- portion of AmountReceived collected via bank/UPI/card
                                                        -- (CashAmount + BankAmount should equal AmountReceived)
+    -- Set once, automatically, the moment this Sale is first created (see
+    -- create_sale() in app.py) - NEVER touched again on a later edit, unlike
+    -- SaleDate which the salesperson can pick/backdate freely. Stored in IST
+    -- (via _now_ist()), 'YYYY-MM-DD HH:MM:SS' - NULL for any Sale created
+    -- before this column existed; that history genuinely isn't recorded
+    -- anywhere and was never backfilled with a guessed value.
+    CreatedAt               TEXT,
     FOREIGN KEY (CustomerID) REFERENCES Customers(CustomerID),
     FOREIGN KEY (EmployeeID) REFERENCES Employees(EmployeeID)
 );
