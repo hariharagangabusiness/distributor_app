@@ -81,6 +81,10 @@
 {% endif %}
 
 {% if view == 'invoices' %}
+<div class="d-flex justify-content-end mb-2">
+  <a href="{{ url_for('accounts_receivable_invoices_pdf') }}" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-file-earmark-pdf"></i> Generate PDF</a>
+</div>
 <div class="card">
   <div class="card-header">Invoice-wise Due Detail ({{ invoice_rows|length }}) <span class="text-muted small fw-normal">— click a column heading to sort</span></div>
   <div class="table-responsive">
