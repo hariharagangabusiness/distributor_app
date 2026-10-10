@@ -6369,6 +6369,77 @@ def _year_month_from_request():
 # accrual adjustments.
 # ---------------------------------------------------------------------
 
+def ar_age_days(d):
+    """Days overdue from a PaymentDueDate/SaleDate string, for Accounts
+    Receivable - shared by the Invoice-wise tab and its PDF export so both
+    always compute it identically."""
+    if not d:
+        return 0
+    try:
+        return (date.today() - date.fromisoformat(d[:10])).days
+    except ValueError:
+        return 0
+
+
+def get_ar_base_rows():
+    """Every unpaid/partially-paid invoice, across all time (dues don't
+    expire at a month boundary) - the shared source data behind every
+    Accounts Receivable view and its PDF export. See accounts_receivable()
+    for the full definition of "due" used here."""
+    return db.query("""
+        SELECT s.SaleID, s.InvoiceNumber, s.SaleDate, s.PaymentDueDate, s.PaymentStatus,
+               s.TotalAmount, s.TaxableAmount, s.AmountReceived, (s.TaxableAmount - s.AmountReceived) AS Due,
+               c.CustomerID, c.CustomerName, c.Phone, c.Zone,
+               e.EmployeeName
+        FROM Sales s
+        JOIN Customers c ON c.CustomerID = s.CustomerID
+        LEFT JOIN Employees e ON e.EmployeeID = s.EmployeeID
+        WHERE s.Status <> 'Cancelled' AND c.IsUnassignedBucket = 0
+          AND (s.TaxableAmount - s.AmountReceived) > 0.005
+        ORDER BY s.PaymentDueDate IS NULL, s.PaymentDueDate, s.SaleDate
+    """)
+
+
+def get_ar_invoice_rows():
+    """get_ar_base_rows(), shaped exactly as the Invoice-wise tab/PDF need
+    it: plain dicts with AgeDays added and Due rounded."""
+    rows = [dict(r) for r in get_ar_base_rows()]
+    for r in rows:
+        r["AgeDays"] = ar_age_days(r["PaymentDueDate"] or r["SaleDate"])
+        r["Due"] = round(r["Due"], 2)
+    return rows
+
+
+@app.route("/reports/accounts-receivable/invoices/pdf")
+def accounts_receivable_invoices_pdf():
+    """PDF export of the Invoice-wise Due Detail tab - every field tracked
+    for each unpaid/partially-paid invoice, not just the subset shown
+    on-screen (also includes Phone, Zone, Salesperson). Same access control
+    as the report itself, since this path starts with /reports/accounts-
+    receivable too (see TAB_PATH_RULES)."""
+    rows = get_ar_invoice_rows()
+    pdf_rows = [{
+        "Invoice #": r["InvoiceNumber"],
+        "Customer": r["CustomerName"],
+        "Phone": r["Phone"] or "-",
+        "Zone": r["Zone"] or "-",
+        "Salesperson": r["EmployeeName"] or "-",
+        "Sale Date": format_date_dmy(r["SaleDate"]),
+        "Due Date": format_date_dmy(r["PaymentDueDate"]) if r["PaymentDueDate"] else "-",
+        "Age (days)": r["AgeDays"],
+        "Status": r["PaymentStatus"],
+        "Taxable Value": indian_number_format(r["TaxableAmount"]),
+        "Total (incl. GST)": indian_number_format(r["TotalAmount"]),
+        "Received": indian_number_format(r["AmountReceived"]),
+        "Due": indian_number_format(r["Due"]),
+    } for r in rows]
+    buf = rows_to_pdf(pdf_rows, "Accounts Receivable — Invoice-wise Due Detail")
+    from flask import send_file
+    return send_file(buf, as_attachment=True,
+                      download_name=f"Accounts_Receivable_Invoice_Wise_{today_str()}.pdf",
+                      mimetype="application/pdf")
+
+
 @app.route("/reports/accounts-receivable")
 def accounts_receivable():
     """Who owes the business how much, in five views (?view=summary|aging|invoices|zone|salesperson):
@@ -6458,18 +6529,7 @@ def accounts_receivable():
             "total": round(sum(r["Amount"] for r in payment_rows), 2),
         }
 
-    base_rows = db.query("""
-        SELECT s.SaleID, s.InvoiceNumber, s.SaleDate, s.PaymentDueDate, s.PaymentStatus,
-               s.TotalAmount, s.TaxableAmount, s.AmountReceived, (s.TaxableAmount - s.AmountReceived) AS Due,
-               c.CustomerID, c.CustomerName, c.Phone, c.Zone,
-               e.EmployeeName
-        FROM Sales s
-        JOIN Customers c ON c.CustomerID = s.CustomerID
-        LEFT JOIN Employees e ON e.EmployeeID = s.EmployeeID
-        WHERE s.Status <> 'Cancelled' AND c.IsUnassignedBucket = 0
-          AND (s.TaxableAmount - s.AmountReceived) > 0.005
-        ORDER BY s.PaymentDueDate IS NULL, s.PaymentDueDate, s.SaleDate
-    """)
+    base_rows = get_ar_base_rows()
 
     total_due = round(sum(r["Due"] for r in base_rows), 2)
     customer_count = len({r["CustomerID"] for r in base_rows})
@@ -6496,13 +6556,7 @@ def accounts_receivable():
         a["received"] = round(a["received"], 2)
         a["due"] = round(a["due"], 2)
 
-    def age_days(d):
-        if not d:
-            return 0
-        try:
-            return (date.today() - date.fromisoformat(d[:10])).days
-        except ValueError:
-            return 0
+    age_days = ar_age_days  # module-level now, shared with the PDF export
 
     def bucket_for(days):
         if days <= 30:
