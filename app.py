@@ -5706,50 +5706,94 @@ def rows_to_xlsx_multi(sheets):
     return buf
 
 
+def _pdf_data_table(rows):
+    """Builds one reportlab Table flowable from a list of dict-rows (columns
+    = the first row's keys, in that order), or a 'No data' Paragraph if
+    empty. Shared by rows_to_pdf() (one table) and rows_to_pdf_sections()
+    (several tables, each on its own page)."""
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib.units import mm
+    from reportlab.platypus import Table, TableStyle, Paragraph
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+
+    styles = getSampleStyleSheet()
+    cell_style = ParagraphStyle("c", parent=styles["Normal"], fontSize=7.5, leading=9.5)
+    header_style = ParagraphStyle("h", parent=styles["Normal"], fontSize=7.5, leading=9.5,
+                                   textColor=colors.white, fontName="Helvetica-Bold")
+    if not rows:
+        return Paragraph("No data for this report.", styles["Normal"])
+
+    headers = list(rows[0].keys())
+    data = [[Paragraph(str(h), header_style) for h in headers]]
+    for r in rows:
+        data.append([Paragraph("" if r[h] is None else str(r[h]), cell_style) for h in headers])
+    page_width = landscape(A4)[0] - 20 * mm
+    col_width = page_width / len(headers)
+    table = Table(data, colWidths=[col_width] * len(headers), repeatRows=1)
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2c3e50")),
+        ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#cccccc")),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f5f5f5")]),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4), ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+    ]))
+    return table
+
+
 def rows_to_pdf(rows, title="Report"):
     """Same full-table export as rows_to_xlsx(), formatted as a printable
     PDF (reportlab, already used by invoice_pdf.py - no new dependency).
     Landscape A4 since most of these tables are wide."""
     import io
-    from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4, landscape
     from reportlab.lib.units import mm
-    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.enums import TA_CENTER
 
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle("t", parent=styles["Normal"], fontSize=14, alignment=TA_CENTER, fontName="Helvetica-Bold")
-    cell_style = ParagraphStyle("c", parent=styles["Normal"], fontSize=7.5, leading=9.5)
-    header_style = ParagraphStyle("h", parent=styles["Normal"], fontSize=7.5, leading=9.5,
-                                   textColor=colors.white, fontName="Helvetica-Bold")
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=landscape(A4), topMargin=12 * mm, bottomMargin=12 * mm,
+                             leftMargin=10 * mm, rightMargin=10 * mm)
+    story = [Paragraph(title, title_style), Spacer(1, 6),
+              Paragraph(f"Generated {today_str()}", styles["Normal"]), Spacer(1, 10),
+              _pdf_data_table(rows)]
+    doc.build(story)
+    buf.seek(0)
+    return buf
+
+
+def rows_to_pdf_sections(sections, title="Report"):
+    """Like rows_to_pdf(), but for a report that needs more than one table -
+    each (section_title, rows) pair in `sections` becomes its own heading +
+    table, with every section after the first starting on a fresh page.
+    Used by the Accounts Receivable Invoice-wise PDF (a Customer-level
+    summary first, then Invoice-level detail)."""
+    import io
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib.units import mm
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.enums import TA_CENTER
+
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle("t", parent=styles["Normal"], fontSize=14, alignment=TA_CENTER, fontName="Helvetica-Bold")
+    section_style = ParagraphStyle("s", parent=styles["Normal"], fontSize=12, fontName="Helvetica-Bold", spaceAfter=6)
 
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=landscape(A4), topMargin=12 * mm, bottomMargin=12 * mm,
                              leftMargin=10 * mm, rightMargin=10 * mm)
     story = [Paragraph(title, title_style), Spacer(1, 6),
               Paragraph(f"Generated {today_str()}", styles["Normal"]), Spacer(1, 10)]
-
-    if rows:
-        headers = list(rows[0].keys())
-        data = [[Paragraph(str(h), header_style) for h in headers]]
-        for r in rows:
-            data.append([Paragraph("" if r[h] is None else str(r[h]), cell_style) for h in headers])
-        page_width = landscape(A4)[0] - 20 * mm
-        col_width = page_width / len(headers)
-        table = Table(data, colWidths=[col_width] * len(headers), repeatRows=1)
-        table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2c3e50")),
-            ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#cccccc")),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f5f5f5")]),
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("LEFTPADDING", (0, 0), (-1, -1), 4), ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-            ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-        ]))
-        story.append(table)
-    else:
-        story.append(Paragraph("No data for this report.", styles["Normal"]))
-
+    for i, (section_title, section_rows) in enumerate(sections):
+        if i > 0:
+            story.append(PageBreak())
+        story.append(Paragraph(section_title, section_style))
+        story.append(_pdf_data_table(section_rows))
     doc.build(story)
     buf.seek(0)
     return buf
@@ -6400,40 +6444,105 @@ def get_ar_base_rows():
     """)
 
 
-def get_ar_invoice_rows():
+def get_ar_invoice_rows(base_rows=None):
     """get_ar_base_rows(), shaped exactly as the Invoice-wise tab/PDF need
-    it: plain dicts with AgeDays added and Due rounded."""
-    rows = [dict(r) for r in get_ar_base_rows()]
+    it: plain dicts with AgeDays added and Due rounded. Pass an already-
+    fetched base_rows to avoid querying twice when a caller also needs
+    get_ar_customer_summary() from the same data."""
+    if base_rows is None:
+        base_rows = get_ar_base_rows()
+    rows = [dict(r) for r in base_rows]
     for r in rows:
         r["AgeDays"] = ar_age_days(r["PaymentDueDate"] or r["SaleDate"])
         r["Due"] = round(r["Due"], 2)
     return rows
 
 
-@app.route("/reports/accounts-receivable/invoices/pdf")
-def accounts_receivable_invoices_pdf():
-    """PDF export of the Invoice-wise Due Detail tab - every field tracked
-    for each unpaid/partially-paid invoice, not just the subset shown
-    on-screen (also includes Phone, Zone, Salesperson). Same access control
-    as the report itself, since this path starts with /reports/accounts-
-    receivable too (see TAB_PATH_RULES)."""
-    rows = get_ar_invoice_rows()
-    pdf_rows = [{
+def get_ar_customer_summary(base_rows=None, sort="due"):
+    """Per-customer aggregate (invoiced/taxable/received/due/oldest due
+    date) from get_ar_base_rows() - shared by the Customer Summary tab and
+    the Invoice-wise PDF's first section. sort='due' (default, matches the
+    on-screen tab) sorts by due descending; sort='name' sorts alphabetically
+    by customer name, for the PDF."""
+    if base_rows is None:
+        base_rows = get_ar_base_rows()
+    by_customer = {}
+    for r in base_rows:
+        agg = by_customer.setdefault(r["CustomerID"], {
+            "CustomerID": r["CustomerID"], "CustomerName": r["CustomerName"], "Phone": r["Phone"],
+            "Zone": r["Zone"], "invoiced": 0, "taxable": 0, "received": 0, "due": 0, "invoice_count": 0,
+            "oldest_due_date": None,
+        })
+        agg["invoiced"] += r["TotalAmount"]
+        agg["taxable"] += r["TaxableAmount"]
+        agg["received"] += r["AmountReceived"]
+        agg["due"] += r["Due"]
+        agg["invoice_count"] += 1
+        d = r["PaymentDueDate"] or r["SaleDate"]
+        if d and (agg["oldest_due_date"] is None or d < agg["oldest_due_date"]):
+            agg["oldest_due_date"] = d
+    rows = list(by_customer.values())
+    if sort == "name":
+        rows.sort(key=lambda a: (a["CustomerName"] or "").lower())
+    else:
+        rows.sort(key=lambda a: -a["due"])
+    for a in rows:
+        a["invoiced"] = round(a["invoiced"], 2)
+        a["taxable"] = round(a["taxable"], 2)
+        a["received"] = round(a["received"], 2)
+        a["due"] = round(a["due"], 2)
+    return rows
+
+
+def _ar_customer_pdf_row(c):
+    return {
+        "Customer": c["CustomerName"],
+        "Phone": c["Phone"] or "-",
+        "Zone": c["Zone"] or "-",
+        "# Invoices": c["invoice_count"],
+        "Taxable Value": indian_number_format(c["taxable"]),
+        "Invoiced (incl. GST)": indian_number_format(c["invoiced"]),
+        "Received": indian_number_format(c["received"]),
+        "Due": indian_number_format(c["due"]),
+    }
+
+
+def _ar_invoice_pdf_row(r):
+    # Deliberately no Salesperson/Due Date - not needed for this export.
+    return {
         "Invoice #": r["InvoiceNumber"],
         "Customer": r["CustomerName"],
         "Phone": r["Phone"] or "-",
         "Zone": r["Zone"] or "-",
-        "Salesperson": r["EmployeeName"] or "-",
         "Sale Date": format_date_dmy(r["SaleDate"]),
-        "Due Date": format_date_dmy(r["PaymentDueDate"]) if r["PaymentDueDate"] else "-",
         "Age (days)": r["AgeDays"],
         "Status": r["PaymentStatus"],
         "Taxable Value": indian_number_format(r["TaxableAmount"]),
         "Total (incl. GST)": indian_number_format(r["TotalAmount"]),
         "Received": indian_number_format(r["AmountReceived"]),
         "Due": indian_number_format(r["Due"]),
-    } for r in rows]
-    buf = rows_to_pdf(pdf_rows, "Accounts Receivable — Invoice-wise Due Detail")
+    }
+
+
+@app.route("/reports/accounts-receivable/invoices/pdf")
+def accounts_receivable_invoices_pdf():
+    """PDF export, two sections: a Customer-level summary first (alphabetical
+    by customer name), then Invoice-level detail (also alphabetical by
+    customer name) on its own page(s) after. Salesperson/Due Date are
+    deliberately left out of the invoice table - not needed for this export.
+    Same access control as the report itself, since this path starts with
+    /reports/accounts-receivable too (see TAB_PATH_RULES)."""
+    base_rows = get_ar_base_rows()
+    customer_rows = get_ar_customer_summary(base_rows, sort="name")
+    invoice_rows = sorted(get_ar_invoice_rows(base_rows), key=lambda r: (r["CustomerName"] or "").lower())
+
+    customer_pdf_rows = [_ar_customer_pdf_row(c) for c in customer_rows]
+    invoice_pdf_rows = [_ar_invoice_pdf_row(r) for r in invoice_rows]
+
+    buf = rows_to_pdf_sections([
+        (f"Customer-wise Summary ({len(customer_pdf_rows)})", customer_pdf_rows),
+        (f"Invoice-wise Detail ({len(invoice_pdf_rows)})", invoice_pdf_rows),
+    ], "Accounts Receivable — Due Details")
     from flask import send_file
     return send_file(buf, as_attachment=True,
                       download_name=f"Accounts_Receivable_Invoice_Wise_{today_str()}.pdf",
@@ -6534,27 +6643,7 @@ def accounts_receivable():
     total_due = round(sum(r["Due"] for r in base_rows), 2)
     customer_count = len({r["CustomerID"] for r in base_rows})
 
-    by_customer = {}
-    for r in base_rows:
-        agg = by_customer.setdefault(r["CustomerID"], {
-            "CustomerID": r["CustomerID"], "CustomerName": r["CustomerName"], "Phone": r["Phone"],
-            "Zone": r["Zone"], "invoiced": 0, "taxable": 0, "received": 0, "due": 0, "invoice_count": 0,
-            "oldest_due_date": None,
-        })
-        agg["invoiced"] += r["TotalAmount"]
-        agg["taxable"] += r["TaxableAmount"]
-        agg["received"] += r["AmountReceived"]
-        agg["due"] += r["Due"]
-        agg["invoice_count"] += 1
-        d = r["PaymentDueDate"] or r["SaleDate"]
-        if d and (agg["oldest_due_date"] is None or d < agg["oldest_due_date"]):
-            agg["oldest_due_date"] = d
-    customer_summary = sorted(by_customer.values(), key=lambda a: -a["due"])
-    for a in customer_summary:
-        a["invoiced"] = round(a["invoiced"], 2)
-        a["taxable"] = round(a["taxable"], 2)
-        a["received"] = round(a["received"], 2)
-        a["due"] = round(a["due"], 2)
+    customer_summary = get_ar_customer_summary(base_rows)
 
     age_days = ar_age_days  # module-level now, shared with the PDF export
 

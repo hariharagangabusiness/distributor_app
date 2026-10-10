@@ -36,8 +36,37 @@ class AccountsReceivableHelpersTests(DBTestCase):
         self.assertIn("AgeDays", row)
         self.assertEqual(row["Due"], round(1000.005 - 400, 2))
 
+    def test_customer_summary_sort_name_is_alphabetical(self):
+        zebra = self.make_customer("Zebra Traders")
+        alpha = self.make_customer("Alpha Distributors")
+        mango = self.make_customer("mango co")  # lowercase - must sort case-insensitively
+        self.make_sale(zebra, 1000, 0, invoice="INV-Z")
+        self.make_sale(alpha, 1000, 0, invoice="INV-A")
+        self.make_sale(mango, 1000, 0, invoice="INV-M")
+
+        with appmod.app.app_context():
+            rows = appmod.get_ar_customer_summary(sort="name")
+        names = [r["CustomerName"] for r in rows]
+        self.assertEqual(names, ["Alpha Distributors", "mango co", "Zebra Traders"])
+
+    def test_customer_summary_default_sort_is_by_due_descending(self):
+        small = self.make_customer("Small Due Co")
+        big = self.make_customer("Big Due Co")
+        self.make_sale(small, 100, 0, invoice="INV-SMALL")
+        self.make_sale(big, 9000, 0, invoice="INV-BIG")
+
+        with appmod.app.app_context():
+            rows = appmod.get_ar_customer_summary()
+        self.assertEqual(rows[0]["CustomerName"], "Big Due Co")
+
 
 class AccountsReceivableInvoicesPdfTests(DBTestCase):
+    def make_sale(self, customer_id, taxable, received, status="Completed", invoice="INV-AR-1"):
+        return db.execute("""INSERT INTO Sales (InvoiceNumber, CustomerID, SaleDate, Status,
+                           TotalAmount, AmountReceived, TaxableAmount)
+                           VALUES (?, ?, '2026-09-01', ?, ?, ?, ?)""",
+                           (invoice, customer_id, status, taxable, received, taxable))
+
     def test_pdf_route_returns_a_real_pdf(self):
         cust = self.make_customer("PDF Export Co")
         db.execute("""INSERT INTO Sales (InvoiceNumber, CustomerID, SaleDate, Status,
@@ -76,3 +105,34 @@ class AccountsReceivableInvoicesPdfTests(DBTestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertIn(b"Generate PDF", resp.data)
         self.assertIn(b"/reports/accounts-receivable/invoices/pdf", resp.data)
+
+    def test_pdf_has_two_sections_customer_then_invoice(self):
+        """rows_to_pdf_sections() puts a PageBreak between sections - can't
+        text-search the compiled PDF bytes (reportlab doesn't store glyphs
+        as plain searchable text), so this checks the actual section data
+        the route builds and hands to it: two sections, customer-level
+        first, invoice-level second, both sorted alphabetically, with
+        Salesperson/Due Date left out of the invoice columns."""
+        cust_b = self.make_customer("Beta Co")
+        cust_a = self.make_customer("Alpha Co")
+        self.make_sale(cust_b, 1000, 0, invoice="INV-BETA")
+        self.make_sale(cust_a, 1000, 0, invoice="INV-ALPHA")
+
+        with appmod.app.app_context():
+            base_rows = appmod.get_ar_base_rows()
+            customer_rows = appmod.get_ar_customer_summary(base_rows, sort="name")
+            invoice_rows = sorted(appmod.get_ar_invoice_rows(base_rows),
+                                   key=lambda r: (r["CustomerName"] or "").lower())
+
+        self.assertEqual([c["CustomerName"] for c in customer_rows], ["Alpha Co", "Beta Co"])
+        self.assertEqual([r["CustomerName"] for r in invoice_rows], ["Alpha Co", "Beta Co"])
+
+        # The actual PDF-row shaping used by the route - Salesperson/Due Date must be absent.
+        with appmod.app.app_context():
+            pdf_row = appmod._ar_invoice_pdf_row(invoice_rows[0])
+        self.assertNotIn("Salesperson", pdf_row)
+        self.assertNotIn("Due Date", pdf_row)
+        self.assertEqual(set(pdf_row.keys()), {
+            "Invoice #", "Customer", "Phone", "Zone", "Sale Date", "Age (days)",
+            "Status", "Taxable Value", "Total (incl. GST)", "Received", "Due",
+        })
