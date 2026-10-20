@@ -2278,7 +2278,10 @@ def customer_due_info(customer_id):
     customer = db.query("SELECT CustomerID FROM Customers WHERE CustomerID=?", (customer_id,), one=True)
     if not customer:
         return jsonify({"due": 0, "oldest_due_date": None, "days_overdue": 0}), 404
-    return jsonify(get_customer_due_info(customer_id))
+    company = get_company_settings()
+    return jsonify({**get_customer_due_info(customer_id),
+                    "mode": company["CreditControlMode"] or "Informational",
+                    "block_days": company["CreditBlockDays"] or 0})
 
 
 @app.route("/customers/merge-duplicates", methods=["GET", "POST"])

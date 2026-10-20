@@ -292,22 +292,33 @@ function selectCustomer(c) {
 // on save, separately, and isn't duplicated client-side.
 const customerDueWarning = document.getElementById('customer-due-warning');
 
-function setCustomerDueHighlight(hasDue) {
-  // bg-danger-subtle fills the whole box with a light red tint (not just a border or the
-  // typed text) - border-2/border-danger gives it a solid, clearly red outline on top.
-  // Both are Bootstrap 5.3 theme-aware utilities, so this looks right in dark mode too.
+function setCustomerDueHighlight(level) {
+  // level: '' (none), 'warning' (due but not blocking), 'danger' (save will be blocked).
+  // bg-*-subtle fills the whole box with a light tint; border-2 + border-* adds a solid outline.
   [customerSearchInput, customerNameInput].forEach(el => {
     if (!el) return;
-    el.classList.toggle('bg-danger-subtle', hasDue);
-    el.classList.toggle('border-danger', hasDue);
-    el.classList.toggle('border-2', hasDue);
-    el.classList.toggle('text-danger', hasDue);
+    ['danger', 'warning'].forEach(l => {
+      const on = level === l;
+      el.classList.toggle('bg-' + l + '-subtle', on);
+      el.classList.toggle('border-' + l, on);
+      el.classList.toggle('text-' + l, on);
+    });
+    el.classList.toggle('border-2', !!level);
   });
+}
+
+// Banner colour mirrors check_credit_block() in app.py: Informational -> blue (never blocks),
+// BlockAfterDays -> amber until the day limit is passed then red, BlockImmediate -> red.
+// Admins bypass blocks server-side, so the red text still says "can be overridden by Admin".
+function creditAlertLevel(info) {
+  if (info.mode === 'BlockImmediate') return 'danger';
+  if (info.mode === 'BlockAfterDays') return (info.block_days > 0 && info.days_overdue > info.block_days) ? 'danger' : 'warning';
+  return 'info';
 }
 
 function checkCustomerDue(customerId) {
   if (!customerId) {
-    setCustomerDueHighlight(false);
+    setCustomerDueHighlight('');
     customerDueWarning.style.display = 'none';
     return;
   }
@@ -315,13 +326,15 @@ function checkCustomerDue(customerId) {
     .then(r => r.json())
     .then(info => {
       if (info.due > 0) {
-        setCustomerDueHighlight(true);
+        const level = creditAlertLevel(info);
+        setCustomerDueHighlight(level === 'info' ? '' : level);
+        customerDueWarning.className = 'alert alert-' + level;
         customerDueWarning.textContent =
-          `⚠ This customer has an outstanding balance of ₹${info.due.toFixed(2)} ` +
+          `${level === 'danger' ? 'New sales to this customer are blocked (Admin can override). ' : ''}This customer has an outstanding balance of ₹${info.due.toFixed(2)} ` +
           `from previous invoices (overdue ${info.days_overdue} day${info.days_overdue === 1 ? '' : 's'}).`;
         customerDueWarning.style.display = '';
       } else {
-        setCustomerDueHighlight(false);
+        setCustomerDueHighlight('');
         customerDueWarning.style.display = 'none';
       }
     })

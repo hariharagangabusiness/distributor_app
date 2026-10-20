@@ -813,3 +813,8 @@ table.table-cards-mobile.view-grid tbody tr:not(.collapse) td:not([data-label]) 
 [data-bs-theme="dark"] .alert-warning { background: #33290f; color: #f3cf7a; }
 [data-bs-theme="dark"] .alert-danger  { background: #3a1519; color: #f2a1a8; }
 [data-bs-theme="dark"] .alert-success { background: #112a1d; color: #8fd5ad; }
+
+/* Grid cards: let long names/PO numbers wrap inside their tile instead of
+   being clipped or pushing the 2-column grid wider than the screen. */
+table.table-cards-mobile.view-grid tbody tr:not(.collapse) { min-width: 0; }
+table.table-cards-mobile.view-grid td[data-key-field] { min-width: 0; overflow-wrap: anywhere; }
