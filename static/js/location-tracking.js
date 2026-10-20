@@ -62,36 +62,58 @@
     return;
   }
 
-  function sendPing() {
+  var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+  var latest = null;   // newest fix from watchPosition
+  var lastSentAt = 0;  // ms; throttles uploads to one per PING_INTERVAL_MS
+
+  function upload(pos) {
+    lastSentAt = Date.now();
+    var headers = { 'Content-Type': 'application/json' };
+    if (csrfMeta) headers['X-CSRFToken'] = csrfMeta.content;
+    fetch('/api/location-ping', {
+      method: 'POST',
+      headers: headers,
+      credentials: 'same-origin',
+      body: JSON.stringify({
+        lat: pos.coords.latitude,
+        lng: pos.coords.longitude,
+        accuracy: pos.coords.accuracy,
+      }),
+    }).then(function (r) { return r.json(); }).then(function (data) {
+      if (data && data.ok) {
+        var t = new Date();
+        showStatus('Location sent ' + t.getHours() + ':' + String(t.getMinutes()).padStart(2, '0'), 'ok');
+      } else {
+        var reasons = {
+          'not-tracked': "Server didn't recognize this login as tracked",
+          'outside-hours': 'Server says outside working hours (check server clock/timezone)',
+          'bad-coords': 'Device sent invalid coordinates',
+        };
+        showStatus('Not saved: ' + (reasons[(data && data.reason)] || (data && data.reason) || 'unknown reason'), 'warn');
+      }
+    }).catch(function () {
+      lastSentAt = 0; // let the next tick retry instead of waiting a full interval
+      showStatus('Could not reach server (offline?) — will retry shortly', 'error');
+    });
+  }
+
+  // Sends the newest fix if a full interval has passed and we're inside working
+  // hours. Called on every watch update and by a 1-minute timer (a stationary
+  // device may get no watch updates at all).
+  function maybeUpload() {
+    if (!latest) return;
     if (!withinWorkingHours()) {
       showStatus('Location tracking paused (outside 9 AM–8 PM, ' + WORKING_DAYS.join('/') + ')', 'wait');
       return;
     }
-    showStatus('Capturing location…', 'wait');
-    navigator.geolocation.getCurrentPosition(function (pos) {
-      fetch('/api/location-ping', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-          accuracy: pos.coords.accuracy,
-        }),
-      }).then(function (r) { return r.json(); }).then(function (data) {
-        if (data && data.ok) {
-          var t = new Date();
-          showStatus('Location sent ' + t.getHours() + ':' + String(t.getMinutes()).padStart(2, '0'), 'ok');
-        } else {
-          var reasons = {
-            'not-tracked': "Server didn't recognize this login as tracked",
-            'outside-hours': 'Server says outside working hours (check server clock/timezone)',
-            'bad-coords': 'Device sent invalid coordinates',
-          };
-          showStatus('Not saved: ' + (reasons[(data && data.reason)] || (data && data.reason) || 'unknown reason'), 'warn');
-        }
-      }).catch(function () {
-        showStatus('Could not reach server (offline?) — will retry next cycle', 'error');
-      });
+    if (Date.now() - lastSentAt >= PING_INTERVAL_MS) upload(latest);
+  }
+
+  function start() {
+    showStatus('Starting location tracking…', 'wait');
+    var watchId = navigator.geolocation.watchPosition(function (pos) {
+      latest = pos;
+      maybeUpload();
     }, function (err) {
       var messages = {
         1: 'Location permission denied — enable it in browser/site settings',
@@ -99,12 +121,13 @@
         3: 'Location request timed out',
       };
       showStatus(messages[err.code] || ('Location error: ' + err.message), 'error');
-    }, { enableHighAccuracy: false, timeout: 20000, maximumAge: 5 * 60 * 1000 });
+      if (err.code === 1) navigator.geolocation.clearWatch(watchId); // denied: retrying can't help
+    }, { enableHighAccuracy: false, timeout: 30000, maximumAge: 5 * 60 * 1000 });
+    setInterval(maybeUpload, 60 * 1000);
   }
 
-  // Capture once shortly after the page loads (so a login mid-shift starts a
-  // trail immediately rather than waiting up to 30 min for the first point),
-  // then every 30 minutes for as long as this tab remains open.
-  setTimeout(sendPing, 3000);
-  setInterval(sendPing, PING_INTERVAL_MS);
+  // Runs on every page load for a tracked-role login (base.html only includes
+  // this file for those roles, after consent) - no button or manual step.
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+  else start();
 })();

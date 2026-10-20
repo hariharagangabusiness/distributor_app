@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="csrf-token" content="{{ csrf_token() }}">
 <title>{% block title %}Distributor Ops{% endblock %} | Hari Hara Ganga</title>
 <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/favicon.png') }}">
 <script>
@@ -406,7 +407,7 @@
 {% if LIST_VIEW_TOGGLE_ENABLED %}
 <script src="{{ url_for('static', filename='js/list-view-toggle.js') }}" defer></script>
 {% endif %}
-{% if current_user and current_user.Role in ('Staff', 'Supervisor', 'Manager') %}
+{% if current_user and current_user.Role in ('Staff', 'Supervisor', 'Manager') and session.get('location_consent_ok') %}
 <script>
 window.LOCATION_TRACKING_ENABLED = true;
 window.LOCATION_WORKING_DAYS = {{ location_working_days|tojson }};
