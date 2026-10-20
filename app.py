@@ -261,11 +261,13 @@ app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1)
 # by this app for this signed-in session, not from a malicious page tricking a
 # logged-in browser into submitting a request here. Every form template
 # carries a hidden csrf_token() field (Flask-WTF injects that helper once this
-# is initialized) - the one JS-driven POST that isn't a form submit
-# (/api/location-ping) is exempted just below, right where it's defined, since
-# forging a location ping has no real stakes (it's not a financial or data-
-# integrity operation) and threading a token through that background fetch
-# call would add real complexity for no meaningful security gain.
+# is initialized). The one JS-driven POST that isn't a form submit
+# (/api/location-ping) sends the same token in an X-CSRFToken header, read from
+# the <meta name="csrf-token"> tag in base.html. The token's one-hour default
+# expiry is disabled below: a staff phone keeps one tab open all shift, and an
+# expiring token would silently stop their location pings; it's still tied to
+# the signed session, so it dies when the session does.
+app.config["WTF_CSRF_TIME_LIMIT"] = None
 csrf = CSRFProtect(app)
 
 
@@ -5368,7 +5370,6 @@ def _within_location_tracking_hours(dt, company=None):
 
 
 @app.route("/api/location-ping", methods=["POST"])
-@csrf.exempt  # background JS fetch(), not a form submit - see the CSRFProtect setup comment above
 def api_location_ping():
     """Called every ~30 min by the location-tracking JS (see base.html) from
     any tracked-role user's open browser tab. Re-checks role and working
