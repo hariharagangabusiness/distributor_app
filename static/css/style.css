@@ -754,3 +754,62 @@ table.table-cards-mobile.view-grid tbody tr:not(.collapse) td:not([data-label]) 
     margin-top: .35rem;
   }
 }
+
+/* ============ Mobile form polish (app-wide) ============
+   CSS-only: no template markup or form field names touched, so posts and
+   JS selectors behave exactly as before. 16px font stops iOS Safari
+   zooming in on focus; 48px height gives a comfortable tap target. */
+@media (max-width: 767.98px) {
+  body:not(.mobile-ui-off) main.content .form-control,
+  body:not(.mobile-ui-off) main.content .form-select {
+    min-height: 48px;
+    font-size: 16px;
+    padding: .65rem .85rem;
+    border-radius: .6rem;
+  }
+  body:not(.mobile-ui-off) main.content textarea.form-control { min-height: 96px; }
+  body:not(.mobile-ui-off) main.content .form-label {
+    font-size: .8rem;
+    font-weight: 600;
+    letter-spacing: .02em;
+    color: var(--text-muted);
+    margin-bottom: .3rem;
+  }
+  body:not(.mobile-ui-off) main.content .form-check { min-height: 44px; display: flex; align-items: center; gap: .6rem; }
+  body:not(.mobile-ui-off) main.content .form-check-input { width: 1.4rem; height: 1.4rem; margin: 0; float: none; }
+  body:not(.mobile-ui-off) main.content form .row.g-3 { --bs-gutter-y: 1rem; }
+}
+
+/* Distinct focus state, all widths. */
+.form-control:focus, .form-select:focus {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 .22rem color-mix(in srgb, var(--brand) 25%, transparent);
+}
+
+/* ============ Alert banners (flash messages + inline alerts) ============
+   Each Bootstrap alert state gets an accent bar and icon so Info / Warning /
+   Danger / Success read differently at a glance, not just by tint. */
+.alert {
+  border: 1px solid transparent;
+  border-left-width: 5px;
+  border-radius: .7rem;
+  padding: .8rem 1rem .8rem 2.6rem;
+  position: relative;
+  box-shadow: var(--shadow);
+}
+.alert::before {
+  font-family: "bootstrap-icons";
+  position: absolute; left: .9rem; top: .75rem; font-size: 1.1rem;
+}
+.alert-info    { background: #e8f3fb; border-color: #0d6efd; color: #0a3d7a; }
+.alert-info::before    { content: "\f431"; color: #0d6efd; }   /* info-circle-fill */
+.alert-warning { background: #fff6e0; border-color: #f0a500; color: #6b4600; }
+.alert-warning::before { content: "\f33a"; color: #d98e00; }   /* exclamation-triangle-fill */
+.alert-danger  { background: #fdeaea; border-color: #dc3545; color: #7a1620; }
+.alert-danger::before  { content: "\f623"; color: #dc3545; }   /* x-octagon-fill */
+.alert-success { background: #e6f5ec; border-color: #198754; color: #0f4d31; }
+.alert-success::before { content: "\f26b"; color: #198754; }   /* check-circle-fill */
+[data-bs-theme="dark"] .alert-info    { background: #10253a; color: #9ccaf5; }
+[data-bs-theme="dark"] .alert-warning { background: #33290f; color: #f3cf7a; }
+[data-bs-theme="dark"] .alert-danger  { background: #3a1519; color: #f2a1a8; }
+[data-bs-theme="dark"] .alert-success { background: #112a1d; color: #8fd5ad; }
