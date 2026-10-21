@@ -123,33 +123,34 @@
 <div class="card">
   <div class="card-header">Ledger Statement of Account {% if date_from or date_to %}({{ date_from|dmy if date_from else 'start' }} → {{ date_to|dmy if date_to else 'today' }}){% else %}(all-time){% endif %}</div>
   <div class="table-responsive">
+  {% macro bal(v) %}{{ (v|abs)|inr(2) }} {{ 'Dr' if v > 0.005 else ('Cr' if v < -0.005 else '') }}{% endmacro %}
   <table class="table mb-0 table-sm table-cards-mobile">
-    <thead><tr><th data-sort-type="date">Date</th><th>Type</th><th>Particulars</th><th>Debit</th><th>Credit</th><th>Balance</th></tr></thead>
+    <thead><tr><th data-sort-type="date">Date</th><th>Transaction Details</th><th>Voucher / Ref No.</th><th class="text-end">Debit (Dr)</th><th class="text-end">Credit (Cr)</th><th class="text-end">Running Balance</th></tr></thead>
     <tbody>
       {% if date_from %}
       <tr class="table-light fw-bold">
-        <td data-label="Date">{{ date_from|dmy }}</td><td data-label="Type">-</td>
-        <td data-label="Particulars">Opening Balance</td><td data-label="Debit">-</td><td data-label="Credit">-</td>
-        <td data-label="Balance" class="{% if ledger.opening_balance > 0 %}text-danger{% endif %}">{{ (ledger.opening_balance)|inr(2) }}</td>
+        <td data-label="Date">{{ date_from|dmy }}</td><td data-label="Transaction Details">Opening Balance</td><td data-label="Voucher / Ref No.">-</td>
+        <td data-label="Debit (Dr)" class="text-end">-</td><td data-label="Credit (Cr)" class="text-end">-</td>
+        <td data-label="Running Balance" class="text-end {% if ledger.opening_balance > 0.005 %}text-danger{% endif %}">{{ bal(ledger.opening_balance) }}</td>
       </tr>
       {% endif %}
       {% for e in ledger.entries %}
       <tr>
         <td data-label="Date">{{ e.date|dmy }}</td>
-        <td data-label="Type"><span class="badge {% if e.type=='Invoice' %}text-bg-secondary{% else %}text-bg-success{% endif %}">{{ e.type }}</span></td>
-        <td data-label="Particulars">{{ e.detail }}</td>
-        <td data-label="Debit">{{ (e.debit)|inr(2) if e.debit else '-' }}</td>
-        <td data-label="Credit">{{ (e.credit)|inr(2) if e.credit else '-' }}</td>
-        <td data-label="Balance" class="{% if e.balance > 0.005 %}text-danger fw-bold{% endif %}">{{ (e.balance)|inr(2) }}</td>
+        <td data-label="Transaction Details">{{ e.detail }}</td>
+        <td data-label="Voucher / Ref No.">{{ e.ref or '-' }}</td>
+        <td data-label="Debit (Dr)" class="text-end">{{ (e.debit)|inr(2) if e.debit else '-' }}</td>
+        <td data-label="Credit (Cr)" class="text-end">{{ (e.credit)|inr(2) if e.credit else '-' }}</td>
+        <td data-label="Running Balance" class="text-end {% if e.balance > 0.005 %}text-danger{% endif %}">{{ bal(e.balance) }}</td>
       </tr>
       {% else %}<tr><td colspan="6" class="text-center text-muted py-4">No ledger entries in this period.</td></tr>{% endfor %}
     </tbody>
     <tfoot>
       <tr class="table-light fw-bold">
-        <td colspan="3">Total</td>
-        <td>{{ (ledger.total_debit)|inr(2) }}</td>
-        <td>{{ (ledger.total_credit)|inr(2) }}</td>
-        <td class="{% if ledger.closing_balance > 0.005 %}text-danger{% endif %}">Closing: {{ (ledger.closing_balance)|inr(2) }}</td>
+        <td data-label="Date">Total</td><td data-label="Transaction Details">Closing Balance</td><td data-label="Voucher / Ref No.">-</td>
+        <td data-label="Debit (Dr)" class="text-end">{{ (ledger.total_debit)|inr(2) }}</td>
+        <td data-label="Credit (Cr)" class="text-end">{{ (ledger.total_credit)|inr(2) }}</td>
+        <td data-label="Running Balance" class="text-end {% if ledger.closing_balance > 0.005 %}text-danger{% endif %}">{{ bal(ledger.closing_balance) }}</td>
       </tr>
     </tfoot>
   </table>
