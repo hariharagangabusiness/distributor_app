@@ -46,6 +46,7 @@
     <div class="col-md-2"><a href="{{ url_for('customer_purchase_history', cid=customer.CustomerID, view=view) }}" class="btn btn-outline-secondary">Clear</a></div>
     {% endif %}
     <div class="col-md-2 ms-auto"><button type="button" class="btn btn-outline-secondary w-100" onclick="window.print()"><i class="bi bi-printer"></i> Print</button></div>
+    {% if view == 'ledger' %}<div class="col-md-2"><a class="btn btn-outline-secondary w-100" href="{{ url_for('customer_ledger_pdf', cid=customer.CustomerID) }}?from={{ date_from }}&to={{ date_to }}"><i class="bi bi-file-earmark-pdf"></i> PDF</a></div>{% endif %}
   </form>
 </div></div>
 

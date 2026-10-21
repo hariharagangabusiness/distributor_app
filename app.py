@@ -2435,6 +2435,43 @@ def _build_customer_ledger(sales_asc, date_from, date_to):
     }
 
 
+@app.route("/customers/<int:cid>/ledger/pdf")
+def customer_ledger_pdf(cid):
+    """PDF of the same Ledger Statement shown on the history page (same ?from=&to=)."""
+    customer = db.query("SELECT * FROM Customers WHERE CustomerID=?", (cid,), one=True)
+    if not customer:
+        flash("Customer not found.", "error")
+        return redirect(url_for("customers_list"))
+    date_from = (request.args.get("from") or "").strip()
+    date_to = (request.args.get("to") or "").strip()
+    sales_asc = db.query("""SELECT SaleID, InvoiceNumber, SaleDate, TaxableAmount, AmountReceived
+                      FROM Sales WHERE CustomerID=? AND Status<>'Cancelled'
+                      ORDER BY SaleDate, SaleID""", (cid,))
+    ledger = _build_customer_ledger(sales_asc, date_from, date_to)
+
+    def bal(v):
+        return f"{indian_number_format(abs(v))} {'Dr' if v > 0.005 else 'Cr' if v < -0.005 else ''}".strip()
+
+    def row(d, det, ref, dr, cr, b):
+        return {"Date": d, "Transaction Details": det, "Voucher / Ref No.": ref,
+                "Debit (Dr)": dr, "Credit (Cr)": cr, "Running Balance": b}
+
+    rows = []
+    if date_from:
+        rows.append(row(format_date_dmy(date_from), "Opening Balance", "-", "-", "-", bal(ledger["opening_balance"])))
+    for e in ledger["entries"]:
+        rows.append(row(format_date_dmy(e["date"]), e["detail"], e["ref"] or "-",
+                        indian_number_format(e["debit"]) if e["debit"] else "-",
+                        indian_number_format(e["credit"]) if e["credit"] else "-", bal(e["balance"])))
+    rows.append(row("Total", "Closing Balance", "-", indian_number_format(ledger["total_debit"]),
+                    indian_number_format(ledger["total_credit"]), bal(ledger["closing_balance"])))
+    buf = rows_to_pdf(rows, f"Ledger Statement — {customer['CustomerName']}")
+    from flask import send_file
+    return send_file(buf, as_attachment=True,
+                      download_name=f"Ledger_{customer['CustomerName']}_{today_str()}.pdf".replace(" ", "_"),
+                      mimetype="application/pdf")
+
+
 @app.route("/customers/<int:cid>/history")
 def customer_purchase_history(cid):
     """A single customer's full purchase (Sales) history with this business
