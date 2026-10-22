@@ -780,6 +780,9 @@ table.table-cards-mobile.view-grid tbody tr:not(.collapse) td:not([data-label]) 
   body:not(.mobile-ui-off) main.content form .row.g-3 { --bs-gutter-y: 1rem; }
 }
 
+/* Blue field labels/column headers requested for the Sale form. */
+.field-label-blue { color: #0d6efd !important; }
+
 /* Distinct focus state, all widths. */
 .form-control:focus, .form-select:focus {
   border-color: var(--brand);
