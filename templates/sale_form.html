@@ -38,7 +38,7 @@
       <div class="form-text">Auto-numbered as {{ company.InvoicePrefix or 'INV' }}/FY/0001 when you save.</div>
       {% endif %}
     </div>
-    <div class="col-md-3" style="{{ fstyle('customer', header_fields) }}"><label class="form-label">Customer</label>
+    <div class="col-md-3" style="{{ fstyle('customer', header_fields) }}"><label class="form-label field-label-blue">Customer</label>
       <div class="position-relative">
         <input type="text" id="customer_search" class="form-control" autocomplete="off"
                placeholder="Type to search, or type a new name…"
@@ -46,7 +46,6 @@
         <input type="hidden" name="customer_id" id="customer_id" value="{{ sale.CustomerID if sale else '' }}">
         <div id="customer_search_results" class="list-group position-absolute w-100 shadow-sm" style="z-index:1000; max-height:260px; overflow-y:auto; display:none;"></div>
       </div>
-      <div class="form-text">Search by name, phone, or zone and pick a match to avoid creating a duplicate — or just type a brand-new name.</div>
     </div>
     <div class="col-md-2" style="{{ fstyle('sale_date', header_fields) }}"><label class="form-label">Sale Date *</label>
       <input required type="date" name="sale_date" class="form-control" value="{{ sale.SaleDate if sale else today }}"></div>
@@ -70,23 +69,22 @@
     <div class="col-12" style="{{ fstyle('customer_details', header_fields) }}">
       <div class="row g-3">
         <div class="col-12"><div class="text-muted small mb-1">Customer details — editable here; saving the sale updates this customer's record too (or creates a new one if no match was picked above).</div></div>
-        <div class="col-md-3"><label class="form-label">Customer Name *</label>
+        <div class="col-md-3"><label class="form-label field-label-blue">Customer Name *</label>
           <input required name="customer_name" id="customer_name" class="form-control"
                  value="{{ current_customer.CustomerName if current_customer else '' }}"></div>
-        <div class="col-md-3"><label class="form-label">Address</label>
+        <div class="col-md-3"><label class="form-label field-label-blue">Address</label>
           <input name="customer_address" id="customer_address" class="form-control"
                  value="{{ current_customer.Address if current_customer else '' }}"></div>
-        <div class="col-md-3"><label class="form-label">Phone</label>
+        <div class="col-md-3"><label class="form-label field-label-blue">Phone</label>
           <input name="customer_phone" id="customer_phone" class="form-control"
                  value="{{ current_customer.Phone if current_customer else '' }}"></div>
-        <div class="col-md-3"><label class="form-label">Zone *</label>
+        <div class="col-md-3"><label class="form-label field-label-blue">Zone *</label>
           <select required name="customer_zone" id="customer_zone" class="form-select">
             <option value="">-- select --</option>
             {% for z in zones %}
             <option value="{{ z.ZoneName }}" {% if current_customer and current_customer.Zone == z.ZoneName %}selected{% endif %}>{{ z.ZoneName }}</option>
             {% endfor %}
-          </select>
-          <div class="form-text"><a href="{{ url_for('zones_admin') }}" target="_blank">Manage zones</a></div></div>
+          </select></div>
       </div>
     </div>
 
@@ -98,9 +96,9 @@
       {% endif %}
     </div>
 
-    <div class="col-md-2" style="{{ fstyle('payment_due_date', header_fields) }}"><label class="form-label">Payment Due Date</label>
+    <div class="col-md-2" style="{{ fstyle('payment_due_date', header_fields) }}"><label class="form-label field-label-blue">Payment Due Date</label>
       <input type="date" name="payment_due_date" class="form-control" value="{{ sale.PaymentDueDate if sale else '' }}"></div>
-    <div class="col-md-2" style="{{ fstyle('payment_status', header_fields) }}"><label class="form-label">Payment Status</label>
+    <div class="col-md-2" style="{{ fstyle('payment_status', header_fields) }}"><label class="form-label field-label-blue">Payment Status</label>
       <select name="payment_status" class="form-select">
         <option {% if sale and sale.PaymentStatus == 'Unpaid' %}selected{% endif %}>Unpaid</option>
         <option {% if sale and sale.PaymentStatus == 'Partial' %}selected{% endif %}>Partial</option>
@@ -108,10 +106,10 @@
       </select></div>
     <div class="col-md-4" style="{{ fstyle('cash_bank_amount', header_fields) }}">
       <div class="row g-2">
-        <div class="col-4"><label class="form-label">Cash ₹</label>
+        <div class="col-4"><label class="form-label field-label-blue">Cash ₹</label>
           <input type="number" step="0.01" name="cash_amount" id="cash_amount" class="form-control"
                  value="{{ sale.CashAmount if sale else 0 }}"></div>
-        <div class="col-4"><label class="form-label">Bank/UPI ₹</label>
+        <div class="col-4"><label class="form-label field-label-blue">Bank/UPI ₹</label>
           <input type="number" step="0.01" name="bank_amount" id="bank_amount" class="form-control"
                  value="{{ sale.BankAmount if sale else 0 }}"></div>
         <div class="col-4"><label class="form-label">Received</label>
@@ -146,7 +144,7 @@
   </div>
 
   <div class="d-flex justify-content-between align-items-center">
-    <h6>Line Items <span class="text-muted fw-normal">(rate is the taxable value per unit, excl. GST; Discount ₹ is per unit — multiplied by Qty to get the line's total discount)</span></h6>
+    <h6>Line Items</h6>
     {% if current_user and current_user.Role == 'Admin' %}
     <a href="{{ url_for('form_fields_customize', module='SaleFormLine') }}" class="btn btn-sm btn-outline-secondary mb-2"><i class="bi bi-layout-three-columns"></i> Customize Columns</a>
     {% endif %}
@@ -154,11 +152,11 @@
   <div class="table-responsive">
   <table class="table no-resize-table" id="lines-table">
     <thead><tr>
-      <th style="width:26%" data-col="product" {% if not line_fields['product'].visible %}hidden{% endif %}>Product (available stock)</th>
+      <th style="width:26%" data-col="product" class="field-label-blue" {% if not line_fields['product'].visible %}hidden{% endif %}>Product (available stock)</th>
       <th>HSN</th><th>GST%</th>
-      <th data-col="qty" {% if not line_fields['qty'].visible %}hidden{% endif %}>Qty</th>
+      <th data-col="qty" class="field-label-blue" {% if not line_fields['qty'].visible %}hidden{% endif %}>Qty</th>
       <th data-col="unit_price" {% if not line_fields['unit_price'].visible %}hidden{% endif %}>Rate</th>
-      <th data-col="discount_amount" {% if not line_fields['discount_amount'].visible %}hidden{% endif %}>Discount ₹/unit</th>
+      <th data-col="discount_amount" class="field-label-blue" {% if not line_fields['discount_amount'].visible %}hidden{% endif %}>Discount ₹/unit</th>
       <th>Taxable</th><th>Tax</th><th>Line Total</th><th></th></tr></thead>
     <tbody id="lines-body"></tbody>
   </table>
