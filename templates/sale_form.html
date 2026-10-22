@@ -68,7 +68,6 @@
 
     <div class="col-12" style="{{ fstyle('customer_details', header_fields) }}">
       <div class="row g-3">
-        <div class="col-12"><div class="text-muted small mb-1">Customer details — editable here; saving the sale updates this customer's record too (or creates a new one if no match was picked above).</div></div>
         <div class="col-md-3"><label class="form-label field-label-blue">Customer Name *</label>
           <input required name="customer_name" id="customer_name" class="form-control"
                  value="{{ current_customer.CustomerName if current_customer else '' }}"></div>
@@ -121,7 +120,6 @@
         <input type="checkbox" class="form-check-input" name="reverse_charge" id="reverse_charge"
                {% if sale %}{% if sale.ReverseCharge %}checked{% endif %}{% else %}checked{% endif %}>
         <label class="form-check-label" for="reverse_charge">Reverse Charge</label>
-        <div class="form-text">When checked, GST still shows on the invoice, but Balance Due only counts the product value — the customer pays GST directly to the Government.</div>
       </div>
     </div>
     <div class="col-md-6" style="{{ fstyle('salesperson', header_fields) }}">
@@ -138,7 +136,6 @@
         <option value="{{ e.EmployeeID }}" {% if sale and sale.EmployeeID == e.EmployeeID %}selected{% endif %}>{{ e.EmployeeName }}</option>
         {% endfor %}
       </select>
-      <div class="form-text">If this sale is being fulfilled from stock already issued to a salesperson today, select them here — it'll be credited toward that day's Stock Issue automatically instead of double-deducting stock.</div>
       {% endif %}
     </div>
   </div>
