@@ -91,6 +91,27 @@ class CustomerCreditBlockTests(DBTestCase):
         resp = client.get("/customers/999999/due")
         self.assertEqual(resp.status_code, 404)
 
+    # --- client-side field highlight (regression: a direct push once made
+    # Informational mode - the out-of-the-box default - show only a blue
+    # banner with no field highlight, effectively hiding the "customer has
+    # dues" warning for every installation that hadn't explicitly switched
+    # CreditControlMode to a blocking mode) ---
+
+    def test_informational_mode_still_flags_the_field_not_just_a_blue_banner(self):
+        """creditAlertLevel()'s Informational fallback must stay 'warning'
+        (amber field highlight + banner), never 'info' (which setCustomerDueHighlight
+        renders as no highlight at all) - Informational only means "never
+        blocks the save", not "never warn visually"."""
+        client = self.make_admin_client()
+        resp = client.get("/sales/new")
+        self.assertEqual(resp.status_code, 200)
+        html = resp.data.decode()
+        self.assertIn("return 'warning';\n}", html)
+        self.assertNotIn("return 'info';", html)
+        # setCustomerDueHighlight(level) must be called with the real level,
+        # not silently swapped for '' (no highlight) on any branch.
+        self.assertNotIn("setCustomerDueHighlight(level === 'info' ? '' : level)", html)
+
     # --- check_credit_block() ---
 
     def test_block_off_by_default(self):

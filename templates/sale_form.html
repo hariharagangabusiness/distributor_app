@@ -302,13 +302,16 @@ function setCustomerDueHighlight(level) {
   });
 }
 
-// Banner colour mirrors check_credit_block() in app.py: Informational -> blue (never blocks),
-// BlockAfterDays -> amber until the day limit is passed then red, BlockImmediate -> red.
-// Admins bypass blocks server-side, so the red text still says "can be overridden by Admin".
+// Severity mirrors check_credit_block() in app.py: any due balance always flags the
+// field (this is the baseline "customer has dues" warning and never goes away, no
+// matter the mode) - 'danger' (red) when the mode would actually block the save,
+// 'warning' (amber) otherwise: Informational (never blocks) or BlockAfterDays still
+// inside its grace period. Admins bypass blocks server-side, so the red text still
+// says "can be overridden by Admin".
 function creditAlertLevel(info) {
   if (info.mode === 'BlockImmediate') return 'danger';
   if (info.mode === 'BlockAfterDays') return (info.block_days > 0 && info.days_overdue > info.block_days) ? 'danger' : 'warning';
-  return 'info';
+  return 'warning';
 }
 
 function checkCustomerDue(customerId) {
@@ -322,7 +325,7 @@ function checkCustomerDue(customerId) {
     .then(info => {
       if (info.due > 0) {
         const level = creditAlertLevel(info);
-        setCustomerDueHighlight(level === 'info' ? '' : level);
+        setCustomerDueHighlight(level);
         customerDueWarning.className = 'alert alert-' + level;
         customerDueWarning.textContent =
           `${level === 'danger' ? 'New sales to this customer are blocked (Admin can override). ' : ''}This customer has an outstanding balance of ₹${info.due.toFixed(2)} ` +
