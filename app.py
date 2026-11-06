@@ -6611,6 +6611,8 @@ def accounts_receivable():
     today_iso = date.today().isoformat()
     pay_date_from = (request.args.get("from") or "").strip()
     pay_date_to = (request.args.get("to") or "").strip()
+    q = (request.args.get("q") or "").strip()
+    ql = q.lower()
 
     payment_rows = []
     payment_totals = {"count": 0, "cash": 0, "bank": 0, "total": 0}
@@ -6669,6 +6671,11 @@ def accounts_receivable():
             entries = [e for e in entries if e["PaymentDate"] >= pay_date_from]
         if pay_date_to:
             entries = [e for e in entries if e["PaymentDate"] <= pay_date_to]
+        if ql:
+            entries = [e for e in entries if ql in (e["CustomerName"] or "").lower()
+                       or ql in (e["InvoiceNumber"] or "").lower()
+                       or ql in (e["Notes"] or "").lower()
+                       or ql in (e["PaymentMethod"] or "").lower()]
         entries.sort(key=lambda e: (e["PaymentDate"], e["SaleID"], e["sort2"]), reverse=True)
 
         payment_rows = entries
@@ -6680,6 +6687,12 @@ def accounts_receivable():
         }
 
     base_rows = get_ar_base_rows()
+    if ql:
+        base_rows = [r for r in base_rows if ql in (r["CustomerName"] or "").lower()
+                     or ql in (r["Phone"] or "").lower()
+                     or ql in (r["Zone"] or "").lower()
+                     or ql in (r["InvoiceNumber"] or "").lower()
+                     or ql in (r["EmployeeName"] or "").lower()]
 
     total_due = round(sum(r["Due"] for r in base_rows), 2)
     customer_count = len({r["CustomerID"] for r in base_rows})
@@ -6750,7 +6763,7 @@ def accounts_receivable():
                             aging_totals=aging_totals, invoice_rows=invoice_rows,
                             zone_wise=zone_wise, salesperson_rows=salesperson_rows,
                             payment_rows=payment_rows, payment_totals=payment_totals,
-                            pay_date_from=pay_date_from, pay_date_to=pay_date_to)
+                            pay_date_from=pay_date_from, pay_date_to=pay_date_to, q=q)
 
 
 @app.route("/reports/pnl")

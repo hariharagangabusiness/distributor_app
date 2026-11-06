@@ -10,13 +10,32 @@
 </div>
 
 <ul class="nav nav-tabs mb-3">
-  <li class="nav-item"><a class="nav-link {% if view=='summary' %}active{% endif %}" href="{{ url_for('accounts_receivable', view='summary') }}">Customer Summary</a></li>
-  <li class="nav-item"><a class="nav-link {% if view=='aging' %}active{% endif %}" href="{{ url_for('accounts_receivable', view='aging') }}">Aging</a></li>
-  <li class="nav-item"><a class="nav-link {% if view=='invoices' %}active{% endif %}" href="{{ url_for('accounts_receivable', view='invoices') }}">Invoice-wise</a></li>
-  <li class="nav-item"><a class="nav-link {% if view=='zone' %}active{% endif %}" href="{{ url_for('accounts_receivable', view='zone') }}">Zone-wise</a></li>
-  <li class="nav-item"><a class="nav-link {% if view=='salesperson' %}active{% endif %}" href="{{ url_for('accounts_receivable', view='salesperson') }}">Salesperson-wise</a></li>
-  <li class="nav-item"><a class="nav-link {% if view=='payments' %}active{% endif %}" href="{{ url_for('accounts_receivable', view='payments') }}">Payments Recorded</a></li>
+  <li class="nav-item"><a class="nav-link {% if view=='summary' %}active{% endif %}" href="{{ url_for('accounts_receivable', view='summary', q=q) }}">Customer Summary</a></li>
+  <li class="nav-item"><a class="nav-link {% if view=='aging' %}active{% endif %}" href="{{ url_for('accounts_receivable', view='aging', q=q) }}">Aging</a></li>
+  <li class="nav-item"><a class="nav-link {% if view=='invoices' %}active{% endif %}" href="{{ url_for('accounts_receivable', view='invoices', q=q) }}">Invoice-wise</a></li>
+  <li class="nav-item"><a class="nav-link {% if view=='zone' %}active{% endif %}" href="{{ url_for('accounts_receivable', view='zone', q=q) }}">Zone-wise</a></li>
+  <li class="nav-item"><a class="nav-link {% if view=='salesperson' %}active{% endif %}" href="{{ url_for('accounts_receivable', view='salesperson', q=q) }}">Salesperson-wise</a></li>
+  <li class="nav-item"><a class="nav-link {% if view=='payments' %}active{% endif %}" href="{{ url_for('accounts_receivable', view='payments', q=q) }}">Payments Recorded</a></li>
 </ul>
+
+<div class="card mb-3"><div class="card-body">
+  <form method="get" class="row g-3 align-items-end">
+    <input type="hidden" name="view" value="{{ view }}">
+    <div class="col-md-4"><label class="form-label">Search</label>
+      <input type="text" name="q" class="form-control" value="{{ q }}"
+             placeholder="Customer, phone, zone, invoice #, or salesperson…"></div>
+    {% if view == 'payments' %}
+    <div class="col-md-3"><label class="form-label">From</label>
+      <input type="date" name="from" class="form-control" value="{{ pay_date_from }}"></div>
+    <div class="col-md-3"><label class="form-label">To</label>
+      <input type="date" name="to" class="form-control" value="{{ pay_date_to }}"></div>
+    {% endif %}
+    <div class="col-md-2"><button type="submit" class="btn btn-brand">Apply</button></div>
+    {% if q or pay_date_from or pay_date_to %}
+    <div class="col-md-2"><a href="{{ url_for('accounts_receivable', view=view) }}" class="btn btn-outline-secondary">Clear</a></div>
+    {% endif %}
+  </form>
+</div></div>
 
 {% if view == 'summary' %}
 <div class="card">
@@ -37,7 +56,7 @@
         <td data-label="Due" class="text-danger fw-bold">{{ (c.due)|inr(2) }}</td>
         <td data-label="Oldest Due Since">{{ c.oldest_due_date|dmy if c.oldest_due_date else '-' }}</td>
       </tr>
-      {% else %}<tr><td colspan="9" class="text-center text-muted py-4">No outstanding dues — everything's collected.</td></tr>{% endfor %}
+      {% else %}<tr><td colspan="9" class="text-center text-muted py-4">{% if q %}No matches for your search.{% else %}No outstanding dues — everything's collected.{% endif %}</td></tr>{% endfor %}
     </tbody>
   </table>
   </div>
@@ -61,7 +80,7 @@
         <td data-label="90+ days" class="{% if a.b90_plus %}text-danger fw-bold{% endif %}">{{ (a.b90_plus)|inr(2) }}</td>
         <td data-label="Total Due" class="fw-bold">{{ (a.total)|inr(2) }}</td>
       </tr>
-      {% else %}<tr><td colspan="7" class="text-center text-muted py-4">No outstanding dues.</td></tr>{% endfor %}
+      {% else %}<tr><td colspan="7" class="text-center text-muted py-4">{% if q %}No matches for your search.{% else %}No outstanding dues.{% endif %}</td></tr>{% endfor %}
     </tbody>
     {% if aging_rows %}
     <tfoot>
@@ -123,7 +142,7 @@
           <div class="col-md-2"><button type="submit" class="btn btn-brand btn-sm mobile-btn-full">Save Payment</button></div>
         </form>
       </td></tr>
-      {% else %}<tr><td colspan="11" class="text-center text-muted py-4">No unpaid or partially-paid invoices.</td></tr>{% endfor %}
+      {% else %}<tr><td colspan="11" class="text-center text-muted py-4">{% if q %}No matches for your search.{% else %}No unpaid or partially-paid invoices.{% endif %}</td></tr>{% endfor %}
     </tbody>
   </table>
   </div>
@@ -156,7 +175,7 @@
   </div>
 </div>
 {% else %}
-<div class="alert alert-success">No outstanding dues.</div>
+<div class="alert alert-success">{% if q %}No matches for your search.{% else %}No outstanding dues.{% endif %}</div>
 {% endfor %}
 {% endif %}
 
@@ -169,7 +188,7 @@
     <tbody>
       {% for s in salesperson_rows %}
       <tr><td data-label="Salesperson">{{ s.label }}</td><td data-label="# Invoices">{{ s.invoice_count }}</td><td data-label="Due" class="text-danger fw-bold">{{ (s.due)|inr(2) }}</td></tr>
-      {% else %}<tr><td colspan="3" class="text-center text-muted py-4">No outstanding dues.</td></tr>{% endfor %}
+      {% else %}<tr><td colspan="3" class="text-center text-muted py-4">{% if q %}No matches for your search.{% else %}No outstanding dues.{% endif %}</td></tr>{% endfor %}
     </tbody>
   </table>
   </div>
@@ -177,20 +196,6 @@
 {% endif %}
 
 {% if view == 'payments' %}
-<div class="card mb-3"><div class="card-body">
-  <form method="get" class="row g-3 align-items-end">
-    <input type="hidden" name="view" value="payments">
-    <div class="col-md-3"><label class="form-label">From</label>
-      <input type="date" name="from" class="form-control" value="{{ pay_date_from }}"></div>
-    <div class="col-md-3"><label class="form-label">To</label>
-      <input type="date" name="to" class="form-control" value="{{ pay_date_to }}"></div>
-    <div class="col-md-2"><button type="submit" class="btn btn-brand">Apply</button></div>
-    {% if pay_date_from or pay_date_to %}
-    <div class="col-md-2"><a href="{{ url_for('accounts_receivable', view='payments') }}" class="btn btn-outline-secondary">Clear</a></div>
-    {% endif %}
-  </form>
-</div></div>
-
 <div class="row g-3 mb-3">
   <div class="col-md-3 col-6"><div class="stat-card"><div class="stat-value">{{ payment_totals.count }}</div><div class="stat-label">Payments Recorded</div></div></div>
   <div class="col-md-3 col-6"><div class="stat-card"><div class="stat-value">{{ (payment_totals.cash)|inr(0) }}</div><div class="stat-label">Cash</div></div></div>
@@ -217,7 +222,7 @@
         <td data-label="Notes" class="text-muted small">{{ p.Notes or '' }}</td>
         <td><a href="{{ url_for('sale_view', sid=p.SaleID) }}" class="btn btn-sm btn-outline-secondary mobile-btn-full">View</a></td>
       </tr>
-      {% else %}<tr><td colspan="9" class="text-center text-muted py-4">No payments recorded {% if pay_date_from or pay_date_to %}in this period{% endif %}.</td></tr>{% endfor %}
+      {% else %}<tr><td colspan="9" class="text-center text-muted py-4">No payments recorded{% if q %} matching your search{% endif %}{% if pay_date_from or pay_date_to %} in this period{% endif %}.</td></tr>{% endfor %}
     </tbody>
   </table>
   </div>
