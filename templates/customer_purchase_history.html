@@ -61,16 +61,17 @@
 <div class="card mb-3 no-print"><div class="card-body">
   <form method="get" class="row g-3 align-items-end">
     <input type="hidden" name="view" value="{{ view }}">
+    {% if view == 'ledger' and group_mode %}<input type="hidden" name="group" value="1">{% endif %}
     <div class="col-md-3"><label class="form-label">From</label>
       <input type="date" name="from" class="form-control" value="{{ date_from }}"></div>
     <div class="col-md-3"><label class="form-label">To</label>
       <input type="date" name="to" class="form-control" value="{{ date_to }}"></div>
     <div class="col-md-2"><button type="submit" class="btn btn-brand">Apply</button></div>
     {% if date_from or date_to %}
-    <div class="col-md-2"><a href="{{ url_for('customer_purchase_history', cid=customer.CustomerID, view=view) }}" class="btn btn-outline-secondary">Clear</a></div>
+    <div class="col-md-2"><a href="{{ url_for('customer_purchase_history', cid=customer.CustomerID, view=view) }}{{ '&group=1' if view == 'ledger' and group_mode }}" class="btn btn-outline-secondary">Clear</a></div>
     {% endif %}
     <div class="col-md-2 ms-auto"><button type="button" class="btn btn-outline-secondary w-100" onclick="window.print()"><i class="bi bi-printer"></i> Print</button></div>
-    {% if view == 'ledger' %}<div class="col-md-2"><a class="btn btn-outline-secondary w-100" href="{{ url_for('customer_ledger_pdf', cid=customer.CustomerID) }}?from={{ date_from }}&to={{ date_to }}"><i class="bi bi-file-earmark-pdf"></i> PDF</a></div>{% endif %}
+    {% if view == 'ledger' %}<div class="col-md-2"><a class="btn btn-outline-secondary w-100" href="{{ url_for('customer_ledger_pdf', cid=customer.CustomerID) }}?from={{ date_from }}&to={{ date_to }}{{ '&group=1' if group_mode }}"><i class="bi bi-file-earmark-pdf"></i> PDF</a></div>{% endif %}
   </form>
 </div></div>
 
@@ -145,8 +146,22 @@
 {% endif %}
 
 {% if view == 'ledger' %}
+{% if sub_accounts %}
+<div class="d-flex justify-content-end mb-2 no-print">
+  <div class="btn-group">
+    <a href="{{ url_for('customer_purchase_history', cid=customer.CustomerID, view='ledger') }}{{ extra_qs }}"
+       class="btn btn-sm {{ 'btn-brand' if not group_mode else 'btn-outline-secondary' }}">This Account Only</a>
+    <a href="{{ url_for('customer_purchase_history', cid=customer.CustomerID, view='ledger') }}{{ extra_qs }}&group=1"
+       class="btn btn-sm {{ 'btn-brand' if group_mode else 'btn-outline-secondary' }}">Consolidated Group ({{ sub_accounts|length + 1 }} accounts)</a>
+  </div>
+</div>
+{% endif %}
 <div class="card">
-  <div class="card-header">Ledger Statement of Account {% if date_from or date_to %}({{ date_from|dmy if date_from else 'start' }} → {{ date_to|dmy if date_to else 'today' }}){% else %}(all-time){% endif %}</div>
+  <div class="card-header">
+    {% if group_mode %}Consolidated Group Ledger — {{ customer.CustomerName }} + {{ sub_accounts|length }} sub-account{{ 's' if sub_accounts|length != 1 }}
+    {% else %}Ledger Statement of Account{% endif %}
+    {% if date_from or date_to %}({{ date_from|dmy if date_from else 'start' }} → {{ date_to|dmy if date_to else 'today' }}){% else %}(all-time){% endif %}
+  </div>
   <div class="table-responsive">
   {% macro bal(v) %}{{ (v|abs)|inr(2) }} {{ 'Dr' if v > 0.005 else ('Cr' if v < -0.005 else '') }}{% endmacro %}
   <table class="table mb-0 table-sm table-cards-mobile">
