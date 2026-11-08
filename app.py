@@ -891,6 +891,25 @@ def next_invoice_number():
     return invoice_no
 
 
+def next_customer_account_number():
+    """Allocates the next sequential 'HHGnnnn' account number for a brand
+    new Customer - a permanent, never-reused identifier, unlike the row's
+    CustomerID (stable but not meant to be handed out as a business
+    reference) or its position in a sorted/paginated list. Never resets
+    (unlike next_invoice_number()'s per-financial-year counter).
+
+    Uses db.transaction() (reentrant) for the same reason next_invoice_number()
+    does: resolve_sale_customer() can create a brand-new Customer from inside
+    create_sale()'s own transaction, which may already hold a write lock on
+    that connection - a second, independent connection trying to write here
+    would deadlock against that lock under SQLite's single-writer model."""
+    with db.transaction() as conn:
+        seq = conn.execute("SELECT NextCustomerAccountSeq FROM CompanySettings WHERE SettingsID=1").fetchone()[0]
+        account_number = f"HHG{seq:04d}"
+        conn.execute("UPDATE CompanySettings SET NextCustomerAccountSeq=? WHERE SettingsID=1", (seq + 1,))
+    return account_number
+
+
 def state_code_from_gstin(gstin):
     """The first 2 digits of a GSTIN are the supplier's GST state code -
     used to work out CGST+SGST vs IGST on a purchase without needing a
@@ -1501,7 +1520,8 @@ MODULE_COLUMNS = {
                 ("incentive", "Incentive"), ("supplier", "Supplier"), ("status", "Status")],
     "Supplier": [("name", "Name"), ("contact", "Contact"), ("phone", "Phone"),
                  ("email", "Email"), ("gstin", "GSTIN"), ("status", "Status")],
-    "Customer": [("name", "Name"), ("contact", "Contact"), ("phone", "Phone"), ("zone", "Zone"),
+    "Customer": [("account_number", "Account #"), ("name", "Name"), ("contact", "Contact"), ("phone", "Phone"),
+                 ("zone", "Zone"), ("parent_account", "Parent Account"),
                  ("credit_limit", "Credit Limit"), ("credit_days", "Credit Days"), ("status", "Status")],
     "Purchase": [("po_number", "PO #"), ("supplier", "Supplier"), ("date", "Date"),
                  ("invoice_number", "Invoice #"), ("status", "Status"), ("payment", "Payment"),
@@ -2239,16 +2259,22 @@ def customers_list():
     where = "1=1"
     params = []
     if q:
-        where = "(CustomerName LIKE ? OR ContactPerson LIKE ? OR Phone LIKE ? OR Zone LIKE ?)"
+        where = "(cu.CustomerName LIKE ? OR cu.ContactPerson LIKE ? OR cu.Phone LIKE ? OR cu.Zone LIKE ? OR cu.AccountNumber LIKE ?)"
         like = f"%{q}%"
-        params = [like, like, like, like]
+        params = [like, like, like, like, like]
 
-    total = db.query(f"SELECT COUNT(*) c FROM Customers WHERE {where}", params, one=True)["c"]
+    total = db.query(f"SELECT COUNT(*) c FROM Customers cu WHERE {where}", params, one=True)["c"]
     total_pages = max((total + CUSTOMERS_LIST_PAGE_SIZE - 1) // CUSTOMERS_LIST_PAGE_SIZE, 1)
     page = min(page, total_pages)
     offset = (page - 1) * CUSTOMERS_LIST_PAGE_SIZE
 
-    customers = db.query(f"""SELECT * FROM Customers WHERE {where} ORDER BY CustomerName
+    # ParentCustomerName/ParentAccountNumber - the group this row belongs to, when it's a
+    # sub-account; SubAccountCount - how many sub-accounts are grouped under this row, when
+    # it's itself a parent (0 for an ordinary standalone account).
+    customers = db.query(f"""SELECT cu.*, p.CustomerName AS ParentCustomerName, p.AccountNumber AS ParentAccountNumber,
+                          (SELECT COUNT(*) FROM Customers ch WHERE ch.ParentCustomerID = cu.CustomerID) AS SubAccountCount
+                          FROM Customers cu LEFT JOIN Customers p ON p.CustomerID = cu.ParentCustomerID
+                          WHERE {where} ORDER BY cu.CustomerName
                           LIMIT ? OFFSET ?""", params + [CUSTOMERS_LIST_PAGE_SIZE, offset])
     return render_template("customers_list.html", customers=customers, columns=get_effective_columns("Customer"),
                             q=q, page=page, total_pages=total_pages, total=total, page_size=CUSTOMERS_LIST_PAGE_SIZE)
@@ -2319,6 +2345,57 @@ def customers_merge_duplicates():
     return render_template("customers_merge_duplicates.html", duplicate_groups=duplicate_groups)
 
 
+def customer_parent_candidates(exclude_cid=None):
+    """Customers eligible to be picked as a Parent Account on the Customer
+    form - root accounts only (no parent of their own, so the hierarchy
+    never nests past 2 levels), excluding the system Unassigned bucket and
+    the customer being edited itself."""
+    rows = db.query("""SELECT CustomerID, CustomerName, AccountNumber FROM Customers
+                     WHERE IsUnassignedBucket=0 AND ParentCustomerID IS NULL
+                     ORDER BY CustomerName""")
+    if exclude_cid:
+        rows = [r for r in rows if r["CustomerID"] != exclude_cid]
+    return rows
+
+
+def customer_has_children(cid):
+    """True if other customers are already grouped under this one as a
+    parent - used to lock the Parent Account field on the form, since
+    validate_customer_parent() would reject giving such a customer a
+    parent of its own (flat, 2-level hierarchy only)."""
+    if not cid:
+        return False
+    return bool(db.query("SELECT 1 FROM Customers WHERE ParentCustomerID=? LIMIT 1", (cid,), one=True))
+
+
+def validate_customer_parent(cid, parent_id_raw):
+    """Enforces a flat, 2-level account grouping (see ParentCustomerID in
+    db/schema.sql): a root account can have any number of children, but a
+    child can't itself be a parent, and a customer that already has
+    children can't be given a parent of its own. Returns
+    (clean_parent_id_or_None, error_message_or_None)."""
+    parent_id_raw = (parent_id_raw or "").strip()
+    if not parent_id_raw:
+        return None, None
+    try:
+        parent_id = int(parent_id_raw)
+    except ValueError:
+        return None, "Invalid parent account."
+    if cid and parent_id == cid:
+        return None, "A customer can't be its own parent account."
+    parent = db.query("SELECT CustomerID, ParentCustomerID, IsUnassignedBucket FROM Customers WHERE CustomerID=?",
+                       (parent_id,), one=True)
+    if not parent or parent["IsUnassignedBucket"]:
+        return None, "Selected parent account doesn't exist."
+    if parent["ParentCustomerID"]:
+        return None, "That account is itself a sub-account, so it can't be used as a parent - only a root account can be a parent."
+    if cid:
+        has_children = db.query("SELECT 1 FROM Customers WHERE ParentCustomerID=? LIMIT 1", (cid,), one=True)
+        if has_children:
+            return None, "This account already has its own sub-accounts, so it can't be assigned a parent too."
+    return parent_id, None
+
+
 @app.route("/customers/new", methods=["GET", "POST"])
 @app.route("/customers/<int:cid>/edit", methods=["GET", "POST"])
 def customer_form(cid=None):
@@ -2331,20 +2408,32 @@ def customer_form(cid=None):
                                     custom_fields=get_custom_field_defs("Customer"),
                                     custom_values=get_custom_values("Customer", cid) if cid else {},
                                     cf_record_id=cid, custom_attachments=get_custom_attachments("Customer", cid),
-                                    zones=db.query("SELECT * FROM Zones WHERE Active=1 ORDER BY DisplayOrder, ZoneID"))
+                                    zones=db.query("SELECT * FROM Zones WHERE Active=1 ORDER BY DisplayOrder, ZoneID"),
+                                    parent_candidates=customer_parent_candidates(exclude_cid=cid), has_children=customer_has_children(cid))
+        parent_id, parent_error = validate_customer_parent(cid, f.get("parent_customer_id"))
+        if parent_error:
+            flash(parent_error, "error")
+            return render_template("customer_form.html", customer=customer, states=INDIAN_STATES,
+                                    custom_fields=get_custom_field_defs("Customer"),
+                                    custom_values=get_custom_values("Customer", cid) if cid else {},
+                                    cf_record_id=cid, custom_attachments=get_custom_attachments("Customer", cid),
+                                    zones=db.query("SELECT * FROM Zones WHERE Active=1 ORDER BY DisplayOrder, ZoneID"),
+                                    parent_candidates=customer_parent_candidates(exclude_cid=cid), has_children=customer_has_children(cid))
         state_code = f.get("state_code", "")
         state_name = STATE_NAME_BY_CODE.get(state_code, "")
         args = (f["customer_name"], f["contact_person"], f["phone"], f["email"], f["address"], f.get("zone", ""),
                 f["gstin"], state_name, state_code,
-                float(f["credit_limit"] or 0), int(f["credit_days"] or 0), 1 if f.get("active") else 0)
+                float(f["credit_limit"] or 0), int(f["credit_days"] or 0), 1 if f.get("active") else 0, parent_id)
         if cid:
             db.execute("""UPDATE Customers SET CustomerName=?, ContactPerson=?, Phone=?, Email=?, Address=?, Zone=?,
-                        GSTIN=?, State=?, StateCode=?, CreditLimit=?, CreditDays=?, Active=? WHERE CustomerID=?""",
+                        GSTIN=?, State=?, StateCode=?, CreditLimit=?, CreditDays=?, Active=?, ParentCustomerID=?
+                        WHERE CustomerID=?""",
                        args + (cid,))
             save_custom_fields("Customer", cid, f)
         else:
             new_id = db.execute("""INSERT INTO Customers (CustomerName, ContactPerson, Phone, Email, Address, Zone,
-                        GSTIN, State, StateCode, CreditLimit, CreditDays, Active) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""", args)
+                        GSTIN, State, StateCode, CreditLimit, CreditDays, Active, ParentCustomerID, AccountNumber)
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", args + (next_customer_account_number(),))
             save_custom_fields("Customer", new_id, f)
         flash("Customer saved.", "success")
         return redirect(url_for("customers_list"))
@@ -2358,6 +2447,7 @@ def customer_form(cid=None):
     if customer and customer["Zone"] and customer["Zone"] not in {z["ZoneName"] for z in zones}:
         zones = list(zones) + [{"ZoneID": None, "ZoneName": customer["Zone"]}]
     return render_template("customer_form.html", customer=customer, states=INDIAN_STATES,
+                            parent_candidates=customer_parent_candidates(exclude_cid=cid), has_children=customer_has_children(cid),
                             custom_fields=custom_fields, custom_values=custom_values,
                             cf_record_id=cid, custom_attachments=get_custom_attachments("Customer", cid),
                             zones=zones)
@@ -2487,6 +2577,11 @@ def customer_purchase_history(cid):
         flash("Customer not found.", "error")
         return redirect(url_for("customers_list"))
 
+    parent_account = db.query("SELECT CustomerID, CustomerName, AccountNumber FROM Customers WHERE CustomerID=?",
+                               (customer["ParentCustomerID"],), one=True) if customer["ParentCustomerID"] else None
+    sub_accounts = db.query("""SELECT CustomerID, CustomerName, AccountNumber FROM Customers
+                             WHERE ParentCustomerID=? ORDER BY CustomerName""", (cid,))
+
     view = request.args.get("view", "overview")
     if view not in ("overview", "products", "ledger"):
         view = "overview"
@@ -2550,7 +2645,7 @@ def customer_purchase_history(cid):
     return render_template("customer_purchase_history.html", customer=customer, sales=sales,
                             lines_by_sale=lines_by_sale, top_products=top_products, product_rows=product_rows,
                             totals=totals, view=view, date_from=date_from, date_to=date_to, ledger=ledger,
-                            extra_qs=extra_qs)
+                            extra_qs=extra_qs, parent_account=parent_account, sub_accounts=sub_accounts)
 
 
 # ---------------------------------------------------------------------
@@ -2631,8 +2726,9 @@ def customers_import_upload():
                 updated += 1
             else:
                 db.execute("""INSERT INTO Customers (CustomerName, ContactPerson, Phone, Email, Address, GSTIN,
-                            State, StateCode, CreditLimit, CreditDays, Active) VALUES (?,?,?,?,?,?,?,?,?,?,1)""",
-                           args)
+                            State, StateCode, CreditLimit, CreditDays, Active, AccountNumber)
+                            VALUES (?,?,?,?,?,?,?,?,?,?,1,?)""",
+                           args + (next_customer_account_number(),))
                 created += 1
 
         flash(f"{result['message']} {created} new customer(s) added, {updated} existing customer(s) updated.",
@@ -3855,8 +3951,8 @@ def resolve_sale_customer(f):
                    "Phone=COALESCE(NULLIF(?,''), Phone), Zone=COALESCE(NULLIF(?,''), Zone) WHERE CustomerID=?",
                    (name, address, phone, zone, cid))
         return cid
-    return db.execute("""INSERT INTO Customers (CustomerName, Address, Phone, Zone, Active)
-                       VALUES (?,?,?,?,1)""", (name, address, phone, zone))
+    return db.execute("""INSERT INTO Customers (CustomerName, Address, Phone, Zone, Active, AccountNumber)
+                       VALUES (?,?,?,?,1,?)""", (name, address, phone, zone, next_customer_account_number()))
 
 
 def locked_salesperson_employee_id():
@@ -4146,7 +4242,8 @@ def sales_import_confirm():
         if customer_id_raw == "__new__":
             new_name = (f.get(f"new_customer_name_{g}") or "").strip()
             if new_name:
-                customer_id = db.execute("INSERT INTO Customers (CustomerName, Active) VALUES (?,1)", (new_name,))
+                customer_id = db.execute("INSERT INTO Customers (CustomerName, Active, AccountNumber) VALUES (?,1,?)",
+                                          (new_name, next_customer_account_number()))
         elif customer_id_raw and customer_id_raw != "__skip__":
             customer_id = int(customer_id_raw)
         if not customer_id:
@@ -4344,10 +4441,10 @@ def sale_reassign(sid):
             else:
                 ni = g["new_info"]
                 customer_id = db.execute(
-                    """INSERT INTO Customers (CustomerName, Phone, Address, GSTIN, State, StateCode, Active)
-                       VALUES (?,?,?,?,?,?,1)""",
+                    """INSERT INTO Customers (CustomerName, Phone, Address, GSTIN, State, StateCode, Active, AccountNumber)
+                       VALUES (?,?,?,?,?,?,1,?)""",
                     (ni["name"], ni["phone"], ni["address"], ni["gstin"],
-                     STATE_NAME_BY_CODE.get(ni["state_code"], ""), ni["state_code"]))
+                     STATE_NAME_BY_CODE.get(ni["state_code"], ""), ni["state_code"], next_customer_account_number()))
             customer = db.query("SELECT * FROM Customers WHERE CustomerID=?", (customer_id,), one=True)
             place_of_supply_code = (customer["StateCode"] if customer else "") or company["StateCode"]
             new_sale_id = create_sale(
@@ -4388,7 +4485,8 @@ def sale_reassign(sid):
 @app.route("/sales/<int:sid>/invoice")
 def sale_invoice(sid):
     sale = db.query("""SELECT s.*, c.CustomerName, c.Phone, c.Address, c.Zone, c.GSTIN AS CustomerGSTIN,
-                     c.State AS CustomerState, c.StateCode AS CustomerStateCode FROM Sales s
+                     c.State AS CustomerState, c.StateCode AS CustomerStateCode, c.AccountNumber AS CustomerAccountNumber
+                     FROM Sales s
                      JOIN Customers c ON c.CustomerID=s.CustomerID WHERE s.SaleID=?""", (sid,), one=True)
     if not sale:
         flash("Sale not found.", "error")
@@ -4434,7 +4532,8 @@ def sale_invoice_thermal(sid):
 def sale_invoice_pdf(sid):
     from invoice_pdf import build_invoice_pdf
     sale = db.query("""SELECT s.*, c.CustomerName, c.Phone, c.Address, c.Zone, c.GSTIN AS CustomerGSTIN,
-                     c.State AS CustomerState, c.StateCode AS CustomerStateCode FROM Sales s
+                     c.State AS CustomerState, c.StateCode AS CustomerStateCode, c.AccountNumber AS CustomerAccountNumber
+                     FROM Sales s
                      JOIN Customers c ON c.CustomerID=s.CustomerID WHERE s.SaleID=?""", (sid,), one=True)
     if not sale:
         flash("Sale not found.", "error")
@@ -5594,10 +5693,13 @@ EXPORT_SPECS = {
                CASE Active WHEN 1 THEN 'Active' ELSE 'Inactive' END AS Status
         FROM Suppliers ORDER BY SupplierName""", detail_query="SELECT * FROM Suppliers ORDER BY SupplierName"),
     "customers": dict(title="Customers", admin_only=False, query="""
-        SELECT CustomerName AS "Customer Name", ContactPerson AS "Contact Person", Phone, Email, Address, GSTIN,
-               State, StateCode AS "State Code", CreditLimit AS "Credit Limit", CreditDays AS "Credit Days",
-               CASE Active WHEN 1 THEN 'Active' ELSE 'Inactive' END AS Status
-        FROM Customers WHERE IsUnassignedBucket=0 ORDER BY CustomerName""",
+        SELECT c.AccountNumber AS "Account Number", c.CustomerName AS "Customer Name",
+               c.ContactPerson AS "Contact Person", c.Phone, c.Email, c.Address, c.GSTIN,
+               c.State, c.StateCode AS "State Code", p.CustomerName AS "Parent Account",
+               c.CreditLimit AS "Credit Limit", c.CreditDays AS "Credit Days",
+               CASE c.Active WHEN 1 THEN 'Active' ELSE 'Inactive' END AS Status
+        FROM Customers c LEFT JOIN Customers p ON p.CustomerID = c.ParentCustomerID
+        WHERE c.IsUnassignedBucket=0 ORDER BY c.CustomerName""",
         detail_query="SELECT * FROM Customers WHERE IsUnassignedBucket=0 ORDER BY CustomerName"),
     "purchases": dict(title="Purchases", admin_only=True, query="""
         SELECT p.PurchaseDate AS "Purchase Date", s.SupplierName AS Supplier, p.PONumber AS "PO Number",
@@ -6474,10 +6576,12 @@ def get_ar_base_rows():
     return db.query("""
         SELECT s.SaleID, s.InvoiceNumber, s.SaleDate, s.PaymentDueDate, s.PaymentStatus,
                s.TotalAmount, s.TaxableAmount, s.AmountReceived, (s.TaxableAmount - s.AmountReceived) AS Due,
-               c.CustomerID, c.CustomerName, c.Phone, c.Zone,
+               c.CustomerID, c.CustomerName, c.Phone, c.Zone, c.AccountNumber,
+               p.CustomerName AS ParentCustomerName, p.AccountNumber AS ParentAccountNumber,
                e.EmployeeName
         FROM Sales s
         JOIN Customers c ON c.CustomerID = s.CustomerID
+        LEFT JOIN Customers p ON p.CustomerID = c.ParentCustomerID
         LEFT JOIN Employees e ON e.EmployeeID = s.EmployeeID
         WHERE s.Status <> 'Cancelled' AND c.IsUnassignedBucket = 0
           AND (s.TaxableAmount - s.AmountReceived) > 0.005
@@ -6511,7 +6615,9 @@ def get_ar_customer_summary(base_rows=None, sort="due"):
     for r in base_rows:
         agg = by_customer.setdefault(r["CustomerID"], {
             "CustomerID": r["CustomerID"], "CustomerName": r["CustomerName"], "Phone": r["Phone"],
-            "Zone": r["Zone"], "invoiced": 0, "taxable": 0, "received": 0, "due": 0, "invoice_count": 0,
+            "Zone": r["Zone"], "AccountNumber": r["AccountNumber"],
+            "ParentCustomerName": r["ParentCustomerName"], "ParentAccountNumber": r["ParentAccountNumber"],
+            "invoiced": 0, "taxable": 0, "received": 0, "due": 0, "invoice_count": 0,
             "oldest_due_date": None,
         })
         agg["invoiced"] += r["TotalAmount"]
@@ -6537,6 +6643,7 @@ def get_ar_customer_summary(base_rows=None, sort="due"):
 
 def _ar_customer_pdf_row(c):
     return {
+        "Account #": c["AccountNumber"] or "-",
         "Customer": c["CustomerName"],
         "Phone": c["Phone"] or "-",
         "Zone": c["Zone"] or "-",
@@ -6552,6 +6659,7 @@ def _ar_invoice_pdf_row(r):
     # Deliberately no Salesperson/Due Date - not needed for this export.
     return {
         "Invoice #": r["InvoiceNumber"],
+        "Account #": r["AccountNumber"] or "-",
         "Customer": r["CustomerName"],
         "Phone": r["Phone"] or "-",
         "Zone": r["Zone"] or "-",
@@ -6692,7 +6800,8 @@ def accounts_receivable():
                      or ql in (r["Phone"] or "").lower()
                      or ql in (r["Zone"] or "").lower()
                      or ql in (r["InvoiceNumber"] or "").lower()
-                     or ql in (r["EmployeeName"] or "").lower()]
+                     or ql in (r["EmployeeName"] or "").lower()
+                     or ql in (r["AccountNumber"] or "").lower()]
 
     total_due = round(sum(r["Due"] for r in base_rows), 2)
     customer_count = len({r["CustomerID"] for r in base_rows})

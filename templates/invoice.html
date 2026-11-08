@@ -77,7 +77,7 @@
 
   <div class="bill-to">
     <strong>Bill To:</strong><br>
-    <strong>{{ sale.CustomerName }}</strong><br>
+    <strong>{{ sale.CustomerName }}</strong>{% if sale.CustomerAccountNumber %} <span style="font-weight:normal">(A/c No: {{ sale.CustomerAccountNumber }})</span>{% endif %}<br>
     {{ sale.Address or '' }}<br>
     Phone: {{ sale.Phone or '-' }}{% if sale.Zone %} &nbsp; Zone: {{ sale.Zone }}{% endif %}<br>
     GSTIN: {{ sale.CustomerGSTIN or 'Unregistered' }} &nbsp; State: {{ sale.CustomerState or '-' }} ({{ sale.CustomerStateCode or '-' }})

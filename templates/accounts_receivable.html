@@ -42,13 +42,15 @@
   <div class="card-header">Customer-wise Due Summary ({{ customer_summary|length }}) <span class="text-muted small fw-normal">— click a column heading to sort</span></div>
   <div class="table-responsive">
   <table class="table mb-0 sortable-table table-cards-mobile" id="ar-summary-table">
-    <thead><tr><th>Customer</th><th>Phone</th><th>Zone</th><th># Invoices</th><th>Taxable Value</th><th>Invoiced (incl. GST)</th><th>Received</th><th>Due</th><th data-sort-type="date">Oldest Due Since</th></tr></thead>
+    <thead><tr><th>Account #</th><th>Customer</th><th>Phone</th><th>Zone</th><th>Parent Account</th><th># Invoices</th><th>Taxable Value</th><th>Invoiced (incl. GST)</th><th>Received</th><th>Due</th><th data-sort-type="date">Oldest Due Since</th></tr></thead>
     <tbody>
       {% for c in customer_summary %}
       <tr>
+        <td data-label="Account #" class="text-muted small">{{ c.AccountNumber or '-' }}</td>
         <td data-label="Customer">{{ c.CustomerName }}</td>
         <td data-label="Phone">{{ c.Phone or '-' }}</td>
         <td data-label="Zone">{{ c.Zone or '-' }}</td>
+        <td data-label="Parent Account">{{ c.ParentCustomerName or '-' }}</td>
         <td data-label="# Invoices">{{ c.invoice_count }}</td>
         <td data-label="Taxable Value">{{ (c.taxable)|inr(2) }}</td>
         <td data-label="Invoiced (incl. GST)">{{ (c.invoiced)|inr(2) }}</td>
@@ -56,7 +58,7 @@
         <td data-label="Due" class="text-danger fw-bold">{{ (c.due)|inr(2) }}</td>
         <td data-label="Oldest Due Since">{{ c.oldest_due_date|dmy if c.oldest_due_date else '-' }}</td>
       </tr>
-      {% else %}<tr><td colspan="9" class="text-center text-muted py-4">{% if q %}No matches for your search.{% else %}No outstanding dues — everything's collected.{% endif %}</td></tr>{% endfor %}
+      {% else %}<tr><td colspan="11" class="text-center text-muted py-4">{% if q %}No matches for your search.{% else %}No outstanding dues — everything's collected.{% endif %}</td></tr>{% endfor %}
     </tbody>
   </table>
   </div>
@@ -108,11 +110,12 @@
   <div class="card-header">Invoice-wise Due Detail ({{ invoice_rows|length }}) <span class="text-muted small fw-normal">— click a column heading to sort</span></div>
   <div class="table-responsive">
   <table class="table mb-0 sortable-table table-cards-mobile">
-    <thead><tr><th>Invoice #</th><th>Customer</th><th data-sort-type="date">Sale Date</th><th data-sort-type="date">Due Date</th><th>Age (days)</th><th>Status</th><th>Taxable Value</th><th>Total (incl. GST)</th><th>Received</th><th>Due</th><th class="no-sort"></th></tr></thead>
+    <thead><tr><th>Invoice #</th><th>Account #</th><th>Customer</th><th data-sort-type="date">Sale Date</th><th data-sort-type="date">Due Date</th><th>Age (days)</th><th>Status</th><th>Taxable Value</th><th>Total (incl. GST)</th><th>Received</th><th>Due</th><th class="no-sort"></th></tr></thead>
     <tbody>
       {% for r in invoice_rows %}
       <tr>
         <td data-label="Invoice #">{{ r.InvoiceNumber }}</td>
+        <td data-label="Account #" class="text-muted small">{{ r.AccountNumber or '-' }}</td>
         <td data-label="Customer">{{ r.CustomerName }}</td>
         <td data-label="Sale Date">{{ r.SaleDate|dmy }}</td>
         <td data-label="Due Date">{{ r.PaymentDueDate|dmy if r.PaymentDueDate else '-' }}</td>
@@ -127,7 +130,7 @@
           <button type="button" class="btn btn-sm btn-brand mobile-btn-full" data-bs-toggle="collapse" data-bs-target="#pay-{{ r.SaleID }}">Record Payment</button>
         </td>
       </tr>
-      <tr class="collapse" id="pay-{{ r.SaleID }}"><td colspan="11" class="bg-light">
+      <tr class="collapse" id="pay-{{ r.SaleID }}"><td colspan="12" class="bg-light">
         <form method="post" action="{{ url_for('sale_record_payment', sid=r.SaleID) }}" class="row g-2 align-items-end">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="next" value="{{ request.full_path }}">
@@ -142,7 +145,7 @@
           <div class="col-md-2"><button type="submit" class="btn btn-brand btn-sm mobile-btn-full">Save Payment</button></div>
         </form>
       </td></tr>
-      {% else %}<tr><td colspan="11" class="text-center text-muted py-4">{% if q %}No matches for your search.{% else %}No unpaid or partially-paid invoices.{% endif %}</td></tr>{% endfor %}
+      {% else %}<tr><td colspan="12" class="text-center text-muted py-4">{% if q %}No matches for your search.{% else %}No unpaid or partially-paid invoices.{% endif %}</td></tr>{% endfor %}
     </tbody>
   </table>
   </div>

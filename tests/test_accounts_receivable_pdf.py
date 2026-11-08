@@ -133,6 +133,6 @@ class AccountsReceivableInvoicesPdfTests(DBTestCase):
         self.assertNotIn("Salesperson", pdf_row)
         self.assertNotIn("Due Date", pdf_row)
         self.assertEqual(set(pdf_row.keys()), {
-            "Invoice #", "Customer", "Phone", "Zone", "Sale Date", "Age (days)",
+            "Invoice #", "Account #", "Customer", "Phone", "Zone", "Sale Date", "Age (days)",
             "Status", "Taxable Value", "Total (incl. GST)", "Received", "Due",
         })
