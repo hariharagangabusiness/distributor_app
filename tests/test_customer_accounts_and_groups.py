@@ -4,7 +4,78 @@ grouping (ParentCustomerID): every creation path assigns a number, the
 hierarchy stays exactly 2 levels deep, and the Customers list / Accounts
 Receivable report / Customer form surface both.
 """
+import os
+import sqlite3
+import tempfile
+import unittest
+
 from tests.base import DBTestCase, appmod, db
+
+
+class SchemaUpgradeSafetyTests(unittest.TestCase):
+    """db.init_db() re-runs the ENTIRE schema.sql (via executescript) on
+    every call, including against an already-existing production database
+    where `CREATE TABLE IF NOT EXISTS Customers` is a no-op - so it must
+    never crash there just because a migration-introduced column
+    (AccountNumber/ParentCustomerID) doesn't exist on that table yet. This
+    is exactly the bug that broke the first production deploy of this
+    feature: a `CREATE INDEX ... ON Customers(AccountNumber)` living in
+    schema.sql's unconditional Indexes section (instead of inside
+    migrate_customer_accounts.py, gated behind the ALTER TABLE that
+    actually adds the column) crashed init_db() with "no such column:
+    AccountNumber" on every real deploy until the column existed."""
+
+    def setUp(self):
+        fd, self.path = tempfile.mkstemp(prefix="distributor_schema_upgrade_", suffix=".db")
+        os.close(fd)
+        os.remove(self.path)
+        conn = sqlite3.connect(self.path)
+        conn.execute("PRAGMA foreign_keys = ON")
+        # The pre-this-feature shape of Customers - no AccountNumber, no ParentCustomerID.
+        conn.execute("""CREATE TABLE Customers (
+            CustomerID INTEGER PRIMARY KEY AUTOINCREMENT, CustomerName TEXT NOT NULL,
+            ContactPerson TEXT, Phone TEXT, Email TEXT, Address TEXT, Zone TEXT, GSTIN TEXT,
+            State TEXT, StateCode TEXT, CreditLimit REAL NOT NULL DEFAULT 0,
+            CreditDays INTEGER NOT NULL DEFAULT 0, Active INTEGER NOT NULL DEFAULT 1,
+            IsUnassignedBucket INTEGER NOT NULL DEFAULT 0)""")
+        conn.execute("INSERT INTO Customers (CustomerName) VALUES ('Pre-existing Customer')")
+        conn.commit()
+        conn.close()
+
+    def tearDown(self):
+        try:
+            os.remove(self.path)
+        except OSError:
+            pass
+
+    def test_init_db_does_not_crash_against_a_pre_existing_customers_table(self):
+        original_db_path = db.DB_PATH
+        db.DB_PATH = self.path
+        try:
+            db.init_db()  # must not raise sqlite3.OperationalError: no such column: AccountNumber
+        finally:
+            db.DB_PATH = original_db_path
+        conn = sqlite3.connect(self.path)
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(Customers)")]
+        self.assertNotIn("AccountNumber", cols)  # not this script's job - migrate_customer_accounts.py's is
+        conn.close()
+
+    def test_migration_then_backfills_the_column_and_index_correctly(self):
+        import migrate_customer_accounts
+        original_db_path = db.DB_PATH
+        db.DB_PATH = self.path
+        try:
+            db.init_db()
+            migrate_customer_accounts.DB_PATH = self.path
+            migrate_customer_accounts.main()
+        finally:
+            db.DB_PATH = original_db_path
+        conn = sqlite3.connect(self.path)
+        row = conn.execute("SELECT AccountNumber FROM Customers WHERE CustomerName='Pre-existing Customer'").fetchone()
+        self.assertEqual(row[0], "HHG0001")
+        with self.assertRaises(sqlite3.IntegrityError):
+            conn.execute("INSERT INTO Customers (CustomerName, AccountNumber) VALUES ('Dup', 'HHG0001')")
+        conn.close()
 
 
 class NextCustomerAccountNumberTests(DBTestCase):
