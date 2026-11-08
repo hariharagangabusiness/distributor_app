@@ -33,22 +33,27 @@ def main():
 
         if not column_exists(conn, "Customers", "AccountNumber"):
             conn.execute("ALTER TABLE Customers ADD COLUMN AccountNumber TEXT")
-            conn.execute(
-                "CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_account_number ON Customers(AccountNumber)")
             conn.commit()
             print("Added Customers.AccountNumber.")
             did_work = True
         else:
             print("Customers.AccountNumber already exists - skipping that part.")
+        # Unconditional and idempotent (IF NOT EXISTS) regardless of the branch above - a
+        # fresh install's schema.sql already declares AccountNumber UNIQUE inline (so this
+        # is a no-op there), but an upgraded database only gets the column via the ALTER
+        # just above, and needs this index created explicitly to enforce uniqueness.
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_account_number ON Customers(AccountNumber)")
+        conn.commit()
 
         if not column_exists(conn, "Customers", "ParentCustomerID"):
             conn.execute("ALTER TABLE Customers ADD COLUMN ParentCustomerID INTEGER REFERENCES Customers(CustomerID)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_customers_parent ON Customers(ParentCustomerID)")
             conn.commit()
             print("Added Customers.ParentCustomerID.")
             did_work = True
         else:
             print("Customers.ParentCustomerID already exists - skipping that part.")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_customers_parent ON Customers(ParentCustomerID)")
+        conn.commit()
 
         if not column_exists(conn, "CompanySettings", "NextCustomerAccountSeq"):
             conn.execute(

@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS Customers (
     Active          INTEGER NOT NULL DEFAULT 1,
     IsUnassignedBucket INTEGER NOT NULL DEFAULT 0, -- 1 = the single system "Unassigned" customer that
                                                     -- reconciled Stock Issue sales land under until reassigned
-    AccountNumber   TEXT,     -- unique "HHGnnnn" account number, allocated once at creation via
+    AccountNumber   TEXT UNIQUE, -- unique "HHGnnnn" account number, allocated once at creation via
                                -- next_customer_account_number() - never reassigned or reused
     ParentCustomerID INTEGER, -- groups this customer under a parent "head account" (e.g. one head
                                -- office with several shop locations) - NULL for a standalone/parent
@@ -899,8 +899,16 @@ CREATE TABLE IF NOT EXISTS SchemaMigrations (
 -- =====================================================================
 -- Indexes
 -- =====================================================================
-CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_account_number ON Customers(AccountNumber);
-CREATE INDEX IF NOT EXISTS idx_customers_parent ON Customers(ParentCustomerID);
+-- NOTE: idx_customers_account_number/idx_customers_parent are NOT defined
+-- here. This whole file is re-run (via executescript) on every db.init_db()
+-- call, including against an already-existing production database where
+-- CREATE TABLE IF NOT EXISTS is a no-op and a migration-introduced column
+-- doesn't exist yet until its migrate_*.py script's ALTER TABLE actually
+-- runs - an index statement here referencing that column would crash
+-- init_db() itself on every deploy/startup until the migration catches up.
+-- (The AccountNumber UNIQUE constraint above only applies on a genuinely
+-- fresh install, where CREATE TABLE executes for real; migrate_customer_
+-- accounts.py creates the equivalent index for every upgraded database.)
 CREATE INDEX IF NOT EXISTS idx_invtx_product ON InventoryTransactions(ProductID);
 CREATE INDEX IF NOT EXISTS idx_purchlines_purchase ON PurchaseLines(PurchaseID);
 CREATE INDEX IF NOT EXISTS idx_saleslines_sale ON SalesLines(SaleID);
