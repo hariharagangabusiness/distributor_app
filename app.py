@@ -2453,6 +2453,30 @@ def customer_form(cid=None):
                             zones=zones)
 
 
+def _customer_group_ids(cid, sub_accounts):
+    """This customer's own CustomerID plus every sub-account grouped under
+    it (empty if it has none) - the set of accounts a consolidated group
+    ledger spans. Only meaningful for a parent/root account; a child's own
+    sub_accounts is always empty (a flat 2-level hierarchy - see
+    validate_customer_parent())."""
+    return [cid] + [s["CustomerID"] for s in sub_accounts]
+
+
+def _ledger_sales_for_group(customer_ids):
+    """Like the plain per-customer Sales query in customer_purchase_history()/
+    customer_ledger_pdf(), but across every account in a group and tagged
+    with CustomerName - _build_customer_ledger() prefixes each entry with
+    it so a consolidated statement still shows which account each line
+    belongs to."""
+    placeholders = ",".join("?" * len(customer_ids))
+    return db.query(f"""SELECT s.SaleID, s.InvoiceNumber, s.SaleDate, s.Status, s.PaymentStatus,
+                      s.TaxableAmount, s.TotalAmount, s.AmountReceived,
+                      (s.TaxableAmount - s.AmountReceived) AS Due, c.CustomerName
+                      FROM Sales s JOIN Customers c ON c.CustomerID = s.CustomerID
+                      WHERE s.CustomerID IN ({placeholders}) AND s.Status<>'Cancelled'
+                      ORDER BY s.SaleDate, s.SaleID""", tuple(customer_ids))
+
+
 def _build_customer_ledger(sales_asc, date_from, date_to):
     """Chronological statement-of-account for a customer: every invoice (debit,
     at Taxable Value - matching how "Due" is computed everywhere else in the
@@ -2464,7 +2488,15 @@ def _build_customer_ledger(sales_asc, date_from, date_to):
     auto-set via Stock Issue reconciliation), the uncovered leftover is shown
     as a single "Payment received" credit dated the sale date, so the
     ledger's closing balance always reconciles with the Due shown on this
-    customer's invoices without requiring any backfill."""
+    customer's invoices without requiring any backfill.
+
+    Also doubles as the consolidated GROUP ledger builder: when a caller
+    passes rows from _ledger_sales_for_group() (spanning several accounts,
+    each row carrying a CustomerName) instead of a single customer's own
+    Sales, every entry's detail text is prefixed with that account's name
+    so the combined running balance still shows which account each
+    transaction belongs to. A plain single-account caller's rows don't
+    carry CustomerName, so this is a no-op for every existing use."""
     sale_ids = [s["SaleID"] for s in sales_asc]
     payments_by_sale = {}
     if sale_ids:
@@ -2476,9 +2508,11 @@ def _build_customer_ledger(sales_asc, date_from, date_to):
 
     entries = []
     for s in sales_asc:
+        account_name = s["CustomerName"] if "CustomerName" in s.keys() else None
+        prefix = f"{account_name} — " if account_name else ""
         entries.append({
-            "date": s["SaleDate"], "type": "Invoice", "ref": s["InvoiceNumber"],
-            "detail": f"Invoice {s['InvoiceNumber']}",
+            "date": s["SaleDate"], "type": "Invoice", "ref": s["InvoiceNumber"], "account": account_name,
+            "detail": f"{prefix}Invoice {s['InvoiceNumber']}",
             "debit": round(s["TaxableAmount"] or 0, 2), "credit": 0, "sort2": 0,
         })
         covered = 0.0
@@ -2486,16 +2520,16 @@ def _build_customer_ledger(sales_asc, date_from, date_to):
             method_bit = f" ({p['PaymentMethod']})" if p["PaymentMethod"] else ""
             notes_bit = f" — {p['Notes']}" if p["Notes"] else ""
             entries.append({
-                "date": p["PaymentDate"], "type": "Payment", "ref": s["InvoiceNumber"],
-                "detail": f"Payment received — Invoice {s['InvoiceNumber']}{method_bit}{notes_bit}",
+                "date": p["PaymentDate"], "type": "Payment", "ref": s["InvoiceNumber"], "account": account_name,
+                "detail": f"{prefix}Payment received — Invoice {s['InvoiceNumber']}{method_bit}{notes_bit}",
                 "debit": 0, "credit": round(p["Amount"], 2), "sort2": 1,
             })
             covered += p["Amount"]
         leftover = round((s["AmountReceived"] or 0) - covered, 2)
         if leftover > 0.005:
             entries.append({
-                "date": s["SaleDate"], "type": "Payment", "ref": s["InvoiceNumber"],
-                "detail": f"Payment received — Invoice {s['InvoiceNumber']}",
+                "date": s["SaleDate"], "type": "Payment", "ref": s["InvoiceNumber"], "account": account_name,
+                "detail": f"{prefix}Payment received — Invoice {s['InvoiceNumber']}",
                 "debit": 0, "credit": leftover, "sort2": 1,
             })
 
@@ -2527,16 +2561,24 @@ def _build_customer_ledger(sales_asc, date_from, date_to):
 
 @app.route("/customers/<int:cid>/ledger/pdf")
 def customer_ledger_pdf(cid):
-    """PDF of the same Ledger Statement shown on the history page (same ?from=&to=)."""
+    """PDF of the same Ledger Statement shown on the history page (same ?from=&to=&group=1)."""
     customer = db.query("SELECT * FROM Customers WHERE CustomerID=?", (cid,), one=True)
     if not customer:
         flash("Customer not found.", "error")
         return redirect(url_for("customers_list"))
     date_from = (request.args.get("from") or "").strip()
     date_to = (request.args.get("to") or "").strip()
-    sales_asc = db.query("""SELECT SaleID, InvoiceNumber, SaleDate, TaxableAmount, AmountReceived
-                      FROM Sales WHERE CustomerID=? AND Status<>'Cancelled'
-                      ORDER BY SaleDate, SaleID""", (cid,))
+    sub_accounts = db.query("""SELECT CustomerID, CustomerName FROM Customers
+                             WHERE ParentCustomerID=? ORDER BY CustomerName""", (cid,))
+    group_mode = request.args.get("group") == "1" and bool(sub_accounts)
+    if group_mode:
+        sales_asc = _ledger_sales_for_group(_customer_group_ids(cid, sub_accounts))
+        title = f"Consolidated Group Ledger Statement — {customer['CustomerName']} + {len(sub_accounts)} sub-account(s)"
+    else:
+        sales_asc = db.query("""SELECT SaleID, InvoiceNumber, SaleDate, TaxableAmount, AmountReceived
+                          FROM Sales WHERE CustomerID=? AND Status<>'Cancelled'
+                          ORDER BY SaleDate, SaleID""", (cid,))
+        title = f"Ledger Statement — {customer['CustomerName']}"
     ledger = _build_customer_ledger(sales_asc, date_from, date_to)
 
     def bal(v):
@@ -2555,10 +2597,11 @@ def customer_ledger_pdf(cid):
                         indian_number_format(e["credit"]) if e["credit"] else "-", bal(e["balance"])))
     rows.append(row("Total", "Closing Balance", "-", indian_number_format(ledger["total_debit"]),
                     indian_number_format(ledger["total_credit"]), bal(ledger["closing_balance"])))
-    buf = rows_to_pdf(rows, f"Ledger Statement — {customer['CustomerName']}")
+    buf = rows_to_pdf(rows, title)
     from flask import send_file
+    filename_stub = f"{customer['CustomerName']}_Group" if group_mode else customer['CustomerName']
     return send_file(buf, as_attachment=True,
-                      download_name=f"Ledger_{customer['CustomerName']}_{today_str()}.pdf".replace(" ", "_"),
+                      download_name=f"Ledger_{filename_stub}_{today_str()}.pdf".replace(" ", "_"),
                       mimetype="application/pdf")
 
 
@@ -2581,6 +2624,9 @@ def customer_purchase_history(cid):
                                (customer["ParentCustomerID"],), one=True) if customer["ParentCustomerID"] else None
     sub_accounts = db.query("""SELECT CustomerID, CustomerName, AccountNumber FROM Customers
                              WHERE ParentCustomerID=? ORDER BY CustomerName""", (cid,))
+    # Consolidated group ledger - only meaningful for a parent account that actually has
+    # sub-accounts; a childless account or a sub-account itself just falls back to its own.
+    group_mode = request.args.get("group") == "1" and bool(sub_accounts)
 
     view = request.args.get("view", "overview")
     if view not in ("overview", "products", "ledger"):
@@ -2632,7 +2678,13 @@ def customer_purchase_history(cid):
         "last_purchase": max((s["SaleDate"] for s in filtered_sales), default=None),
     }
 
-    ledger = _build_customer_ledger(sales_asc, date_from, date_to) if view == "ledger" else None
+    ledger = None
+    if view == "ledger":
+        if group_mode:
+            ledger = _build_customer_ledger(
+                _ledger_sales_for_group(_customer_group_ids(cid, sub_accounts)), date_from, date_to)
+        else:
+            ledger = _build_customer_ledger(sales_asc, date_from, date_to)
 
     sales = sorted(filtered_sales, key=lambda s: (s["SaleDate"], s["SaleID"]), reverse=True)
 
@@ -2645,7 +2697,8 @@ def customer_purchase_history(cid):
     return render_template("customer_purchase_history.html", customer=customer, sales=sales,
                             lines_by_sale=lines_by_sale, top_products=top_products, product_rows=product_rows,
                             totals=totals, view=view, date_from=date_from, date_to=date_to, ledger=ledger,
-                            extra_qs=extra_qs, parent_account=parent_account, sub_accounts=sub_accounts)
+                            extra_qs=extra_qs, parent_account=parent_account, sub_accounts=sub_accounts,
+                            group_mode=group_mode)
 
 
 # ---------------------------------------------------------------------

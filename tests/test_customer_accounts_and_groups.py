@@ -272,3 +272,148 @@ class AccountsReceivableGroupingTests(DBTestCase):
             row = next(r for r in rows if r["InvoiceNumber"] == "INV-PDF-ACCT")
             pdf_row = appmod._ar_invoice_pdf_row(row)
         self.assertEqual(pdf_row["Account #"], "HHG0020")
+
+
+class ConsolidatedGroupLedgerTests(DBTestCase):
+    """When a customer has sub-accounts grouped under it (ParentCustomerID),
+    the Ledger tab can pull one consolidated statement across the parent +
+    every sub-account - a single chronological running balance, each entry
+    tagged with which account it belongs to - instead of only ever showing
+    one account's own ledger at a time."""
+
+    def make_sale(self, customer_id, taxable, received, sale_date="2026-09-01", invoice="INV-GROUP-LEDGER"):
+        return db.execute("""INSERT INTO Sales (InvoiceNumber, CustomerID, SaleDate, Status,
+                           TotalAmount, AmountReceived, TaxableAmount)
+                           VALUES (?, ?, ?, 'Completed', ?, ?, ?)""",
+                           (invoice, customer_id, sale_date, taxable, received, taxable))
+
+    def test_group_ledger_combines_parent_and_children_into_one_running_balance(self):
+        parent = self.make_customer("Head Office")
+        child_a = self.make_customer("Branch A")
+        child_b = self.make_customer("Branch B")
+        db.execute("UPDATE Customers SET ParentCustomerID=? WHERE CustomerID IN (?, ?)",
+                   (parent, child_a, child_b))
+        self.make_sale(parent, 1000, 0, sale_date="2026-09-01", invoice="INV-HO-1")
+        self.make_sale(child_a, 500, 0, sale_date="2026-09-05", invoice="INV-A-1")
+        self.make_sale(child_b, 300, 0, sale_date="2026-09-10", invoice="INV-B-1")
+
+        with appmod.app.app_context():
+            group_ids = appmod._customer_group_ids(parent, db.query(
+                "SELECT CustomerID FROM Customers WHERE ParentCustomerID=?", (parent,)))
+            ledger = appmod._build_customer_ledger(
+                appmod._ledger_sales_for_group(group_ids), "", "")
+
+        self.assertEqual({e["account"] for e in ledger["entries"]}, {"Head Office", "Branch A", "Branch B"})
+        balances = [e["balance"] for e in ledger["entries"]]
+        self.assertEqual(balances, [1000, 1500, 1800])
+        self.assertEqual(ledger["closing_balance"], 1800)
+
+    def test_entry_detail_is_prefixed_with_the_account_name_in_group_mode(self):
+        parent = self.make_customer("Prefix Parent Co")
+        child = self.make_customer("Prefix Child Co")
+        db.execute("UPDATE Customers SET ParentCustomerID=? WHERE CustomerID=?", (parent, child))
+        self.make_sale(child, 1000, 0, invoice="INV-PREFIX-1")
+
+        with appmod.app.app_context():
+            group_ids = appmod._customer_group_ids(parent, db.query(
+                "SELECT CustomerID FROM Customers WHERE ParentCustomerID=?", (parent,)))
+            ledger = appmod._build_customer_ledger(
+                appmod._ledger_sales_for_group(group_ids), "", "")
+        self.assertEqual(ledger["entries"][0]["detail"], "Prefix Child Co — Invoice INV-PREFIX-1")
+
+    def test_single_account_ledger_is_unaffected_no_account_prefix(self):
+        """A plain single-customer ledger query never selects CustomerName -
+        _build_customer_ledger() must stay a no-op prefix-wise for it."""
+        cust = self.make_customer("Plain Co")
+        self.make_sale(cust, 1000, 0, invoice="INV-PLAIN-1")
+        sales_asc = db.query("""SELECT s.SaleID, s.InvoiceNumber, s.SaleDate, s.Status, s.PaymentStatus,
+                              s.TaxableAmount, s.TotalAmount, s.AmountReceived,
+                              (s.TaxableAmount - s.AmountReceived) AS Due
+                              FROM Sales s WHERE s.CustomerID=? AND s.Status<>'Cancelled'""", (cust,))
+        with appmod.app.app_context():
+            ledger = appmod._build_customer_ledger(sales_asc, "", "")
+        self.assertEqual(ledger["entries"][0]["detail"], "Invoice INV-PLAIN-1")
+        self.assertIsNone(ledger["entries"][0]["account"])
+
+    def test_route_with_group_param_shows_the_consolidated_ledger(self):
+        parent = self.make_customer("Route Parent Co")
+        child = self.make_customer("Route Child Co")
+        db.execute("UPDATE Customers SET ParentCustomerID=? WHERE CustomerID=?", (parent, child))
+        self.make_sale(parent, 1000, 0, invoice="INV-ROUTE-PARENT")
+        self.make_sale(child, 500, 0, invoice="INV-ROUTE-CHILD")
+
+        client = self.make_admin_client()
+        resp = client.get(f"/customers/{parent}/history?view=ledger&group=1")
+        html = resp.data.decode()
+        self.assertIn("Consolidated Group Ledger", html)
+        self.assertIn("INV-ROUTE-PARENT", html)
+        self.assertIn("INV-ROUTE-CHILD", html)
+        self.assertIn("Route Child Co", html)  # account-name prefix on the child's entry
+
+    def test_route_without_group_param_shows_only_this_accounts_own_ledger(self):
+        parent = self.make_customer("No Group Parent Co")
+        child = self.make_customer("No Group Child Co")
+        db.execute("UPDATE Customers SET ParentCustomerID=? WHERE CustomerID=?", (parent, child))
+        self.make_sale(parent, 1000, 0, invoice="INV-NG-PARENT")
+        self.make_sale(child, 500, 0, invoice="INV-NG-CHILD")
+
+        client = self.make_admin_client()
+        resp = client.get(f"/customers/{parent}/history?view=ledger")
+        html = resp.data.decode()
+        self.assertIn("INV-NG-PARENT", html)
+        self.assertNotIn("INV-NG-CHILD", html)
+        self.assertNotIn("Consolidated Group Ledger", html)
+
+    def test_group_param_is_ignored_for_an_account_with_no_sub_accounts(self):
+        """A childless account (or a sub-account itself) requesting
+        ?group=1 just falls back to its own ledger - group_mode requires
+        sub_accounts to be non-empty."""
+        cust = self.make_customer("Childless Co")
+        self.make_sale(cust, 1000, 0, invoice="INV-CHILDLESS")
+        client = self.make_admin_client()
+        resp = client.get(f"/customers/{cust}/history?view=ledger&group=1")
+        html = resp.data.decode()
+        self.assertIn("INV-CHILDLESS", html)
+        self.assertNotIn("Consolidated Group Ledger", html)
+
+    def test_toggle_buttons_only_appear_when_sub_accounts_exist(self):
+        parent = self.make_customer("Toggle Parent Co")
+        child = self.make_customer("Toggle Child Co")
+        db.execute("UPDATE Customers SET ParentCustomerID=? WHERE CustomerID=?", (parent, child))
+        standalone = self.make_customer("Toggle Standalone Co")
+
+        client = self.make_admin_client()
+        resp_parent = client.get(f"/customers/{parent}/history?view=ledger")
+        self.assertIn(b"Consolidated Group", resp_parent.data)
+        resp_standalone = client.get(f"/customers/{standalone}/history?view=ledger")
+        self.assertNotIn(b"Consolidated Group", resp_standalone.data)
+
+    def test_group_ledger_pdf_download(self):
+        parent = self.make_customer("PDF Group Parent Co")
+        child = self.make_customer("PDF Group Child Co")
+        db.execute("UPDATE Customers SET ParentCustomerID=? WHERE CustomerID=?", (parent, child))
+        self.make_sale(parent, 1000, 0, invoice="INV-PDF-GROUP-PARENT")
+        self.make_sale(child, 500, 0, invoice="INV-PDF-GROUP-CHILD")
+
+        client = self.make_admin_client()
+        resp = client.get(f"/customers/{parent}/ledger/pdf?group=1")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.mimetype, "application/pdf")
+        self.assertTrue(resp.data.startswith(b"%PDF"))
+        self.assertIn(b"Group", resp.headers["Content-Disposition"].encode())
+
+    def test_group_ledger_date_range_still_rolls_up_an_opening_balance(self):
+        parent = self.make_customer("Date Range Parent Co")
+        child = self.make_customer("Date Range Child Co")
+        db.execute("UPDATE Customers SET ParentCustomerID=? WHERE CustomerID=?", (parent, child))
+        self.make_sale(parent, 1000, 0, sale_date="2026-08-01", invoice="INV-DR-OLD")
+        self.make_sale(child, 500, 0, sale_date="2026-09-15", invoice="INV-DR-NEW")
+
+        with appmod.app.app_context():
+            group_ids = appmod._customer_group_ids(parent, db.query(
+                "SELECT CustomerID FROM Customers WHERE ParentCustomerID=?", (parent,)))
+            ledger = appmod._build_customer_ledger(
+                appmod._ledger_sales_for_group(group_ids), "2026-09-01", "")
+        self.assertEqual(ledger["opening_balance"], 1000)
+        self.assertEqual(len(ledger["entries"]), 1)
+        self.assertEqual(ledger["entries"][0]["balance"], 1500)
