@@ -34,8 +34,16 @@ CREATE TABLE IF NOT EXISTS Customers (
     CreditLimit     REAL NOT NULL DEFAULT 0,
     CreditDays      INTEGER NOT NULL DEFAULT 0,
     Active          INTEGER NOT NULL DEFAULT 1,
-    IsUnassignedBucket INTEGER NOT NULL DEFAULT 0  -- 1 = the single system "Unassigned" customer that
+    IsUnassignedBucket INTEGER NOT NULL DEFAULT 0, -- 1 = the single system "Unassigned" customer that
                                                     -- reconciled Stock Issue sales land under until reassigned
+    AccountNumber   TEXT,     -- unique "HHGnnnn" account number, allocated once at creation via
+                               -- next_customer_account_number() - never reassigned or reused
+    ParentCustomerID INTEGER, -- groups this customer under a parent "head account" (e.g. one head
+                               -- office with several shop locations) - NULL for a standalone/parent
+                               -- account. Kept a flat 2-level hierarchy: a customer that already has
+                               -- a ParentCustomerID can't itself be a parent, and a parent with
+                               -- children can't be assigned a parent (enforced in app.py, not SQL).
+    FOREIGN KEY (ParentCustomerID) REFERENCES Customers(CustomerID)
 );
 
 CREATE TABLE IF NOT EXISTS Products (
@@ -105,6 +113,7 @@ CREATE TABLE IF NOT EXISTS CompanySettings (
     InvoiceTerms    TEXT DEFAULT 'Goods once sold will not be taken back. Interest @18% p.a. charged on overdue bills. Subject to local jurisdiction only.',
     NextInvoiceSeq  INTEGER NOT NULL DEFAULT 1,
     InvoiceSeqFY    TEXT,   -- financial year the NextInvoiceSeq counter applies to, e.g. '2026-27'
+    NextCustomerAccountSeq INTEGER NOT NULL DEFAULT 1,  -- next "HHGnnnn" customer account number to allocate
     -- GST Filing: scheme + reminder/email settings (see GST Filing section below)
     GstFilingScheme       TEXT NOT NULL DEFAULT 'Monthly',  -- 'Monthly' or 'QRMP'
     GstRemindersEnabled   INTEGER NOT NULL DEFAULT 0,
@@ -890,6 +899,8 @@ CREATE TABLE IF NOT EXISTS SchemaMigrations (
 -- =====================================================================
 -- Indexes
 -- =====================================================================
+CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_account_number ON Customers(AccountNumber);
+CREATE INDEX IF NOT EXISTS idx_customers_parent ON Customers(ParentCustomerID);
 CREATE INDEX IF NOT EXISTS idx_invtx_product ON InventoryTransactions(ProductID);
 CREATE INDEX IF NOT EXISTS idx_purchlines_purchase ON PurchaseLines(PurchaseID);
 CREATE INDEX IF NOT EXISTS idx_saleslines_sale ON SalesLines(SaleID);

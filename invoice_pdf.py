@@ -83,7 +83,7 @@ def build_invoice_pdf(sale, lines, company, amount_words):
     # --- Bill To --------------------------------------------------------------------------
     bill_to = [
         _p("Bill To:", LABEL),
-        _p(sale["CustomerName"], HEADER_BOLD),
+        _p(sale["CustomerName"] + (f"  (A/c No: {sale['CustomerAccountNumber']})" if sale["CustomerAccountNumber"] else ""), HEADER_BOLD),
         _p(sale["Address"] or "", NORMAL),
         _p(f"Phone: {sale['Phone'] or '-'}" + (f"   Zone: {sale['Zone']}" if sale["Zone"] else ""), NORMAL),
         _p(f"GSTIN: {sale['CustomerGSTIN'] or 'Unregistered'}", NORMAL),

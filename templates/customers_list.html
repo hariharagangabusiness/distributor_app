@@ -15,22 +15,27 @@
   <a href="{{ url_for('columns_customize', module='Customer') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-layout-three-columns"></i> Customize Columns</a>
 </div>
 <form method="get" class="mb-3 d-flex gap-2" style="max-width:460px">
-  <input type="text" name="q" value="{{ q }}" class="form-control" placeholder="Search by name, contact, phone, or zone…">
+  <input type="text" name="q" value="{{ q }}" class="form-control" placeholder="Search by name, account #, contact, phone, or zone…">
   <button type="submit" class="btn btn-brand"><i class="bi bi-search"></i> Search</button>
   {% if q %}<a href="{{ url_for('customers_list') }}" class="btn btn-outline-secondary">Clear</a>{% endif %}
 </form>
 <div class="card">
   <div class="table-responsive">
   <table class="table table-hover mb-0 align-middle table-cards-mobile" id="tbl-customer" data-view-toggle="Customer">
-    <thead><tr><th class="no-sort">Sl No</th><th data-col="name">Name</th><th data-col="contact">Contact</th><th data-col="phone">Phone</th>
-      <th data-col="zone">Zone</th>
+    <thead><tr><th data-col="account_number">Account #</th><th data-col="name">Name</th><th data-col="contact">Contact</th><th data-col="phone">Phone</th>
+      <th data-col="zone">Zone</th><th data-col="parent_account">Parent Account</th>
       <th data-col="credit_limit">Credit Limit</th><th data-col="credit_days">Credit Days</th><th data-col="status">Status</th><th></th></tr></thead>
     <tbody>
       {% for c in customers %}
       <tr>
-        <td data-label="Sl No">{{ ((page - 1) * page_size) + loop.index }}</td>
+        <td data-col="account_number" data-label="Account #" class="text-muted small">{{ c.AccountNumber or '-' }}</td>
         <td data-col="name" data-label="Name" data-key-field="primary">{{ c.CustomerName }}</td><td data-col="contact" data-label="Contact">{{ c.ContactPerson or '-' }}</td><td data-col="phone" data-label="Phone" data-key-field="secondary">{{ c.Phone or '-' }}</td>
         <td data-col="zone" data-label="Zone">{{ c.Zone or '-' }}</td>
+        <td data-col="parent_account" data-label="Parent Account">
+          {% if c.ParentCustomerID %}<a href="{{ url_for('customer_purchase_history', cid=c.ParentCustomerID) }}">{{ c.ParentCustomerName }}</a>{% if c.ParentAccountNumber %} <span class="text-muted small">({{ c.ParentAccountNumber }})</span>{% endif %}
+          {% elif c.SubAccountCount %}<span class="badge text-bg-secondary">Parent · {{ c.SubAccountCount }} sub-account{{ 's' if c.SubAccountCount != 1 }}</span>
+          {% else %}-{% endif %}
+        </td>
         <td data-col="credit_limit" data-label="Credit Limit">{{ (c.CreditLimit)|inr(0) }}</td><td data-col="credit_days" data-label="Credit Days">{{ c.CreditDays }} days</td>
         <td data-col="status" data-label="Status" data-key-field="meta">{% if c.Active %}<span class="badge badge-ok">Active</span>{% else %}<span class="badge text-bg-secondary">Inactive</span>{% endif %}</td>
         <td class="text-end">
@@ -40,7 +45,7 @@
           <a href="{{ url_for('customer_form', cid=c.CustomerID) }}" class="btn btn-sm btn-outline-secondary mobile-btn-full">Edit</a>
         </td>
       </tr>
-      {% else %}<tr><td colspan="9" class="text-center text-muted py-4">No customers yet.</td></tr>{% endfor %}
+      {% else %}<tr><td colspan="10" class="text-center text-muted py-4">No customers yet.</td></tr>{% endfor %}
     </tbody>
   </table>
   </div>

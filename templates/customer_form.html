@@ -11,10 +11,27 @@
 <form method="post">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div class="row g-3">
+    {% if customer %}
+    <div class="col-md-4"><label class="form-label">Account #</label>
+      <input class="form-control" value="{{ customer.AccountNumber or '-' }}" disabled>
+      <div class="form-text">Assigned automatically when the account was created - can't be changed.</div></div>
+    {% endif %}
     <div class="col-md-8"><label class="form-label">Customer Name *</label>
       <input required name="customer_name" class="form-control" value="{{ customer.CustomerName if customer else '' }}"></div>
     <div class="col-md-4"><label class="form-label">GSTIN</label>
       <input name="gstin" class="form-control" value="{{ customer.GSTIN if customer else '' }}"></div>
+    <div class="col-md-8"><label class="form-label">Parent Account</label>
+      <select name="parent_customer_id" class="form-select" {% if has_children %}disabled{% endif %}>
+        <option value="">-- none (standalone / parent account) --</option>
+        {% for p in parent_candidates %}
+        <option value="{{ p.CustomerID }}" {% if customer and customer.ParentCustomerID == p.CustomerID %}selected{% endif %}>{{ p.CustomerName }}{% if p.AccountNumber %} ({{ p.AccountNumber }}){% endif %}</option>
+        {% endfor %}
+      </select>
+      {% if has_children %}
+      <div class="form-text">This account already has its own sub-accounts grouped under it, so it can't also be given a parent.</div>
+      {% else %}
+      <div class="form-text">Groups this account under a parent "head account" - e.g. several shop locations under one head office. Leave blank for a standalone account, or one that will itself be a parent.</div>
+      {% endif %}</div>
     <div class="col-md-6"><label class="form-label">Contact Person</label>
       <input name="contact_person" class="form-control" value="{{ customer.ContactPerson if customer else '' }}"></div>
     <div class="col-md-6"><label class="form-label">Phone</label>
