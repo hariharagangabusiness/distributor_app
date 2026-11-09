@@ -7,15 +7,17 @@
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div class="row g-3 mb-3">
     <div class="col-md-4"><label class="form-label">Salesperson *</label>
-      <select required name="employee_id" class="form-select">
+      <select required name="employee_id" id="employee_id" class="form-select">
         <option value="">-- select --</option>
         {% for e in employees %}<option value="{{ e.EmployeeID }}">{{ e.EmployeeName }}{% if e.Designation %} ({{ e.Designation }}){% endif %}</option>{% endfor %}
       </select></div>
     <div class="col-md-3"><label class="form-label">Issue Date *</label>
-      <input required type="date" name="issue_date" class="form-control" value="{{ today }}"></div>
+      <input required type="date" name="issue_date" id="issue_date" class="form-control" value="{{ today }}"></div>
     <div class="col-md-5"><label class="form-label">Notes</label>
       <input name="notes" class="form-control" placeholder="e.g. route/area covered today"></div>
   </div>
+
+  <div id="direct-sales-warning" class="alert alert-warning" style="display:none"></div>
 
   <h6>Products Issued</h6>
   <div class="table-responsive">
@@ -91,5 +93,39 @@ function wireRow(row) {
 
 document.getElementById('add-line').addEventListener('click', addLine);
 addLine();
+
+// Heads-up, purely informational (the server also nets this automatically - see
+// stock_issue_post_line() in app.py): once both Salesperson and Date are picked, check
+// whether that salesperson already sold anything straight from the warehouse that date,
+// bypassing a Stock Issue entirely (no Issue existed yet when the sale was made).
+const employeeSelect = document.getElementById('employee_id');
+const issueDateInput = document.getElementById('issue_date');
+const directSalesWarning = document.getElementById('direct-sales-warning');
+
+function checkDirectSales() {
+  const employeeId = employeeSelect.value;
+  const date = issueDateInput.value;
+  if (!employeeId || !date) {
+    directSalesWarning.style.display = 'none';
+    return;
+  }
+  fetch(`/api/employee/${employeeId}/direct-sales?date=${encodeURIComponent(date)}`)
+    .then(r => r.json())
+    .then(rows => {
+      if (!rows.length) {
+        directSalesWarning.style.display = 'none';
+        return;
+      }
+      const employeeName = employeeSelect.options[employeeSelect.selectedIndex].text;
+      const items = rows.map(r => `${r.product} — ${r.qty} unit(s)`).join(', ');
+      directSalesWarning.innerHTML = `<strong>${employeeName}</strong> already sold the following directly ` +
+        `(before this issue exists) on that date: ${items}. Issuing one of these products below will ` +
+        `automatically reduce the warehouse deduction by the amount already sold, so it isn't counted twice.`;
+      directSalesWarning.style.display = '';
+    })
+    .catch(() => { directSalesWarning.style.display = 'none'; });
+}
+employeeSelect.addEventListener('change', checkDirectSales);
+issueDateInput.addEventListener('change', checkDirectSales);
 </script>
 {% endblock %}

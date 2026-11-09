@@ -1847,6 +1847,19 @@ def api_product_gst(pid):
     return jsonify(dict(hsn_code=p["HSNCode"] or "", gst_rate=p["GSTRate"] or 0, selling_price=p["SellingPrice"]))
 
 
+@app.route("/api/employee/<int:employee_id>/direct-sales")
+def api_employee_direct_sales(employee_id):
+    """JSON used by the New Stock Issue form: once a Salesperson + Date are both picked
+    (before the Issue itself exists yet, so the server-side warning in stock_issue_add_lines()
+    can't run), fetch whatever this employee already sold straight from the warehouse that
+    date, bypassing a Stock Issue - see direct_sales_today_for_employee()."""
+    sale_date = (request.args.get("date") or "").strip()
+    if not sale_date:
+        return jsonify([])
+    rows = direct_sales_today_for_employee(employee_id, sale_date)
+    return jsonify([{"product": r["ProductName"], "qty": r["Qty"]} for r in rows])
+
+
 @app.route("/inventory/<int:pid>/adjust", methods=["GET", "POST"])
 def inventory_adjust(pid):
     product = db.query("SELECT * FROM Products WHERE ProductID=?", (pid,), one=True)
@@ -4681,6 +4694,49 @@ def true_product_discount_sold(employee_id, sale_date, product_id):
     return row["q"] or 0
 
 
+def already_direct_deducted_qty(employee_id, sale_date, product_id):
+    """How much of `product_id` was already deducted straight from the
+    warehouse (a "Sale"-type InventoryTransactions row - see
+    true_product_qty_sold()'s docstring for exactly when a Sale falls
+    through to this instead of crediting a Stock Issue) for `employee_id`
+    on `sale_date`, before any Stock Issue existed yet to credit it
+    against. A Stock Issue created - or topped up with this product -
+    afterward, for the same employee/date/product, must not deduct this
+    same physical stock a second time; see stock_issue_post_line()."""
+    if not employee_id:
+        return 0
+    row = db.query("""SELECT COALESCE(SUM(-it.QtyChange), 0) q
+                    FROM InventoryTransactions it
+                    JOIN Sales s ON s.SaleID = it.RefID AND it.RefType = 'Sale'
+                    WHERE it.ProductID=? AND it.TransactionType='Sale'
+                      AND s.EmployeeID=? AND s.SaleDate=? AND s.Status<>'Cancelled'""",
+                   (product_id, employee_id, sale_date), one=True)
+    return row["q"] or 0
+
+
+def direct_sales_today_for_employee(employee_id, sale_date, exclude_product_ids=()):
+    """Every product (and qty) already sold straight from the warehouse for
+    this employee/date, bypassing a Stock Issue entirely - shown as a
+    heads-up when Issuing or topping up stock for them that day, so
+    whoever enters Qty Issued knows some of that physical stock was
+    already accounted for (the system also nets it automatically - see
+    stock_issue_post_line() - this is purely informational). Products
+    already on the Stock Issue in question are left out via
+    exclude_product_ids, since those have already been netted once."""
+    if not employee_id or not sale_date:
+        return []
+    rows = db.query("""SELECT it.ProductID, p.ProductName, SUM(-it.QtyChange) AS Qty
+                     FROM InventoryTransactions it
+                     JOIN Sales s ON s.SaleID = it.RefID AND it.RefType = 'Sale'
+                     JOIN Products p ON p.ProductID = it.ProductID
+                     WHERE it.TransactionType='Sale' AND s.EmployeeID=? AND s.SaleDate=? AND s.Status<>'Cancelled'
+                     GROUP BY it.ProductID, p.ProductName
+                     ORDER BY p.ProductName""", (employee_id, sale_date))
+    if exclude_product_ids:
+        rows = [r for r in rows if r["ProductID"] not in exclude_product_ids]
+    return rows
+
+
 def log_stock_issue_change(issue_id, action, field_name=None, old_value=None, new_value=None):
     """Records one row of Stock Issue history - who (the currently signed-in
     login, if any - a system-triggered auto-create still runs inside a
@@ -4695,7 +4751,7 @@ def log_stock_issue_change(issue_id, action, field_name=None, old_value=None, ne
          action, field_name, old_value, new_value, _now_ist().strftime("%Y-%m-%d %H:%M:%S")))
 
 
-def stock_issue_post_line(issue_id, product_id, qty, price, txn_date, txn_notes):
+def stock_issue_post_line(issue_id, product_id, qty, price, txn_date, txn_notes, employee_id=None):
     """Issue (deduct stock for) qty of product_id against a Stock Issue, consolidated to one
     StockIssueLines row per product per issue rather than a separate row every time. If this
     issue already has a line for this product (from the original Issue Stock action or an
@@ -4703,11 +4759,23 @@ def stock_issue_post_line(issue_id, product_id, qty, price, txn_date, txn_notes)
     and its Unit Price becomes the qty-weighted average of the old and new price, so a single
     consolidated line still produces the correct expected revenue at reconciliation. Otherwise a
     new line is created. Either way, a fresh 'Issue' InventoryTransactions row is posted for the
-    qty being added, so stock deduction and the audit trail are unaffected by the consolidation."""
+    qty being added, so stock deduction and the audit trail are unaffected by the consolidation.
+
+    StockIssueLines.QtyIssued always stores the full physical quantity passed in - the honest
+    "how much did this salesperson actually carry" figure that Reconcile's capacity/expected-
+    revenue math depends on. But the warehouse InventoryTransactions deduction posted for it is
+    reduced (floored at 0) by already_direct_deducted_qty() - whatever was already sold straight
+    from the warehouse for this employee/product/date before this line existed (see that
+    function's docstring) - so that same physical stock doesn't get deducted a second time, once
+    as a direct Sale and again as this Issue. Only applied the FIRST time a line for this
+    product is created on this issue (existing is None): a later top-up of an already-
+    established line is genuinely new stock, not a re-count of the same already-netted qty.
+    Returns the quantity netted out (0 if none), for the caller's flash message."""
     existing = db.query("SELECT LineID, QtyIssued, UnitPrice FROM StockIssueLines WHERE IssueID=? AND ProductID=?",
                         (issue_id, product_id), one=True)
     prod = db.query("SELECT ProductName FROM Products WHERE ProductID=?", (product_id,), one=True)
     prod_name = prod["ProductName"] if prod else f"Product #{product_id}"
+    netted = 0
     if existing:
         old_qty = existing["QtyIssued"] or 0
         new_qty = old_qty + qty
@@ -4721,9 +4789,13 @@ def stock_issue_post_line(issue_id, product_id, qty, price, txn_date, txn_notes)
         db.execute("""INSERT INTO StockIssueLines (IssueID, ProductID, QtyIssued, UnitPrice)
                     VALUES (?,?,?,?)""", (issue_id, product_id, qty, price))
         log_stock_issue_change(issue_id, "Line Added", prod_name, None, f"{qty:g} @ ₹{price:g}")
+        already = already_direct_deducted_qty(employee_id, txn_date, product_id)
+        netted = min(already, qty)
+    deduct_qty = round(qty - netted, 4)
     db.execute("""INSERT INTO InventoryTransactions (ProductID, TransactionDate, TransactionType,
                 QtyChange, RefType, RefID, Notes) VALUES (?,?,?,?,?,?,?)""",
-               (product_id, txn_date, "Issue", -qty, "StockIssue", issue_id, txn_notes))
+               (product_id, txn_date, "Issue", -deduct_qty, "StockIssue", issue_id, txn_notes))
+    return netted
 
 
 @app.route("/stock-issues/new", methods=["GET", "POST"])
@@ -4743,11 +4815,19 @@ def stock_issue_form():
         issue_id = db.execute("""INSERT INTO StockIssues (EmployeeID, IssueDate, Status, Notes)
                     VALUES (?,?,?,?)""", (employee_id, issue_date, "Issued", f.get("notes", "")))
         log_stock_issue_change(issue_id, "Created")
+        netted_msgs = []
         for prod_id, qty, price in lines:
             # Consolidates same-product lines within this one submission too (e.g. the same
             # product picked on two rows), not just across a later "Add More Products" top-up.
-            stock_issue_post_line(issue_id, prod_id, qty, price, issue_date, "Issued to salesperson")
+            netted = stock_issue_post_line(issue_id, prod_id, qty, price, issue_date,
+                                            "Issued to salesperson", employee_id=employee_id)
+            if netted > 0:
+                prod = db.query("SELECT ProductName FROM Products WHERE ProductID=?", (prod_id,), one=True)
+                netted_msgs.append(f"{netted:g} {prod['ProductName'] if prod else ''}".strip())
         flash("Stock issued.", "success")
+        if netted_msgs:
+            flash("Already sold directly today before this issue existed, so the warehouse "
+                  "deduction was reduced to avoid double-counting: " + ", ".join(netted_msgs) + ".", "warning")
         return redirect(url_for("stock_issue_view", issue_id=issue_id))
 
     employees = db.query("SELECT * FROM Employees WHERE Status='Active' ORDER BY EmployeeName")
@@ -4782,19 +4862,32 @@ def stock_issue_add_lines(issue_id):
             return redirect(url_for("stock_issue_add_lines", issue_id=issue_id))
 
         add_date = f.get("issue_date") or issue["IssueDate"]
+        netted_msgs = []
         for prod_id, qty, price in lines:
             # Consolidated: a product already on this issue (from the original Issue Stock
             # action or an earlier top-up today) gets its existing line topped up in place
             # (qty-weighted average price) rather than appearing as a separate line — so
             # Reconcile shows one row per product for the day, not one row per top-up.
-            stock_issue_post_line(issue_id, prod_id, qty, price, add_date,
-                                   "Additional stock issued to salesperson (same-day top-up)")
+            netted = stock_issue_post_line(issue_id, prod_id, qty, price, add_date,
+                                            "Additional stock issued to salesperson (same-day top-up)",
+                                            employee_id=issue["EmployeeID"])
+            if netted > 0:
+                prod = db.query("SELECT ProductName FROM Products WHERE ProductID=?", (prod_id,), one=True)
+                netted_msgs.append(f"{netted:g} {prod['ProductName'] if prod else ''}".strip())
         flash(f"Added {len(lines)} more product line(s) to this stock issue "
               f"(consolidated into existing product lines where applicable).", "success")
+        if netted_msgs:
+            flash("Already sold directly today before being added to this issue, so the warehouse "
+                  "deduction was reduced to avoid double-counting: " + ", ".join(netted_msgs) + ".", "warning")
         return redirect(url_for("stock_issue_view", issue_id=issue_id))
 
     products = get_products_with_stock()
-    return render_template("stock_issue_add_lines.html", issue=issue, products=products, today=today_str())
+    existing_product_ids = {r["ProductID"] for r in db.query(
+        "SELECT ProductID FROM StockIssueLines WHERE IssueID=?", (issue_id,))}
+    direct_sales_warning = direct_sales_today_for_employee(
+        issue["EmployeeID"], issue["IssueDate"], exclude_product_ids=existing_product_ids)
+    return render_template("stock_issue_add_lines.html", issue=issue, products=products, today=today_str(),
+                            direct_sales_warning=direct_sales_warning)
 
 
 @app.route("/stock-issues/<int:issue_id>")
