@@ -6,6 +6,19 @@
   re-stocked more than once today) instead of creating a separate issue. These new lines are deducted from stock
   immediately, just like the original issue, and will show up alongside the existing lines when this issue is
   reconciled at day's end.</div>
+{% if direct_sales_warning %}
+<div class="alert alert-warning">
+  <strong>{{ issue.EmployeeName }}</strong> already sold the following directly (before being added to a Stock
+  Issue) on {{ issue.IssueDate|dmy }}:
+  <ul class="mb-0">
+    {% for r in direct_sales_warning %}
+    <li>{{ r.ProductName }} — {{ r.Qty|round(2) }} unit(s)</li>
+    {% endfor %}
+  </ul>
+  Adding one of these products below will automatically reduce the warehouse deduction by the amount already sold,
+  so it isn't counted twice — no action needed, this is just so the Qty Issued you enter matches what you expect.
+</div>
+{% endif %}
 <div class="card"><div class="card-body">
 <form method="post">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
