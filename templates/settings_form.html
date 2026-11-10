@@ -89,8 +89,15 @@
 
   <h6 class="mb-3">Location Tracking</h6>
   <p class="text-muted small">Applies to Staff/Supervisor/Manager logins only (Admin accounts are never
-    tracked). Location is captured every 30 minutes, 9 AM–8 PM IST, on the working days checked below.</p>
+    tracked). Location is captured every {{ company.LocationPingIntervalMinutes or 30 }} minute(s), 9 AM–8 PM IST,
+    on the working days checked below. Separately, every Sale (any role) best-effort captures its own location
+    at the moment it's saved - see the Sale form.</p>
   <div class="row g-3 mb-3">
+    <div class="col-md-4"><label class="form-label">Ping interval (minutes)</label>
+      <input type="number" name="location_ping_interval_minutes" class="form-control" min="1" max="720"
+             value="{{ company.LocationPingIntervalMinutes or 30 }}">
+      <div class="form-text">How often a tracked-role login's open tab uploads its location. Takes effect on that
+        person's next page load.</div></div>
     <div class="col-12"><label class="form-label">Working days</label>
       <div class="d-flex flex-wrap gap-3">
         {% for abbr in location_weekdays %}

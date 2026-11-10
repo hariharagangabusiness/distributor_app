@@ -28,6 +28,13 @@
 </div>
 <form method="post">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {# Best-effort: filled in by the one-shot geolocation request fired on page load (see the
+     script block below) if/when it resolves before this form is submitted. Left blank -
+     and simply not captured for this sale - if location is denied, unavailable, unsupported,
+     or just hasn't resolved yet; this never delays or blocks Save. #}
+  <input type="hidden" name="sale_lat" id="sale_lat">
+  <input type="hidden" name="sale_lng" id="sale_lng">
+  <input type="hidden" name="sale_accuracy" id="sale_accuracy">
   <div class="row g-3 mb-3">
     <div class="col-md-3" style="{{ fstyle('invoice_number', header_fields) }}"><label class="form-label">Invoice Number</label>
       {% if sale %}
@@ -214,6 +221,20 @@
 {% endblock %}
 {% block scripts %}
 <script>
+// Best-effort, silent location capture for this sale - fired as soon as the page loads so a
+// fix has the best chance of being ready by the time Save is clicked, with zero added latency
+// to the submit itself (the hidden fields just stay blank if this hasn't resolved yet, or
+// permission is denied/unavailable/unsupported - no error shown, this is incidental metadata,
+// not a feature the person needs to monitor, unlike the ongoing tracking pill).
+if (navigator.geolocation) {
+  navigator.geolocation.getCurrentPosition(function (pos) {
+    document.getElementById('sale_lat').value = pos.coords.latitude;
+    document.getElementById('sale_lng').value = pos.coords.longitude;
+    document.getElementById('sale_accuracy').value = pos.coords.accuracy;
+  }, function () { /* denied/unavailable/timeout - leave the fields blank */ },
+  { enableHighAccuracy: false, timeout: 8000, maximumAge: 5 * 60 * 1000 });
+}
+
 const body = document.getElementById('lines-body');
 const tmpl = document.getElementById('line-template');
 const posSelect = document.getElementById('place_of_supply_code');
