@@ -582,9 +582,11 @@ def inject_location_tracking_working_days():
     (an extra CompanySettings query otherwise unused by everyone else)."""
     user = get_current_user()
     if user and user["Role"] in LOCATION_TRACKED_ROLES:
-        configured = _location_working_days()
-        return dict(location_working_days=[d for d in LOCATION_WEEKDAY_ABBR if d in configured])
-    return dict(location_working_days=[])
+        company = get_company_settings()
+        configured = _location_working_days(company)
+        return dict(location_working_days=[d for d in LOCATION_WEEKDAY_ABBR if d in configured],
+                    location_ping_interval_minutes=company["LocationPingIntervalMinutes"] or 30)
+    return dict(location_working_days=[], location_ping_interval_minutes=30)
 
 
 @app.route("/")
@@ -4071,6 +4073,7 @@ def sale_form():
             employee_id=employee_id, cash_amount=cash_amount, bank_amount=bank_amount,
             auto_create_issue=bool(locked_employee_id))
         save_custom_fields("Sale", sale_id, f)
+        log_sale_location(sale_id, get_current_user(), f.get("sale_lat"), f.get("sale_lng"), f.get("sale_accuracy"))
         flash(sale_stock_issue_credit_message(sale_id), "success")
         # Show a "Saved! Invoice #X" popup for every save (Admin/Office/Sales rep alike),
         # then default straight to the 58mm thermal receipt on OK - see
@@ -4152,6 +4155,7 @@ def sale_edit(sid):
                   f"this edit.", "error")
             return redirect(url_for("sale_edit", sid=sid))
         save_custom_fields("Sale", sid, f)
+        log_sale_location(sid, get_current_user(), f.get("sale_lat"), f.get("sale_lng"), f.get("sale_accuracy"))
         credit_note = sale_stock_issue_credit_message(sid, plain=True)
         flash(f"Sale {existing['InvoiceNumber']} updated." + (f" {credit_note}" if credit_note else ""), "success")
         return redirect(url_for("sale_view", sid=sid))
@@ -5683,6 +5687,36 @@ def api_location_ping():
     return jsonify(ok=True)
 
 
+def log_sale_location(sale_id, user, lat_raw, lng_raw, accuracy_raw):
+    """Best-effort: records the device's location at the moment a Sale was
+    saved, tagged to that Sale (LocationLogs.RefType='Sale', RefID=sale_id)
+    - shown on the Location Tracking map as its own marker. Unlike the
+    periodic ping (api_location_ping()), this applies to EVERY role,
+    including Admin, and isn't gated by working hours/days or the tracked-
+    role consent flow - it's metadata on a specific business record, not
+    ongoing personal tracking. Silently does nothing if lat/lng weren't
+    provided (geolocation denied/unavailable/unsupported, or it simply
+    hadn't resolved yet by the time the form was submitted) - this must
+    never raise or block the sale that was just saved."""
+    if not user or lat_raw in (None, "") or lng_raw in (None, ""):
+        return
+    try:
+        lat = float(lat_raw)
+        lng = float(lng_raw)
+    except (TypeError, ValueError):
+        return
+    try:
+        accuracy = float(accuracy_raw) if accuracy_raw not in (None, "") else None
+    except (TypeError, ValueError):
+        accuracy = None
+    now = _now_ist()
+    db.execute(
+        "INSERT INTO LocationLogs (UserID, EmployeeID, Role, Latitude, Longitude, Accuracy, RecordedAt, "
+        "RecordedDate, RefType, RefID) VALUES (?,?,?,?,?,?,?,?,'Sale',?)",
+        (user["UserID"], user["EmployeeID"], user["Role"], lat, lng, accuracy,
+         now.strftime("%Y-%m-%d %H:%M:%S"), now.strftime("%Y-%m-%d"), sale_id))
+
+
 @app.route("/location-consent", methods=["GET", "POST"])
 def location_consent():
     """Mandatory accept-to-continue screen, re-shown at every login for a
@@ -5718,28 +5752,42 @@ def location_tracking_view():
     if employee_id:
         emp_filter_sql = " AND l.UserID IN (SELECT UserID FROM Users WHERE EmployeeID=?)"
         params.append(employee_id)
+    # Sale-tagged points (RefType='Sale') get the invoice/customer/amount they belong to,
+    # so the map popup can show what was actually sold there - see log_sale_location().
     points = db.query(
-        "SELECT l.*, u.FullName, u.Username FROM LocationLogs l JOIN Users u ON u.UserID = l.UserID "
+        "SELECT l.*, u.FullName, u.Username, s.InvoiceNumber, s.TotalAmount, c.CustomerName "
+        "FROM LocationLogs l JOIN Users u ON u.UserID = l.UserID "
+        "LEFT JOIN Sales s ON l.RefType='Sale' AND s.SaleID = l.RefID "
+        "LEFT JOIN Customers c ON c.CustomerID = s.CustomerID "
         "WHERE l.RecordedDate=?" + emp_filter_sql + " ORDER BY u.FullName, l.RecordedAt", tuple(params))
 
     by_user = {}
     for p in points:
         by_user.setdefault(p["UserID"], {"name": p["FullName"] or p["Username"], "points": []})
-        by_user[p["UserID"]]["points"].append({
+        point = {
             "lat": p["Latitude"], "lng": p["Longitude"], "accuracy": p["Accuracy"],
             "time": p["RecordedAt"][11:16] if len(p["RecordedAt"]) >= 16 else p["RecordedAt"],
-        })
+            "is_sale": p["RefType"] == "Sale",
+        }
+        if point["is_sale"]:
+            point["sale_id"] = p["RefID"]
+            point["invoice"] = p["InvoiceNumber"]
+            point["customer"] = p["CustomerName"]
+            point["amount"] = p["TotalAmount"]
+        by_user[p["UserID"]]["points"].append(point)
 
     is_today = date_str == today_str()
     tracking_active_now = is_today and _within_location_tracking_hours(_now_ist())
-    configured_days = _location_working_days()
+    company = get_company_settings()
+    configured_days = _location_working_days(company)
     working_days_display = ", ".join(d for d in LOCATION_WEEKDAY_ABBR if d in configured_days)
 
     return render_template("location_tracking.html", date_str=date_str, today=today_str(),
                             tracked_users=tracked_users, employee_id=employee_id,
                             by_user=by_user, point_count=len(points),
                             tracking_active_now=tracking_active_now,
-                            working_days_display=working_days_display)
+                            working_days_display=working_days_display,
+                            ping_interval_minutes=company["LocationPingIntervalMinutes"] or 30)
 
 
 # ---------------------------------------------------------------------
@@ -6623,7 +6671,8 @@ def settings_form():
                     BankAccountNumber=?, BankIFSC=?, BankBranch=?, InvoicePrefix=?, InvoiceTerms=?,
                     GstFilingScheme=?, GstRemindersEnabled=?, GstReminderEmails=?, GstReminderDaysBefore=?,
                     SmtpHost=?, SmtpPort=?, SmtpUsername=?, SmtpPassword=?, SmtpFromEmail=?, SmtpUseTLS=?,
-                    CreditControlMode=?, CreditBlockDays=?, LocationTrackingWorkingDays=?, LocationConsentText=?
+                    CreditControlMode=?, CreditBlockDays=?, LocationTrackingWorkingDays=?, LocationConsentText=?,
+                    LocationPingIntervalMinutes=?
                     WHERE SettingsID=1""",
                    (f["company_name"], f["gstin"], f["pan"], f["address"], f["city"],
                     STATE_NAME_BY_CODE.get(f.get("state_code", ""), ""), f.get("state_code", ""), f["pincode"],
@@ -6640,7 +6689,8 @@ def settings_form():
                     max(int(f.get("credit_block_days") or 0), 0),
                     ",".join(d for d in LOCATION_WEEKDAY_ABBR if d in set(request.form.getlist("working_day")))
                         or DEFAULT_LOCATION_WORKING_DAYS,
-                    f.get("location_consent_text", "").strip() or None))
+                    f.get("location_consent_text", "").strip() or None,
+                    min(max(int(f.get("location_ping_interval_minutes") or 30), 1), 720)))
         flash("Company settings saved. These details now appear on every GST invoice.", "success")
         return redirect(url_for("settings_form"))
     company = get_company_settings()

@@ -1,4 +1,5 @@
-// Captures this device's location every 30 minutes and sends it to the
+// Captures this device's location every N minutes (window.LOCATION_PING_INTERVAL_MINUTES,
+// Admin-configurable from Company / GST Settings - defaults to 30) and sends it to the
 // server, for as long as this tab stays open on a tracked-role login (Staff/
 // Supervisor/Manager - see base.html, which only includes this file for
 // those roles). Only fires during the working days/hours configured in
@@ -23,7 +24,8 @@
 (function () {
   if (!window.LOCATION_TRACKING_ENABLED) return;
 
-  var PING_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
+  var PING_INTERVAL_MINUTES = (window.LOCATION_PING_INTERVAL_MINUTES > 0) ? window.LOCATION_PING_INTERVAL_MINUTES : 30;
+  var PING_INTERVAL_MS = PING_INTERVAL_MINUTES * 60 * 1000;
   var WORK_START_HOUR = 9;
   var WORK_END_HOUR = 20;   // 8 PM
   // Date.getDay(): Sunday=0, Monday=1, ... Saturday=6.

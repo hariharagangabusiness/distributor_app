@@ -147,7 +147,11 @@ CREATE TABLE IF NOT EXISTS CompanySettings (
     -- tracked role. NULL/blank falls back to a built-in placeholder - see
     -- DEFAULT_LOCATION_CONSENT_TEXT in app.py. Admin should replace this
     -- with their own legally reviewed wording from Company / GST Settings.
-    LocationConsentText   TEXT
+    LocationConsentText   TEXT,
+    -- How often (minutes) a tracked-role login's open tab uploads its periodic location fix -
+    -- see static/js/location-tracking.js. Admin-configurable from Company / GST Settings;
+    -- used to be a hardcoded 30.
+    LocationPingIntervalMinutes INTEGER NOT NULL DEFAULT 30
 );
 
 INSERT OR IGNORE INTO CompanySettings (SettingsID) VALUES (1);
@@ -517,6 +521,13 @@ CREATE TABLE IF NOT EXISTS LocationLogs (
     Accuracy        REAL,                  -- meters, as reported by the device's GPS/network location
     RecordedAt      TEXT NOT NULL,         -- server timestamp, 'YYYY-MM-DD HH:MM:SS'
     RecordedDate    TEXT NOT NULL,         -- 'YYYY-MM-DD', for fast per-day filtering
+    -- NULL/NULL for an ordinary periodic ping. RefType='Sale'/RefID=<SaleID> for a location
+    -- captured at the moment a Sale was saved (any role, best-effort - see log_sale_location()
+    -- in app.py) - shown as its own marker style on the Location Tracking map, distinct from
+    -- the routine trail, so a sale's location can be eyeballed against the rest of that day's
+    -- movement.
+    RefType         TEXT,
+    RefID           INTEGER,
     FOREIGN KEY (UserID) REFERENCES Users(UserID),
     FOREIGN KEY (EmployeeID) REFERENCES Employees(EmployeeID)
 );

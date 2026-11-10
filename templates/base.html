@@ -411,6 +411,7 @@
 <script>
 window.LOCATION_TRACKING_ENABLED = true;
 window.LOCATION_WORKING_DAYS = {{ location_working_days|tojson }};
+window.LOCATION_PING_INTERVAL_MINUTES = {{ location_ping_interval_minutes|tojson }};
 </script>
 <script src="{{ url_for('static', filename='js/location-tracking.js') }}" defer></script>
 {% endif %}
