@@ -46,6 +46,10 @@
       <input name="bank_account_number" class="form-control" value="{{ company.BankAccountNumber or '' }}"></div>
     <div class="col-md-3"><label class="form-label">IFSC</label>
       <input name="bank_ifsc" class="form-control" value="{{ company.BankIFSC or '' }}"></div>
+    <div class="col-md-6"><label class="form-label">UPI ID</label>
+      <input name="upi_id" class="form-control" placeholder="e.g. yourname@axisbank" value="{{ company.UpiId or '' }}"></div>
+    <div class="col-md-6 d-flex align-items-end">
+      <div class="form-text">When set, a scannable UPI payment QR code is shown on the Tax Invoice and the 58mm thermal receipt, pre-filled with the outstanding balance.</div></div>
   </div>
 
   <h6 class="mb-3">Invoice Numbering & Terms</h6>

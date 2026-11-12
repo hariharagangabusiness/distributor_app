@@ -20,6 +20,8 @@
   .totals td.num { text-align: right; }
   .totals tr.grand td { font-weight: bold; font-size: 12px; border-top: 1px dashed #000; padding-top: 3px; }
   .small { font-size: 9px; color: #333; }
+  .qr-box { text-align: center; margin: 6px 0; }
+  .qr-box img { width: 42mm; height: 42mm; }
   .footer { text-align: center; margin-top: 6px; font-size: 10px; }
   .no-print { text-align: center; margin: 10px auto; width: 58mm; }
   .no-print button, .no-print a { display: block; width: 100%; margin: 4px 0; padding: 8px; font-size: 13px; cursor: pointer; }
@@ -121,6 +123,14 @@
     <tr><td class="small">&nbsp;&nbsp;Bank/UPI</td><td class="num small">{{ (sale.BankAmount or 0)|inrn(2) }}</td></tr>
     {% endif %}
   </table>
+  {% if company.UpiId %}
+  <div class="divider"></div>
+  <div class="qr-box">
+    <div class="bold">Scan to Pay (UPI)</div>
+    <img src="{{ url_for('sale_upi_qr', sid=sale.SaleID) }}" alt="UPI payment QR code">
+    <div class="small">{{ company.UpiId }}</div>
+  </div>
+  {% endif %}
   <div class="divider"></div>
   <div class="footer">Thank you for your purchase!</div>
 </div>
