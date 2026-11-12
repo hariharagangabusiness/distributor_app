@@ -4619,6 +4619,30 @@ def sale_invoice_pdf(sid):
                      headers={"Content-Disposition": f'inline; filename="Invoice-{safe_name}.pdf"'})
 
 
+@app.route("/sales/<int:sid>/upi-qr.png")
+def sale_upi_qr(sid):
+    """Scannable UPI payment QR for this sale's invoice/receipt (invoice.html,
+    invoice_thermal.html), generated on the fly from Company / GST Settings'
+    UPI ID - not stored anywhere. Pre-fills the still-outstanding balance so a
+    scan goes straight to "pay ₹X", or no amount if the sale's already paid
+    up (the customer may still want to scan to pay something else/in
+    advance). 404s whenever there's nothing to show (no UPI ID configured,
+    or sale not found) - callers only use this inside an <img> tag, so a
+    broken-image icon is an acceptable, non-blocking "nothing configured"."""
+    from flask import Response, abort
+    from upi_qr import build_upi_qr_png
+    sale = db.query("SELECT * FROM Sales WHERE SaleID=?", (sid,), one=True)
+    if not sale:
+        abort(404)
+    company = get_company_settings()
+    if not company["UpiId"]:
+        abort(404)
+    balance_due = max(sale_balance_due(sale), 0)
+    png = build_upi_qr_png(company["UpiId"], company["CompanyName"], balance_due or None,
+                            f"Invoice {sale['InvoiceNumber']}")
+    return Response(png, mimetype="image/png", headers={"Cache-Control": "no-store"})
+
+
 # ---------------------------------------------------------------------
 # Stock Issues (van/route sales: issue stock to a salesperson, reconcile
 # sold/returned/cash at day's end)
@@ -6668,7 +6692,7 @@ def settings_form():
         f = request.form
         db.execute("""UPDATE CompanySettings SET CompanyName=?, GSTIN=?, PAN=?, Address=?, City=?,
                     State=?, StateCode=?, Pincode=?, Phone=?, Email=?, BankName=?, BankAccountName=?,
-                    BankAccountNumber=?, BankIFSC=?, BankBranch=?, InvoicePrefix=?, InvoiceTerms=?,
+                    BankAccountNumber=?, BankIFSC=?, BankBranch=?, UpiId=?, InvoicePrefix=?, InvoiceTerms=?,
                     GstFilingScheme=?, GstRemindersEnabled=?, GstReminderEmails=?, GstReminderDaysBefore=?,
                     SmtpHost=?, SmtpPort=?, SmtpUsername=?, SmtpPassword=?, SmtpFromEmail=?, SmtpUseTLS=?,
                     CreditControlMode=?, CreditBlockDays=?, LocationTrackingWorkingDays=?, LocationConsentText=?,
@@ -6677,7 +6701,8 @@ def settings_form():
                    (f["company_name"], f["gstin"], f["pan"], f["address"], f["city"],
                     STATE_NAME_BY_CODE.get(f.get("state_code", ""), ""), f.get("state_code", ""), f["pincode"],
                     f["phone"], f["email"], f["bank_name"], f["bank_account_name"], f["bank_account_number"],
-                    f["bank_ifsc"], f["bank_branch"], f["invoice_prefix"] or "INV", f["invoice_terms"],
+                    f["bank_ifsc"], f["bank_branch"], f.get("upi_id", "").strip() or None,
+                    f["invoice_prefix"] or "INV", f["invoice_terms"],
                     f.get("gst_filing_scheme") if f.get("gst_filing_scheme") in ("Monthly", "QRMP") else "Monthly",
                     1 if f.get("gst_reminders_enabled") else 0, f.get("gst_reminder_emails", "").strip(),
                     int(f.get("gst_reminder_days_before") or 3),

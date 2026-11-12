@@ -10,14 +10,20 @@ and a signatory line. It does NOT generate an e-invoice IRN/QR code —
 that requires live integration with the GST e-invoice portal (relevant
 only once the business crosses the current e-invoicing turnover
 threshold), which is outside what a locally generated PDF can produce.
+
+It DOES optionally print a separate, unrelated QR code: a scannable UPI
+payment QR (see upi_qr.py), shown only when an Admin has configured a UPI
+ID under Company / GST Settings. That's just an offline-encoded "upi://pay"
+link for GPay/PhonePe/etc. to scan, not a government e-invoice QR.
 """
 from io import BytesIO
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
+from upi_qr import build_upi_qr_png
 
 styles = getSampleStyleSheet()
 NORMAL = ParagraphStyle("normal", parent=styles["Normal"], fontSize=8.5, leading=11)
@@ -186,7 +192,22 @@ def build_invoice_pdf(sale, lines, company, amount_words):
         Spacer(1, 22),
         _p("Authorised Signatory", LABEL),
     ]
-    bottom_tbl = Table([[bank_lines, sign_block]], colWidths=[104 * mm, 70 * mm])
+
+    # UPI payment QR - only when an Admin has configured a UPI ID (Company / GST
+    # Settings, next to Bank Details). Pre-fills the still-outstanding balance so a
+    # scan goes straight to "pay ₹X"; no amount if nothing's due.
+    qr_png = build_upi_qr_png(company["UpiId"], company["CompanyName"],
+                               balance_due if balance_due > 0 else None,
+                               f"Invoice {sale['InvoiceNumber']}") if company["UpiId"] else None
+    if qr_png:
+        qr_block = [
+            _p("Scan to Pay (UPI)", LABEL),
+            Image(BytesIO(qr_png), width=24 * mm, height=24 * mm),
+            _p(company["UpiId"], SMALL),
+        ]
+        bottom_tbl = Table([[bank_lines, qr_block, sign_block]], colWidths=[84 * mm, 34 * mm, 56 * mm])
+    else:
+        bottom_tbl = Table([[bank_lines, sign_block]], colWidths=[104 * mm, 70 * mm])
     bottom_tbl.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
     story.append(bottom_tbl)
     story.append(Spacer(1, 8))

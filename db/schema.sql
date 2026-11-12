@@ -109,6 +109,7 @@ CREATE TABLE IF NOT EXISTS CompanySettings (
     BankAccountNumber TEXT,
     BankIFSC        TEXT,
     BankBranch      TEXT,
+    UpiId           TEXT,       -- e.g. 'yourname@axisbank' - shown as a scannable payment QR on invoices/receipts
     InvoicePrefix   TEXT NOT NULL DEFAULT 'INV',
     InvoiceTerms    TEXT DEFAULT 'Goods once sold will not be taken back. Interest @18% p.a. charged on overdue bills. Subject to local jurisdiction only.',
     NextInvoiceSeq  INTEGER NOT NULL DEFAULT 1,

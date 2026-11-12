@@ -22,7 +22,9 @@
   .totals-table td:last-child { text-align: right; }
   .totals-table tr.grand td { font-weight: bold; font-size: 14px; }
   .words { margin-bottom: 14px; }
-  .bottom-row { display: flex; justify-content: space-between; margin-top: 20px; }
+  .bottom-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-top: 20px; }
+  .qr-box { text-align: center; font-size: 11px; }
+  .qr-box img { width: 90px; height: 90px; display: block; margin: 4px auto; }
   .sign-box { text-align: right; }
   .sign-space { height: 50px; }
   .terms { font-size: 11px; color: #555; margin-top: 16px; border-top: 1px solid #ccc; padding-top: 8px; }
@@ -40,6 +42,8 @@
     .sheet { padding: 14px 12px; }
     .bottom-row { flex-direction: column; gap: 14px; }
     .sign-box { text-align: left; }
+    .qr-box { text-align: left; }
+    .qr-box img { margin: 4px 0; }
   }
 </style>
 </head>
@@ -150,6 +154,13 @@
       A/c No: {{ company.BankAccountNumber or '-' }} &nbsp; IFSC: {{ company.BankIFSC or '-' }}
       {% endif %}
     </div>
+    {% if company.UpiId %}
+    <div class="qr-box">
+      <strong>Scan to Pay (UPI)</strong>
+      <img src="{{ url_for('sale_upi_qr', sid=sale.SaleID) }}" alt="UPI payment QR code">
+      {{ company.UpiId }}
+    </div>
+    {% endif %}
     <div class="sign-box">
       For {{ company.CompanyName or 'Your Company Name' }}
       <div class="sign-space"></div>
