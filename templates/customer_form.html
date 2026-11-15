@@ -61,6 +61,30 @@
       <input type="number" name="credit_days" class="form-control" value="{{ customer.CreditDays if customer else 0 }}"></div>
     <div class="col-md-12"><label class="form-label">Address</label>
       <textarea name="address" class="form-control" rows="2">{{ customer.Address if customer else '' }}</textarea></div>
+    <div class="col-md-12">
+      <label class="form-label">Map Location</label>
+      <div class="form-text mb-2">Saved once, this is what lets this customer be added to a salesperson's Visit
+        Plan and show as a pin on the Location Tracking map. Stand at (or near) the place and tap the button below.</div>
+      <div class="row g-2 align-items-end">
+        <div class="col-sm-4 col-6"><label class="form-label small">Latitude</label>
+          <input type="text" name="latitude" id="customer_lat" class="form-control"
+                 value="{{ customer.Latitude if customer and customer.Latitude is not none else '' }}"></div>
+        <div class="col-sm-4 col-6"><label class="form-label small">Longitude</label>
+          <input type="text" name="longitude" id="customer_lng" class="form-control"
+                 value="{{ customer.Longitude if customer and customer.Longitude is not none else '' }}"></div>
+        <div class="col-sm-4 col-12">
+          <button type="button" id="useCurrentLocationBtn" class="btn btn-outline-brand w-100">
+            <i class="bi bi-geo-alt"></i> Use my current location</button>
+        </div>
+      </div>
+      <div id="locationStatus" class="form-text mt-1">
+        {% if customer and customer.Latitude is not none and customer.Longitude is not none %}
+        <span class="text-success">✓ Location saved — this customer can be added to a Visit Plan.</span>
+        {% else %}
+        <span class="text-muted">No location set yet — this customer can't be added to a Visit Plan until one is saved.</span>
+        {% endif %}
+      </div>
+    </div>
     <div class="col-md-12 form-check ms-1">
       <input type="checkbox" class="form-check-input" name="active" id="active" {% if not customer or customer.Active %}checked{% endif %}>
       <label class="form-check-label" for="active">Active</label></div>
@@ -72,4 +96,35 @@
   </div>
 </form>
 </div></div>
+{% endblock %}
+{% block scripts %}
+<script>
+// Best-effort, one-shot location capture for the Customer form - same pattern as the Sale
+// form's (see sale_form.html): fills the Latitude/Longitude fields from the device's current
+// position, never blocking the save if denied/unavailable/unsupported.
+(function () {
+  var btn = document.getElementById('useCurrentLocationBtn');
+  var status = document.getElementById('locationStatus');
+  if (!btn) return;
+  btn.addEventListener('click', function () {
+    if (!navigator.geolocation) {
+      status.innerHTML = '<span class="text-danger">Location isn\'t supported on this device/browser.</span>';
+      return;
+    }
+    btn.disabled = true;
+    btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Locating…';
+    navigator.geolocation.getCurrentPosition(function (pos) {
+      document.getElementById('customer_lat').value = pos.coords.latitude;
+      document.getElementById('customer_lng').value = pos.coords.longitude;
+      status.innerHTML = '<span class="text-success">✓ Location captured - remember to Save Customer.</span>';
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-geo-alt"></i> Use my current location';
+    }, function () {
+      status.innerHTML = '<span class="text-danger">Could not get your location - check the browser\'s location permission, or enter it manually.</span>';
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-geo-alt"></i> Use my current location';
+    }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+  });
+})();
+</script>
 {% endblock %}
