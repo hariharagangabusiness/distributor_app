@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Stock Issue{% endblock %}
-{% block page_title %}Stock Issue — {{ issue.EmployeeName }}, {{ issue.IssueDate|dmy }}{% endblock %}
+{% block page_title %}Stock Issue {{ issue.IssueNumber or ('#' ~ issue.IssueID) }} — {{ issue.EmployeeName }}, {{ issue.IssueDate|dmy }}{% endblock %}
 {% block content %}
 {% if issue.ReviewStatus == 'Pending' %}
 <div class="alert alert-warning d-flex justify-content-between align-items-center">
@@ -109,7 +109,8 @@
   <div class="table-responsive">
   <table class="table mb-0 table-cards-mobile">
     <thead><tr><th>Product</th><th>Qty Issued</th><th>Unit Price</th><th>Qty Sold{% if issue.Status != 'Reconciled' %} (so far){% endif %}</th>
-      {% if issue.Status == 'Reconciled' %}<th>Qty Returned</th><th>Qty Free</th><th>Discount ₹ (margin)</th><th>Scheme Claim ₹</th><th>Unaccounted</th><th>Comments</th>{% endif %}
+      {% if issue.Status == 'Reconciled' %}<th>Qty Returned</th><th>Qty Free</th><th>Discount ₹ (margin)</th><th>Scheme Claim ₹</th><th>Unaccounted</th><th>Comments</th>
+      {% else %}<th>Expected Return</th>{% endif %}
     </tr></thead>
     <tbody>
       {% for l in lines %}
@@ -126,6 +127,9 @@
         {% set unaccounted = l.QtyIssued - (l.QtySold or 0) - (l.QtyReturned or 0) - (l.QtyFree or 0) %}
         <td data-label="Unaccounted" class="{% if unaccounted != 0 %}text-danger fw-bold{% endif %}">{{ unaccounted|round(2) }} {{ l.Unit }}</td>
         <td data-label="Comments" class="text-muted small">{{ l.LineComments or '' }}</td>
+        {% else %}
+        {% set expected_return = l.QtyIssued - (l.QtySold or 0) %}
+        <td data-label="Expected Return" class="{% if expected_return <= 0 %}text-success{% endif %} fw-bold">{{ expected_return|round(2) }} {{ l.Unit }}</td>
         {% endif %}
       </tr>
       {% endfor %}
@@ -144,6 +148,8 @@
         <td>{{ (line_totals.scheme_claim)|inr(2) }}</td>
         <td class="{% if line_totals.unaccounted != 0 %}text-danger{% endif %}">{{ line_totals.unaccounted|round(2) }}</td>
         <td></td>
+        {% else %}
+        <td>{{ (line_totals.qty_issued - line_totals.qty_sold)|round(2) }}</td>
         {% endif %}
       </tr>
     </tfoot>
@@ -151,6 +157,11 @@
   </table>
   </div>
 </div>
+{% if issue.Status != 'Reconciled' and lines %}
+<div class="text-muted small fst-italic mt-2">Expected Return = Qty Issued − Qty Sold (so far). Updates live as
+  Sales-tab entries come in through the day; once Reconcile is clicked, it's replaced by the actual end-of-day
+  reconciliation columns.</div>
+{% endif %}
 
 {% if credited_sales_full %}
 <div class="card mt-3">

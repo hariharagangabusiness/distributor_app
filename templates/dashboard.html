@@ -89,6 +89,45 @@
 </div>
 {% endmacro %}
 
+{% macro widget_stock_returns() %}
+<div class="card mb-3">
+  <div class="card-header"><i class="bi bi-arrow-left-right text-secondary"></i> Stock Return Variance — {{ month_name }} {{ year }}</div>
+  <div class="card-body">
+    {% if stock_returns_summary.rows %}
+    <div class="d-flex justify-content-between flex-wrap gap-2 mb-2">
+      <div>
+        <span class="text-muted small">Net this month:</span>
+        <span class="fw-bold {% if stock_returns_summary.totals.units > 0 %}text-danger{% elif stock_returns_summary.totals.units < 0 %}text-warning{% endif %}">{{ stock_returns_summary.totals.units }} unit(s)</span>
+        <span class="text-muted">/</span>
+        <span class="fw-bold {% if stock_returns_summary.totals.value > 0 %}text-danger{% elif stock_returns_summary.totals.value < 0 %}text-warning{% endif %}">{{ (stock_returns_summary.totals.value)|inr(2) }}</span>
+      </div>
+      <span class="text-muted small">{{ stock_returns_summary.totals.short_count }} of {{ stock_returns_summary.totals.employee_count }} salesperson(s) short this month</span>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm table-hover mb-0 no-resize-table">
+        <thead><tr><th>Salesperson</th><th class="text-end">Units</th><th class="text-end">Value (cost)</th><th></th></tr></thead>
+        <tbody>
+          {% for r in stock_returns_summary.rows %}
+          <tr role="button" class="stock-returns-row" data-employee-id="{{ r.EmployeeID }}" data-employee-name="{{ r.EmployeeName }}">
+            <td>{{ r.EmployeeName }}</td>
+            <td class="text-end {% if r.UnitsVariance > 0 %}text-danger{% elif r.UnitsVariance < 0 %}text-warning{% endif %}">{{ r.UnitsVariance }}</td>
+            <td class="text-end {% if r.ValueVariance > 0 %}text-danger{% elif r.ValueVariance < 0 %}text-warning{% endif %}">{{ (r.ValueVariance)|inr(2) }}</td>
+            <td class="text-end"><i class="bi bi-chevron-right text-muted"></i></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="text-muted small mt-2">Click a row for the Stock Issues behind that figure. Positive = stock
+      short/missing that month; negative = more came back than the numbers can account for (unusual). Valued at
+      cost price.</div>
+    {% else %}
+    <p class="text-muted mb-0">No Reconciled Stock Issues for this month yet.</p>
+    {% endif %}
+  </div>
+</div>
+{% endmacro %}
+
 {% macro widget_low_stock() %}
 <div class="card mb-3">
   <div class="card-header"><i class="bi bi-exclamation-triangle text-danger"></i> Low Stock ({{ low_stock|length }})</div>
@@ -213,6 +252,7 @@
 {% set widget_renderers = {
   'stats': widget_stats,
   'targets': widget_targets,
+  'stock_returns': widget_stock_returns,
   'low_stock': widget_low_stock,
   'over_stock': widget_over_stock,
   'maintenance_due': widget_maintenance_due,
@@ -222,12 +262,12 @@
   'gst_due': widget_gst_due,
 } %}
 
-{% set admin_only_widgets = ['salary_status', 'active_advances', 'gst_due'] %}
+{% set admin_only_widgets = ['salary_status', 'active_advances', 'gst_due', 'stock_returns'] %}
 <div class="row g-3">
   {% for key in widget_order %}
     {% if widget_visible.get(key, True) and key in widget_renderers
           and not (key in admin_only_widgets and not (current_user and current_user.Role == 'Admin')) %}
-      {% if key in ('stats', 'targets') %}
+      {% if key in ('stats', 'targets', 'stock_returns') %}
         <div class="col-12">{{ widget_renderers[key]() }}</div>
       {% else %}
         <div class="col-lg-6">{{ widget_renderers[key]() }}</div>
@@ -235,8 +275,110 @@
     {% endif %}
   {% endfor %}
 </div>
+
+<div class="modal fade" id="stockReturnsDetailModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="stockReturnsDetailTitle">Stock Return Variance</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="table-responsive">
+          <table class="table table-sm mb-0">
+            <thead><tr><th>Date</th><th>Stock Issue</th><th>Product</th><th class="text-end">Issued</th>
+              <th class="text-end">Sold</th><th class="text-end">Returned</th><th class="text-end">Free</th>
+              <th class="text-end">Variance</th><th class="text-end">Value</th></tr></thead>
+            <tbody id="stockReturnsDetailBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 {% if not widget_order %}
   <p class="text-muted">No dashboard widgets configured.
   {% if current_user and current_user.Role == 'Admin' %}<a href="{{ url_for('dashboard_customize') }}">Customize your dashboard →</a>{% endif %}</p>
 {% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  var rows = document.querySelectorAll('.stock-returns-row');
+  if (!rows.length) return;
+  var modalEl = document.getElementById('stockReturnsDetailModal');
+  var modal = new bootstrap.Modal(modalEl);
+  var titleEl = document.getElementById('stockReturnsDetailTitle');
+  var bodyEl = document.getElementById('stockReturnsDetailBody');
+  var year = {{ year|tojson }};
+  var month = {{ month|tojson }};
+
+  function cell(text, align) {
+    var td = document.createElement('td');
+    td.textContent = text;
+    if (align) td.className = 'text-end';
+    return td;
+  }
+
+  rows.forEach(function (row) {
+    row.addEventListener('click', function () {
+      var employeeId = row.getAttribute('data-employee-id');
+      var employeeName = row.getAttribute('data-employee-name');
+      titleEl.textContent = 'Stock Return Variance — ' + employeeName;
+      bodyEl.innerHTML = '';
+      var loadingRow = document.createElement('tr');
+      var loadingCell = document.createElement('td');
+      loadingCell.colSpan = 9;
+      loadingCell.className = 'text-center text-muted py-3';
+      loadingCell.textContent = 'Loading…';
+      loadingRow.appendChild(loadingCell);
+      bodyEl.appendChild(loadingRow);
+      modal.show();
+
+      fetch('/api/stock-returns/' + encodeURIComponent(employeeId) + '?year=' + year + '&month=' + month)
+        .then(function (resp) { return resp.json(); })
+        .then(function (data) {
+          bodyEl.innerHTML = '';
+          if (!data.lines || !data.lines.length) {
+            var emptyRow = document.createElement('tr');
+            var emptyCell = document.createElement('td');
+            emptyCell.colSpan = 9;
+            emptyCell.className = 'text-center text-muted py-3';
+            emptyCell.textContent = 'No variance lines found for this salesperson this month.';
+            emptyRow.appendChild(emptyCell);
+            bodyEl.appendChild(emptyRow);
+            return;
+          }
+          data.lines.forEach(function (l) {
+            var tr = document.createElement('tr');
+            tr.appendChild(cell(l.date));
+            tr.appendChild(cell(l.issue_number));
+            tr.appendChild(cell(l.product));
+            tr.appendChild(cell(l.qty_issued, true));
+            tr.appendChild(cell(l.qty_sold, true));
+            tr.appendChild(cell(l.qty_returned, true));
+            tr.appendChild(cell(l.qty_free, true));
+            var varianceCell = cell(l.variance, true);
+            if (l.variance > 0) varianceCell.classList.add('text-danger');
+            else if (l.variance < 0) varianceCell.classList.add('text-warning');
+            varianceCell.classList.add('fw-bold');
+            tr.appendChild(varianceCell);
+            tr.appendChild(cell(l.value.toFixed(2), true));
+            bodyEl.appendChild(tr);
+          });
+        })
+        .catch(function () {
+          bodyEl.innerHTML = '';
+          var errRow = document.createElement('tr');
+          var errCell = document.createElement('td');
+          errCell.colSpan = 9;
+          errCell.className = 'text-center text-danger py-3';
+          errCell.textContent = 'Could not load detail - please try again.';
+          errRow.appendChild(errCell);
+          bodyEl.appendChild(errRow);
+        });
+    });
+  });
+})();
+</script>
 {% endblock %}

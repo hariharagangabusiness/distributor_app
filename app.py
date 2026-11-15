@@ -893,6 +893,24 @@ def next_invoice_number():
     return invoice_no
 
 
+def next_stock_issue_number():
+    """Allocates the next sequential Stock Issue number for the current
+    financial year, formatted <Prefix>/<FY>/<0001> - same pattern and same
+    reentrant-transaction reasoning as next_invoice_number() (stock_issue_form()
+    doesn't currently call this from inside another transaction, but keeping
+    the same safe pattern here costs nothing and avoids a future surprise if
+    that ever changes)."""
+    fy = get_financial_year_label(date.today())
+    with db.transaction() as conn:
+        row = conn.execute(
+            "SELECT NextStockIssueSeq, StockIssueSeqFY, StockIssuePrefix FROM CompanySettings WHERE SettingsID=1").fetchone()
+        seq = row["NextStockIssueSeq"] if row["StockIssueSeqFY"] == fy else 1
+        prefix = row["StockIssuePrefix"] or "SI"
+        issue_number = f"{prefix}/{fy}/{seq:04d}"
+        conn.execute("UPDATE CompanySettings SET NextStockIssueSeq=?, StockIssueSeqFY=? WHERE SettingsID=1", (seq + 1, fy))
+    return issue_number
+
+
 def next_customer_account_number():
     """Allocates the next sequential 'HHGnnnn' account number for a brand
     new Customer - a permanent, never-reused identifier, unlike the row's
@@ -1475,6 +1493,7 @@ DASHBOARD_WIDGET_LABELS = {
     "salary_status": "Salary status this month",
     "active_advances": "Active employee advances",
     "gst_due": "GST filing due dates",
+    "stock_returns": "Stock Return Variance (units & cost, monthly)",
 }
 DASHBOARD_WIDGET_ORDER_DEFAULT = list(DASHBOARD_WIDGET_LABELS.keys())
 
@@ -1554,7 +1573,7 @@ MODULE_COLUMNS = {
                   ("bank", "Bank ₹"), ("discount", "Discount ₹"), ("expected", "Expected ₹"),
                   ("collected", "Collected ₹"), ("discrepancy", "Discrepancy ₹"), ("month_pace", "Month Pace"),
                   ("top_products", "Top Products Today")],
-    "StockIssue": [("date", "Date"), ("salesperson", "Salesperson"), ("status", "Status"),
+    "StockIssue": [("issue_number", "Issue #"), ("date", "Date"), ("salesperson", "Salesperson"), ("status", "Status"),
                    ("month_target", "Month Target"), ("expected", "Expected"), ("collected", "Collected"),
                    ("discrepancy", "Discrepancy"), ("qty_sold", "Qty Sold"), ("discount", "Discount"),
                    ("scheme", "Scheme Amount"), ("unaccounted", "Unaccounted")],
@@ -1747,6 +1766,7 @@ def dashboard():
     # Sales Target MTD progress - whole-employee (all-products) targets for
     # the month being viewed, combined across every salesperson that has one set.
     target_summary = get_company_target_summary(sel["year"], sel["month"])
+    stock_returns_summary = get_stock_returns_summary(sel["year"], sel["month"])
 
     return render_template("dashboard.html",
                             sales_today=sales_today, sales_month=sales_month,
@@ -1759,7 +1779,8 @@ def dashboard():
                             pending_salary=pending_salary_this_month(sel["year"], sel["month"]),
                             missing_salary=employees_missing_salary_record(sel["year"], sel["month"]),
                             advances=active_advances(), gst_due=gst_due, target_summary=target_summary,
-                            month_name=MONTH_NAMES[sel["month"]], year=sel["year"],
+                            stock_returns_summary=stock_returns_summary,
+                            month_name=MONTH_NAMES[sel["month"]], year=sel["year"], month=sel["month"],
                             is_current_month=sel["is_current"],
                             prev_year=sel["prev_year"], prev_month=sel["prev_month"],
                             next_year=sel["next_year"], next_month=sel["next_month"],
@@ -2157,14 +2178,15 @@ def direct_sale_review_list():
 
     rows = db.query(f"""
         SELECT dsr.*, it.TransactionDate, it.QtyChange, it.RefID AS SaleID,
-               p.ProductName, s.InvoiceNumber, s.SaleDate, c.CustomerName,
-               e.EmployeeName
+               p.ProductName, s.InvoiceNumber, s.SaleDate, s.EmployeeID, c.CustomerName,
+               e.EmployeeName, si.IssueNumber AS AssignedIssueNumber
         FROM DirectSaleReviews dsr
         JOIN InventoryTransactions it ON it.TransactionID = dsr.TransactionID
         JOIN Products p ON p.ProductID = dsr.ProductID
         LEFT JOIN Sales s ON s.SaleID = it.RefID AND it.RefType = 'Sale'
         LEFT JOIN Customers c ON c.CustomerID = s.CustomerID
         LEFT JOIN Employees e ON e.EmployeeID = s.EmployeeID
+        LEFT JOIN StockIssues si ON si.IssueID = dsr.StockIssueID
         {where_sql}
         ORDER BY dsr.CreatedAt DESC, dsr.ReviewID DESC
     """, params)
@@ -2172,8 +2194,21 @@ def direct_sale_review_list():
     counts = {r["Status"]: r["c"] for r in db.query(
         "SELECT Status, COUNT(*) c FROM DirectSaleReviews GROUP BY Status")}
 
+    # For each row that's still Pending and has a salesperson, the Stock Issues it could be
+    # assigned to on Confirm - same employee, same date (any status: even an already-
+    # Reconciled issue can still take a late assignment, since its own StockIssueLines
+    # figures were frozen at reconcile time regardless). Batched as one query per distinct
+    # (employee, date) pair rather than one query per row.
+    candidate_keys = {(r["EmployeeID"], r["SaleDate"]) for r in rows
+                      if r["Status"] == "Pending" and r["EmployeeID"] and r["SaleDate"]}
+    candidates_by_key = {}
+    for employee_id, sale_date in candidate_keys:
+        candidates_by_key[(employee_id, sale_date)] = db.query(
+            """SELECT IssueID, IssueNumber, Status FROM StockIssues WHERE EmployeeID=? AND IssueDate=?
+               ORDER BY IssueID""", (employee_id, sale_date))
+
     return render_template("direct_sale_review_list.html", rows=rows, status_filter=status_filter,
-                            q=q, counts=counts)
+                            q=q, counts=counts, candidates_by_key=candidates_by_key)
 
 
 @app.route("/inventory/direct-sale-review/<int:review_id>/mark", methods=["POST"])
@@ -2185,10 +2220,36 @@ def direct_sale_review_mark(review_id):
         return redirect(url_for("direct_sale_review_list"))
     current = get_current_user()
     notes = (request.form.get("notes") or "").strip()
+
+    # Flag/Reopen never include a stock_issue_id field at all - this review's existing
+    # assignment (if any) is left exactly as it was. Only Confirm's own form (see
+    # direct_sale_review_list.html) submits this field, always (set to '' for its
+    # "don't assign" option), so that's what actually changes or clears it.
+    existing = db.query("SELECT StockIssueID FROM DirectSaleReviews WHERE ReviewID=?", (review_id,), one=True)
+    stock_issue_id = existing["StockIssueID"] if existing else None
+    if "stock_issue_id" in request.form:
+        stock_issue_id_raw = (request.form.get("stock_issue_id") or "").strip()
+        stock_issue_id = None
+        if stock_issue_id_raw:
+            # Sanity check: only accept an issue that actually belongs to this review's own
+            # salesperson - never let a stray/mistyped ID assign this quantity to someone
+            # else's Stock Issue.
+            review_sale = db.query("""SELECT s.EmployeeID FROM DirectSaleReviews dsr
+                                    JOIN InventoryTransactions it ON it.TransactionID = dsr.TransactionID
+                                    LEFT JOIN Sales s ON s.SaleID = it.RefID AND it.RefType='Sale'
+                                    WHERE dsr.ReviewID=?""", (review_id,), one=True)
+            issue = db.query("SELECT IssueID, EmployeeID FROM StockIssues WHERE IssueID=?",
+                             (int(stock_issue_id_raw),), one=True) if stock_issue_id_raw.isdigit() else None
+            if issue and review_sale and review_sale["EmployeeID"] == issue["EmployeeID"]:
+                stock_issue_id = issue["IssueID"]
+            else:
+                flash("Could not assign to that Stock Issue (it doesn't belong to this sale's salesperson) — "
+                      "left unassigned.", "warning")
+
     db.execute("""UPDATE DirectSaleReviews SET Status=?, ReviewedByUserID=?, ReviewedByUsername=?,
-                ReviewedAt=datetime('now'), Notes=? WHERE ReviewID=?""",
+                ReviewedAt=datetime('now'), Notes=?, StockIssueID=? WHERE ReviewID=?""",
                (new_status, current["UserID"] if current else None,
-                current["Username"] if current else None, notes or None, review_id))
+                current["Username"] if current else None, notes or None, stock_issue_id, review_id))
     flash(f"Marked as {new_status}.", "success")
     return redirect(url_for("direct_sale_review_list", status=request.form.get("return_status", "Pending")))
 
@@ -3341,9 +3402,9 @@ def auto_create_stock_issue_for_sale(employee_id, sale_date, line_data):
     created issue. Flagged ReviewStatus='Pending' so a Manager/Admin has to
     look it over before it can be reconciled — the sale itself has already
     gone through by the time this runs, so this never blocks the sale."""
-    issue_id = db.execute("""INSERT INTO StockIssues (EmployeeID, IssueDate, Status, ReviewStatus, Notes)
-                VALUES (?,?,?,?,?)""",
-               (employee_id, sale_date, "Issued", "Pending",
+    issue_id = db.execute("""INSERT INTO StockIssues (IssueNumber, EmployeeID, IssueDate, Status, ReviewStatus, Notes)
+                VALUES (?,?,?,?,?,?)""",
+               (next_stock_issue_number(), employee_id, sale_date, "Issued", "Pending",
                 "Auto-created from a Sales-tab entry — pending Manager/Admin review"))
     log_stock_issue_change(issue_id, "Created", None, None,
                             "Auto-created from a Sales-tab entry (pending review)")
@@ -4705,6 +4766,47 @@ def true_product_qty_sold(employee_id, sale_date, product_id):
     return row["q"] or 0
 
 
+def product_qty_sold_for_issue(issue_id, employee_id, sale_date, product_id):
+    """Ground-truth Qty Sold for ONE specific Stock Issue's line - safe even when a
+    salesperson has more than one Stock Issue for the same employee/date (see
+    find_open_stock_issue()'s docstring on how that arises: a second "Issue Stock" done
+    instead of "Add More Products").
+
+    When this is the ONLY Stock Issue for that employee/date (the overwhelmingly common
+    case), this returns exactly what true_product_qty_sold() always has - zero behavior
+    change there.
+
+    When SEVERAL Stock Issues exist for the same employee/date, true_product_qty_sold()
+    can no longer be trusted as this issue's own figure - it hands the SAME full-day total
+    to every sibling issue's matching product line, double- (or triple-) crediting the same
+    physical sale across more than one issue's reconciliation. In that case this instead
+    counts only what's unambiguously THIS issue's:
+      - Sales LIVE-CREDITED to one of this issue's own lines (SaleStockIssueLinks) - already
+        issue-specific, no ambiguity.
+      - Sales that fell through to a direct warehouse deduction AND were explicitly assigned
+        to this issue when their Direct Sale Review was confirmed (DirectSaleReviews.
+        StockIssueID) - see direct_sale_review_mark().
+    A direct sale not yet confirmed/assigned doesn't count toward ANY sibling issue yet,
+    rather than being guessed at and risking being credited to more than one - it shows up
+    here once it's assigned."""
+    siblings = db.query("SELECT IssueID FROM StockIssues WHERE EmployeeID=? AND IssueDate=?",
+                        (employee_id, sale_date))
+    if len(siblings) <= 1:
+        return true_product_qty_sold(employee_id, sale_date, product_id)
+
+    credited = db.query("""SELECT COALESCE(SUM(ssl.QtyApplied), 0) q FROM SaleStockIssueLinks ssl
+                         JOIN StockIssueLines sil ON sil.LineID = ssl.StockIssueLineID
+                         WHERE sil.IssueID=? AND sil.ProductID=?""", (issue_id, product_id), one=True)["q"] or 0
+    assigned_direct = db.query("""SELECT COALESCE(SUM(-it.QtyChange), 0) q
+                                FROM DirectSaleReviews dsr
+                                JOIN InventoryTransactions it ON it.TransactionID = dsr.TransactionID
+                                JOIN Sales s ON s.SaleID = it.RefID AND it.RefType='Sale'
+                                WHERE dsr.StockIssueID=? AND it.ProductID=? AND it.TransactionType='Sale'
+                                  AND s.EmployeeID=? AND s.SaleDate=? AND s.Status<>'Cancelled'""",
+                                (issue_id, product_id, employee_id, sale_date), one=True)["q"] or 0
+    return round(credited + assigned_direct, 4)
+
+
 def true_product_discount_sold(employee_id, sale_date, product_id):
     """The Discount-column equivalent of true_product_qty_sold(): the real total discount
     given across every one of a salesperson's Sales for one product/date, computed directly
@@ -4840,8 +4942,8 @@ def stock_issue_form():
             flash("Add at least one product line.", "error")
             return redirect(url_for("stock_issue_form"))
 
-        issue_id = db.execute("""INSERT INTO StockIssues (EmployeeID, IssueDate, Status, Notes)
-                    VALUES (?,?,?,?)""", (employee_id, issue_date, "Issued", f.get("notes", "")))
+        issue_id = db.execute("""INSERT INTO StockIssues (IssueNumber, EmployeeID, IssueDate, Status, Notes)
+                    VALUES (?,?,?,?,?)""", (next_stock_issue_number(), employee_id, issue_date, "Issued", f.get("notes", "")))
         log_stock_issue_change(issue_id, "Created")
         netted_msgs = []
         for prod_id, qty, price in lines:
@@ -5059,7 +5161,7 @@ def stock_issue_reconcile(issue_id):
         # or none of it does.
         with db.transaction():
             already_invoiced_by_line = {
-                l["LineID"]: true_product_qty_sold(issue["EmployeeID"], issue["IssueDate"], l["ProductID"])
+                l["LineID"]: product_qty_sold_for_issue(issue_id, issue["EmployeeID"], issue["IssueDate"], l["ProductID"])
                 for l in lines
             }
             cash_amount = float(f.get("cash_amount") or 0)
@@ -5219,7 +5321,7 @@ def stock_issue_reconcile(issue_id):
     # default instead of only after someone notices the gap and manually retypes it.
     lines = [dict(l) for l in lines]
     for l in lines:
-        l["TrueQtySold"] = true_product_qty_sold(issue["EmployeeID"], issue["IssueDate"], l["ProductID"])
+        l["TrueQtySold"] = product_qty_sold_for_issue(issue_id, issue["EmployeeID"], issue["IssueDate"], l["ProductID"])
         l["StoredQtySold"] = l["QtySold"] or 0
         if not is_reedit and l["TrueQtySold"] > l["StoredQtySold"] + 0.001:
             l["QtySold"] = l["TrueQtySold"]
@@ -6592,6 +6694,102 @@ def get_employee_month_target_progress(employee_id, year=None, month=None):
     days_elapsed = target_days_elapsed(year, month)
     days_in_month = calendar.monthrange(year, month)[1]
     return build_target_view(t, days_elapsed, days_in_month)
+
+
+# ---------------------------------------------------------------------
+# Stock Returns Variance - per-salesperson, per-month view of the existing
+# Unaccounted figure (Qty Issued - Qty Sold - Qty Returned - Qty Free) from
+# Reconciled Stock Issues, in units and valued at cost. Dashboard widget +
+# drill-down popup, "similar to Sales Target" per the request that added it.
+# ---------------------------------------------------------------------
+
+def get_stock_returns_summary(year=None, month=None):
+    """Per-salesperson Stock Return variance for the given month (defaults to the current
+    month): positive UnitsVariance/ValueVariance = stock short/missing that month (less came
+    back - sold or returned - than was issued); negative = more was accounted for than was
+    issued (unusual - normally a data-entry slip, since you can't sell or return more than
+    went out). Valued at Products.CostPrice (what the missing/excess stock cost the company
+    to acquire, not its selling price). Only Reconciled issues are counted - an issue still
+    "Issued" has no final Qty Returned/Qty Free yet, so there's nothing settled to measure."""
+    today = date.today()
+    year = year or today.year
+    month = month or today.month
+    month_start = date(year, month, 1).isoformat()
+    month_end = date(year, month, calendar.monthrange(year, month)[1]).isoformat()
+    rows = db.query("""
+        SELECT e.EmployeeID, e.EmployeeName,
+               COALESCE(SUM(sil.QtyIssued - COALESCE(sil.QtySold,0) - COALESCE(sil.QtyReturned,0)
+                            - COALESCE(sil.QtyFree,0)), 0) AS UnitsVariance,
+               COALESCE(SUM((sil.QtyIssued - COALESCE(sil.QtySold,0) - COALESCE(sil.QtyReturned,0)
+                            - COALESCE(sil.QtyFree,0)) * COALESCE(pr.CostPrice,0)), 0) AS ValueVariance
+        FROM StockIssues si
+        JOIN Employees e ON e.EmployeeID = si.EmployeeID
+        JOIN StockIssueLines sil ON sil.IssueID = si.IssueID
+        JOIN Products pr ON pr.ProductID = sil.ProductID
+        WHERE si.Status='Reconciled' AND si.IssueDate BETWEEN ? AND ?
+        GROUP BY e.EmployeeID, e.EmployeeName
+        ORDER BY ABS(ValueVariance) DESC, e.EmployeeName
+    """, (month_start, month_end))
+    rows = [dict(r) for r in rows]
+    for r in rows:
+        r["UnitsVariance"] = round(r["UnitsVariance"], 2)
+        r["ValueVariance"] = round(r["ValueVariance"], 2)
+    totals = {
+        "units": round(sum(r["UnitsVariance"] for r in rows), 2),
+        "value": round(sum(r["ValueVariance"] for r in rows), 2),
+        "short_count": sum(1 for r in rows if r["UnitsVariance"] > 0.001),
+        "employee_count": len(rows),
+    }
+    return {"rows": rows, "totals": totals}
+
+
+def get_stock_returns_detail(employee_id, year, month):
+    """Line-level detail behind get_stock_returns_summary() for ONE salesperson/month - which
+    Stock Issues/products contributed to that employee's total. Lines that balanced exactly
+    (variance 0) are left out - the drill-down is for investigating what's off, not a full
+    reconciliation reprint (that's what the issue's own detail page is for)."""
+    month_start = date(year, month, 1).isoformat()
+    month_end = date(year, month, calendar.monthrange(year, month)[1]).isoformat()
+    rows = db.query("""
+        SELECT si.IssueID, si.IssueNumber, si.IssueDate, pr.ProductName, pr.Unit,
+               sil.QtyIssued, COALESCE(sil.QtySold,0) AS QtySold,
+               COALESCE(sil.QtyReturned,0) AS QtyReturned, COALESCE(sil.QtyFree,0) AS QtyFree,
+               pr.CostPrice
+        FROM StockIssues si
+        JOIN StockIssueLines sil ON sil.IssueID = si.IssueID
+        JOIN Products pr ON pr.ProductID = sil.ProductID
+        WHERE si.Status='Reconciled' AND si.EmployeeID=? AND si.IssueDate BETWEEN ? AND ?
+        ORDER BY si.IssueDate, si.IssueID, pr.ProductName
+    """, (employee_id, month_start, month_end))
+    detail = []
+    for r in rows:
+        variance = round((r["QtyIssued"] or 0) - r["QtySold"] - r["QtyReturned"] - r["QtyFree"], 2)
+        if abs(variance) < 0.001:
+            continue
+        detail.append({
+            "issue_id": r["IssueID"], "issue_number": r["IssueNumber"] or f"#{r['IssueID']}",
+            "date": r["IssueDate"], "product": r["ProductName"], "unit": r["Unit"],
+            "qty_issued": r["QtyIssued"], "qty_sold": r["QtySold"], "qty_returned": r["QtyReturned"],
+            "qty_free": r["QtyFree"], "variance": variance,
+            "value": round(variance * (r["CostPrice"] or 0), 2),
+        })
+    return detail
+
+
+@app.route("/api/stock-returns/<int:employee_id>")
+@admin_required
+def api_stock_returns_detail(employee_id):
+    today = date.today()
+    try:
+        year = int(request.args.get("year", today.year))
+        month = int(request.args.get("month", today.month))
+    except (TypeError, ValueError):
+        year, month = today.year, today.month
+    employee = db.query("SELECT EmployeeName FROM Employees WHERE EmployeeID=?", (employee_id,), one=True)
+    if not employee:
+        return jsonify({"error": "Employee not found"}), 404
+    lines = get_stock_returns_detail(employee_id, year, month)
+    return jsonify({"employee_name": employee["EmployeeName"], "year": year, "month": month, "lines": lines})
 
 
 # ---------------------------------------------------------------------
