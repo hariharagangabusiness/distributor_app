@@ -289,3 +289,30 @@ class LocationTrackingViewVisitPlanTests(DBTestCase):
         resp = client.get(f"/location-tracking?date=2026-11-20&employee_id={emp}")
         self.assertEqual(resp.status_code, 200)
         self.assertNotIn(b"Add Stop", resp.data)
+
+    def test_date_picker_has_no_max_so_future_days_can_be_planned(self):
+        """The date input used to carry max="{today}" (sensible when this page only showed past
+        ping history) - once it also hosts the Visit Plan, that cap silently blocked planning
+        for any day after today. Must stay unset."""
+        client = self.make_admin_client()
+        resp = client.get("/location-tracking")
+        self.assertNotRegex(resp.data.decode(), r'name="date"[^>]*\bmax=')
+
+    def test_can_build_a_visit_plan_for_a_future_date(self):
+        emp = self.make_employee()
+        cust = self.make_customer("Future Store")
+        db.execute("UPDATE Customers SET Latitude=1, Longitude=1 WHERE CustomerID=?", (cust,))
+        client = self.make_admin_client()
+        future_date = "2099-01-15"
+
+        resp = client.get(f"/location-tracking?date={future_date}&employee_id={emp}")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"Add Stop", resp.data)
+
+        resp = client.post(f"/visit-plans/{emp}/{future_date}/add-stop", data={
+            "mode": "customer", "customer_id": str(cust),
+        }, follow_redirects=True)
+        self.assertEqual(resp.status_code, 200)
+        plan = db.query("SELECT VisitPlanID FROM VisitPlans WHERE EmployeeID=? AND VisitDate=?",
+                         (emp, future_date), one=True)
+        self.assertIsNotNone(plan)
