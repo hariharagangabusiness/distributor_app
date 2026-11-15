@@ -97,6 +97,8 @@
 </div>
 {% endif %}
 
+{% endblock %}
+{% block modals %}
 {% if can_manage_visit_plan %}
 <div class="modal fade" id="addStopModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog">
@@ -149,7 +151,6 @@
   </div>
 </div>
 {% endif %}
-
 {% endblock %}
 {% block scripts %}
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
