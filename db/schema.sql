@@ -114,6 +114,9 @@ CREATE TABLE IF NOT EXISTS CompanySettings (
     InvoiceTerms    TEXT DEFAULT 'Goods once sold will not be taken back. Interest @18% p.a. charged on overdue bills. Subject to local jurisdiction only.',
     NextInvoiceSeq  INTEGER NOT NULL DEFAULT 1,
     InvoiceSeqFY    TEXT,   -- financial year the NextInvoiceSeq counter applies to, e.g. '2026-27'
+    StockIssuePrefix     TEXT NOT NULL DEFAULT 'SI',  -- Stock Issue numbers: PREFIX/FY/0001, same pattern as invoices
+    NextStockIssueSeq    INTEGER NOT NULL DEFAULT 1,
+    StockIssueSeqFY      TEXT,   -- financial year NextStockIssueSeq applies to
     NextCustomerAccountSeq INTEGER NOT NULL DEFAULT 1,  -- next "HHGnnnn" customer account number to allocate
     -- GST Filing: scheme + reminder/email settings (see GST Filing section below)
     GstFilingScheme       TEXT NOT NULL DEFAULT 'Monthly',  -- 'Monthly' or 'QRMP'
@@ -688,6 +691,8 @@ CREATE TABLE IF NOT EXISTS SupplierProductMap (
 -- =====================================================================
 CREATE TABLE IF NOT EXISTS StockIssues (
     IssueID         INTEGER PRIMARY KEY AUTOINCREMENT,
+    IssueNumber     TEXT UNIQUE,   -- e.g. 'SI/2026-27/0001' - allocated once at creation (next_stock_issue_number()),
+                                   -- NULL only for rows that predate this column (backfilled by migration)
     EmployeeID      INTEGER NOT NULL,           -- the salesperson stock was issued to
     IssueDate       TEXT NOT NULL,
     Status          TEXT NOT NULL DEFAULT 'Issued',  -- Issued (out with salesperson) / Reconciled (day closed out)
@@ -894,8 +899,16 @@ CREATE TABLE IF NOT EXISTS DirectSaleReviews (
     ReviewedAt      TEXT,
     Notes           TEXT,
     CreatedAt       TEXT NOT NULL DEFAULT (datetime('now')),
+    -- Which Stock Issue this direct-deducted quantity should be reconciled against, set
+    -- (optionally) when an Admin confirms this row - see product_qty_sold_for_issue() in
+    -- app.py for why this matters whenever a salesperson has more than one Stock Issue open
+    -- on the same date: without an explicit choice, the system can't tell which issue's
+    -- Qty Sold this sale's stock should count toward. NULL = not from any Stock Issue (a
+    -- deliberate choice, or not yet decided).
+    StockIssueID    INTEGER,
     FOREIGN KEY (TransactionID) REFERENCES InventoryTransactions(TransactionID),
-    FOREIGN KEY (ProductID) REFERENCES Products(ProductID)
+    FOREIGN KEY (ProductID) REFERENCES Products(ProductID),
+    FOREIGN KEY (StockIssueID) REFERENCES StockIssues(IssueID)
 );
 
 -- Tracks which migrate_*.py scripts (see run_migrations.py) have already

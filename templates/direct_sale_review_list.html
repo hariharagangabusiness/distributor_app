@@ -7,6 +7,8 @@
   the "Direct Sale" figure on the Inventory Reconciliation report), it's parked here so an Admin can confirm it
   isn't a duplicate deduction. Stock is <strong>not</strong> held back — it deducts immediately as before; this is
   a review/audit layer on top. Confirming or flagging a row here does not change any stock figures.
+  <strong>Confirming</strong> a row with a salesperson also assigns it to a Stock Issue (automatically, when there's
+  only one open that day — otherwise you'll be asked which one), so it's reconciled against the right one.
 </div>
 <div class="d-flex justify-content-between mb-3 flex-wrap gap-2">
   <ul class="nav nav-pills">
@@ -34,10 +36,11 @@
   <table class="table table-hover mb-0 align-middle no-resize-table table-cards-mobile">
     <thead><tr>
       <th>Date</th><th>Product</th><th>Invoice</th><th>Customer</th><th>Salesperson</th>
-      <th class="text-end">Qty</th><th>Status</th><th>Reviewed by</th><th></th>
+      <th class="text-end">Qty</th><th>Stock Issue</th><th>Status</th><th>Reviewed by</th><th></th>
     </tr></thead>
     <tbody>
       {% for r in rows %}
+      {% set candidates = candidates_by_key.get((r.EmployeeID, r.SaleDate), []) if r.Status == 'Pending' else [] %}
       <tr>
         <td data-label="Date">{{ r.TransactionDate or r.SaleDate or '' }}</td>
         <td data-label="Product">{{ r.ProductName }}</td>
@@ -51,6 +54,17 @@
         <td data-label="Customer">{{ r.CustomerName or '' }}</td>
         <td data-label="Salesperson">{{ r.EmployeeName or '' }}</td>
         <td class="text-end" data-label="Qty">{{ (r.QtyChange|abs)|round(2) }}</td>
+        <td data-label="Stock Issue">
+          {% if r.AssignedIssueNumber %}
+            <a href="{{ url_for('stock_issue_view', issue_id=r.StockIssueID) }}" class="small">{{ r.AssignedIssueNumber }}</a>
+          {% elif r.Status == 'Pending' and candidates|length > 1 %}
+            <span class="badge bg-light text-dark" title="This salesperson has {{ candidates|length }} Stock Issues open that day — Confirm will ask which one.">{{ candidates|length }} open — pick on Confirm</span>
+          {% elif r.Status == 'Pending' and not r.EmployeeID %}
+            <span class="text-muted small">no salesperson</span>
+          {% else %}
+            <span class="text-muted small">—</span>
+          {% endif %}
+        </td>
         <td data-label="Status">
           <span class="badge {% if r.Status == 'Pending' %}bg-warning text-dark{% elif r.Status == 'Confirmed' %}bg-success{% else %}bg-danger{% endif %}">
             {{ r.Status }}
@@ -59,26 +73,78 @@
         </td>
         <td class="text-muted small" data-label="Reviewed by">{{ r.ReviewedByUsername or '' }}{% if r.ReviewedAt %} · {{ r.ReviewedAt }}{% endif %}</td>
         <td class="text-end">
-          <form method="post" action="{{ url_for('direct_sale_review_mark', review_id=r.ReviewID) }}" class="d-flex gap-1 justify-content-end">
-  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <input type="hidden" name="return_status" value="{{ status_filter }}">
+          <div class="d-flex gap-1 justify-content-end">
             {% if r.Status != 'Confirmed' %}
-            <button class="btn btn-sm btn-outline-success" name="status" value="Confirmed" type="submit">Confirm</button>
+              {% if candidates|length >= 2 %}
+              <button type="button" class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#assign-modal-{{ r.ReviewID }}">Confirm</button>
+              {% else %}
+              <form method="post" action="{{ url_for('direct_sale_review_mark', review_id=r.ReviewID) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="return_status" value="{{ status_filter }}">
+                <input type="hidden" name="status" value="Confirmed">
+                <input type="hidden" name="stock_issue_id" value="{{ candidates[0].IssueID if candidates else '' }}">
+                <button class="btn btn-sm btn-outline-success" type="submit">Confirm</button>
+              </form>
+              {% endif %}
             {% endif %}
-            {% if r.Status != 'Flagged' %}
-            <button class="btn btn-sm btn-outline-danger" name="status" value="Flagged" type="submit">Flag</button>
-            {% endif %}
-            {% if r.Status != 'Pending' %}
-            <button class="btn btn-sm btn-outline-secondary" name="status" value="Pending" type="submit">Reopen</button>
-            {% endif %}
-          </form>
+            <form method="post" action="{{ url_for('direct_sale_review_mark', review_id=r.ReviewID) }}" class="d-flex gap-1">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="return_status" value="{{ status_filter }}">
+              {% if r.Status != 'Flagged' %}
+              <button class="btn btn-sm btn-outline-danger" name="status" value="Flagged" type="submit">Flag</button>
+              {% endif %}
+              {% if r.Status != 'Pending' %}
+              <button class="btn btn-sm btn-outline-secondary" name="status" value="Pending" type="submit">Reopen</button>
+              {% endif %}
+            </form>
+          </div>
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="9" class="text-center text-muted py-4">No transactions found.</td></tr>
+      <tr><td colspan="10" class="text-center text-muted py-4">No transactions found.</td></tr>
       {% endfor %}
     </tbody>
   </table>
   </div>
 </div>
+
+{% for r in rows %}
+{% set candidates = candidates_by_key.get((r.EmployeeID, r.SaleDate), []) if r.Status == 'Pending' else [] %}
+{% if candidates|length >= 2 %}
+<div class="modal fade" id="assign-modal-{{ r.ReviewID }}" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="post" action="{{ url_for('direct_sale_review_mark', review_id=r.ReviewID) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="return_status" value="{{ status_filter }}">
+        <input type="hidden" name="status" value="Confirmed">
+        <div class="modal-header">
+          <h5 class="modal-title">Confirm Direct Sale — Assign to Stock Issue</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <p>{{ r.EmployeeName }} sold <strong>{{ (r.QtyChange|abs)|round(2) }}</strong> of
+            <strong>{{ r.ProductName }}</strong> directly from the warehouse on {{ r.SaleDate }}
+            {% if r.InvoiceNumber %}(Invoice {{ r.InvoiceNumber }}){% endif %}. Which Stock Issue should this
+            be reconciled against?</p>
+          <div class="alert alert-warning py-2 small">{{ r.EmployeeName }} has {{ candidates|length }} open
+            Stock Issues on this date — pick the one this stock actually came from.</div>
+          <label class="form-label">Stock Issue</label>
+          <select name="stock_issue_id" class="form-select">
+            {% for c in candidates %}
+            <option value="{{ c.IssueID }}">{{ c.IssueNumber or ('#' ~ c.IssueID) }} ({{ c.Status }})</option>
+            {% endfor %}
+            <option value="">— Don't assign (not from any Stock Issue) —</option>
+          </select>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-brand">Confirm &amp; Assign</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endfor %}
 {% endblock %}
