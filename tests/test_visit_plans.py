@@ -316,3 +316,27 @@ class LocationTrackingViewVisitPlanTests(DBTestCase):
         plan = db.query("SELECT VisitPlanID FROM VisitPlans WHERE EmployeeID=? AND VisitDate=?",
                          (emp, future_date), one=True)
         self.assertIsNotNone(plan)
+
+    def test_adhoc_stop_latitude_longitude_fields_are_editable_text_inputs(self):
+        """These used to be type="hidden", fillable only via "Use my current location" - an Admin
+        planning stops for someone else, or indoors/on a desktop, had no way to set a location at
+        all. Must stay plain text inputs so coordinates can also be typed in by hand."""
+        emp = self.make_employee()
+        client = self.make_admin_client()
+        resp = client.get(f"/location-tracking?date=2026-11-20&employee_id={emp}")
+        html = resp.data.decode()
+        self.assertRegex(html, r'<input[^>]*\btype="text"[^>]*\bname="latitude"')
+        self.assertRegex(html, r'<input[^>]*\btype="text"[^>]*\bname="longitude"')
+
+    def test_can_add_an_adhoc_stop_with_manually_typed_coordinates(self):
+        emp = self.make_employee()
+        client = self.make_admin_client()
+        resp = client.post(f"/visit-plans/{emp}/2026-11-20/add-stop", data={
+            "mode": "adhoc", "stop_name": "Hand-Typed Stop",
+            "latitude": "17.4321", "longitude": "78.5123",
+        }, follow_redirects=True)
+        self.assertEqual(resp.status_code, 200)
+        stop = db.query("SELECT * FROM VisitPlanStops WHERE StopName=?", ("Hand-Typed Stop",), one=True)
+        self.assertIsNotNone(stop)
+        self.assertAlmostEqual(stop["Latitude"], 17.4321)
+        self.assertAlmostEqual(stop["Longitude"], 78.5123)
