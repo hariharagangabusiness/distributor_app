@@ -2497,19 +2497,26 @@ def customer_form(cid=None):
                                     parent_candidates=customer_parent_candidates(exclude_cid=cid), has_children=customer_has_children(cid))
         state_code = f.get("state_code", "")
         state_name = STATE_NAME_BY_CODE.get(state_code, "")
+        try:
+            latitude = float(f.get("latitude")) if (f.get("latitude") or "").strip() else None
+            longitude = float(f.get("longitude")) if (f.get("longitude") or "").strip() else None
+        except ValueError:
+            latitude = longitude = None
         args = (f["customer_name"], f["contact_person"], f["phone"], f["email"], f["address"], f.get("zone", ""),
                 f["gstin"], state_name, state_code,
-                float(f["credit_limit"] or 0), int(f["credit_days"] or 0), 1 if f.get("active") else 0, parent_id)
+                float(f["credit_limit"] or 0), int(f["credit_days"] or 0), 1 if f.get("active") else 0, parent_id,
+                latitude, longitude)
         if cid:
             db.execute("""UPDATE Customers SET CustomerName=?, ContactPerson=?, Phone=?, Email=?, Address=?, Zone=?,
-                        GSTIN=?, State=?, StateCode=?, CreditLimit=?, CreditDays=?, Active=?, ParentCustomerID=?
-                        WHERE CustomerID=?""",
+                        GSTIN=?, State=?, StateCode=?, CreditLimit=?, CreditDays=?, Active=?, ParentCustomerID=?,
+                        Latitude=?, Longitude=? WHERE CustomerID=?""",
                        args + (cid,))
             save_custom_fields("Customer", cid, f)
         else:
             new_id = db.execute("""INSERT INTO Customers (CustomerName, ContactPerson, Phone, Email, Address, Zone,
-                        GSTIN, State, StateCode, CreditLimit, CreditDays, Active, ParentCustomerID, AccountNumber)
-                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", args + (next_customer_account_number(),))
+                        GSTIN, State, StateCode, CreditLimit, CreditDays, Active, ParentCustomerID, Latitude,
+                        Longitude, AccountNumber)
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", args + (next_customer_account_number(),))
             save_custom_fields("Customer", new_id, f)
         flash("Customer saved.", "success")
         return redirect(url_for("customers_list"))
@@ -5863,6 +5870,131 @@ def location_consent():
     return render_template("location_consent.html", consent_text=consent_text, next=nxt)
 
 
+def get_visit_plan(employee_id, visit_date):
+    """The Visit Plan (if any) for this employee/date, with its stops resolved - an existing
+    Customer's name/location always comes live from Customers (so a later correction there is
+    reflected automatically, and a customer that's since lost its saved location shows that),
+    while an ad-hoc stop carries its own name/location. Returns None if no plan has been
+    created yet for that employee/date (distinct from a plan that exists with zero stops)."""
+    plan = db.query("SELECT * FROM VisitPlans WHERE EmployeeID=? AND VisitDate=?",
+                     (employee_id, visit_date), one=True)
+    if not plan:
+        return None
+    stops = db.query("""
+        SELECT vps.StopID, vps.CustomerID, vps.VisitedAt, vps.VisitedByUsername,
+               COALESCE(c.CustomerName, vps.StopName) AS Name,
+               COALESCE(c.Latitude, vps.Latitude) AS Latitude,
+               COALESCE(c.Longitude, vps.Longitude) AS Longitude,
+               (c.CustomerID IS NOT NULL AND (c.Latitude IS NULL OR c.Longitude IS NULL)) AS CustomerLostLocation
+        FROM VisitPlanStops vps
+        LEFT JOIN Customers c ON c.CustomerID = vps.CustomerID
+        WHERE vps.VisitPlanID=? ORDER BY vps.SortOrder, vps.StopID
+    """, (plan["VisitPlanID"],))
+    return {"plan": plan, "stops": [dict(s) for s in stops]}
+
+
+def _visit_plan_manage_check():
+    """Admin/Manager only - building/editing a Visit Plan is a planning
+    action, not something a Staff rep does for themselves (they can still
+    view their own and mark stops visited - see visit_plan_stop_toggle())."""
+    user = get_current_user()
+    if not user or user["Role"] not in ("Admin", "Manager"):
+        flash("Only Admin/Manager accounts can manage a Visit Plan.", "error")
+        return None
+    return user
+
+
+@app.route("/visit-plans/<int:employee_id>/<date_str>/add-stop", methods=["POST"])
+def visit_plan_add_stop(employee_id, date_str):
+    user = _visit_plan_manage_check()
+    if not user:
+        return redirect(url_for("location_tracking_view", date=date_str, employee_id=employee_id))
+
+    # Validate first, and only create the Visit Plan row (if one doesn't already exist for
+    # this employee/date) once there's an actual valid stop to insert into it - an Admin
+    # mis-picking an unlocated customer, or leaving an ad-hoc stop's location uncaptured,
+    # should never leave behind an empty, orphaned plan.
+    mode = request.form.get("mode", "customer")
+    customer_id = None
+    customer_name = None
+    stop_name = None
+    lat = lng = None
+    if mode == "customer":
+        customer_id = request.form.get("customer_id", type=int)
+        customer = db.query("SELECT CustomerID, CustomerName, Latitude, Longitude FROM Customers WHERE CustomerID=?",
+                             (customer_id,), one=True) if customer_id else None
+        if not customer or customer["Latitude"] is None or customer["Longitude"] is None:
+            flash("That customer doesn't have a saved map location yet - set one on their Customer page first.", "error")
+            return redirect(url_for("location_tracking_view", date=date_str, employee_id=employee_id))
+        customer_name = customer["CustomerName"]
+    else:
+        stop_name = (request.form.get("stop_name") or "").strip()
+        try:
+            lat = float(request.form.get("latitude"))
+            lng = float(request.form.get("longitude"))
+        except (TypeError, ValueError):
+            lat = lng = None
+        if not stop_name or lat is None or lng is None:
+            flash("A custom stop needs a name and a captured location.", "error")
+            return redirect(url_for("location_tracking_view", date=date_str, employee_id=employee_id))
+
+    plan = db.query("SELECT VisitPlanID FROM VisitPlans WHERE EmployeeID=? AND VisitDate=?",
+                     (employee_id, date_str), one=True)
+    plan_id = plan["VisitPlanID"] if plan else db.execute(
+        "INSERT INTO VisitPlans (EmployeeID, VisitDate, CreatedByUserID, CreatedByUsername) VALUES (?,?,?,?)",
+        (employee_id, date_str, user["UserID"], user["Username"]))
+    next_sort = db.query("SELECT COALESCE(MAX(SortOrder),0)+1 n FROM VisitPlanStops WHERE VisitPlanID=?",
+                          (plan_id,), one=True)["n"]
+
+    if mode == "customer":
+        db.execute("INSERT INTO VisitPlanStops (VisitPlanID, CustomerID, SortOrder) VALUES (?,?,?)",
+                   (plan_id, customer_id, next_sort))
+        flash(f"Added {customer_name} to today's visit plan.", "success")
+    else:
+        db.execute("""INSERT INTO VisitPlanStops (VisitPlanID, StopName, Latitude, Longitude, SortOrder)
+                    VALUES (?,?,?,?,?)""", (plan_id, stop_name, lat, lng, next_sort))
+        flash(f"Added '{stop_name}' to today's visit plan.", "success")
+    return redirect(url_for("location_tracking_view", date=date_str, employee_id=employee_id))
+
+
+@app.route("/visit-plans/stops/<int:stop_id>/toggle-visited", methods=["POST"])
+def visit_plan_stop_toggle(stop_id):
+    user = get_current_user()
+    stop = db.query("""SELECT vps.StopID, vps.VisitedAt, vp.EmployeeID, vp.VisitDate FROM VisitPlanStops vps
+                     JOIN VisitPlans vp ON vp.VisitPlanID = vps.VisitPlanID WHERE vps.StopID=?""",
+                     (stop_id,), one=True)
+    if not stop:
+        flash("Visit plan stop not found.", "error")
+        return redirect(url_for("location_tracking_view"))
+    allowed = user and (user["Role"] in ("Admin", "Manager") or user["EmployeeID"] == stop["EmployeeID"])
+    if not allowed:
+        flash("You can't update this visit plan.", "error")
+        return redirect(url_for("location_tracking_view", date=stop["VisitDate"], employee_id=stop["EmployeeID"]))
+    if stop["VisitedAt"]:
+        db.execute("UPDATE VisitPlanStops SET VisitedAt=NULL, VisitedByUserID=NULL, VisitedByUsername=NULL "
+                    "WHERE StopID=?", (stop_id,))
+    else:
+        db.execute("UPDATE VisitPlanStops SET VisitedAt=?, VisitedByUserID=?, VisitedByUsername=? WHERE StopID=?",
+                   (_now_ist().strftime("%Y-%m-%d %H:%M:%S"), user["UserID"], user["Username"], stop_id))
+    return redirect(url_for("location_tracking_view", date=stop["VisitDate"], employee_id=stop["EmployeeID"]))
+
+
+@app.route("/visit-plans/stops/<int:stop_id>/delete", methods=["POST"])
+def visit_plan_stop_delete(stop_id):
+    stop = db.query("""SELECT vps.StopID, vp.EmployeeID, vp.VisitDate FROM VisitPlanStops vps
+                     JOIN VisitPlans vp ON vp.VisitPlanID = vps.VisitPlanID WHERE vps.StopID=?""",
+                     (stop_id,), one=True)
+    if not stop:
+        flash("Visit plan stop not found.", "error")
+        return redirect(url_for("location_tracking_view"))
+    user = _visit_plan_manage_check()
+    if not user:
+        return redirect(url_for("location_tracking_view", date=stop["VisitDate"], employee_id=stop["EmployeeID"]))
+    db.execute("DELETE FROM VisitPlanStops WHERE StopID=?", (stop_id,))
+    flash("Removed from the visit plan.", "success")
+    return redirect(url_for("location_tracking_view", date=stop["VisitDate"], employee_id=stop["EmployeeID"]))
+
+
 @app.route("/location-tracking")
 def location_tracking_view():
     date_str = request.args.get("date") or today_str()
@@ -5908,12 +6040,37 @@ def location_tracking_view():
     configured_days = _location_working_days(company)
     working_days_display = ", ".join(d for d in LOCATION_WEEKDAY_ABBR if d in configured_days)
 
+    # Today's Visit Plan - only meaningful once a specific person is picked (it's one plan per
+    # employee/date; "All tracked people" has no single plan to show).
+    current = get_current_user()
+    visit_plan = None
+    can_manage_visit_plan = False
+    visit_plan_candidates = []
+    customers_without_location_count = 0
+    if employee_id:
+        visit_plan = get_visit_plan(employee_id, date_str)
+        can_manage_visit_plan = bool(current and current["Role"] in ("Admin", "Manager"))
+        if can_manage_visit_plan:
+            existing_customer_ids = {s["CustomerID"] for s in visit_plan["stops"] if s["CustomerID"]} if visit_plan else set()
+            all_located = db.query("""SELECT CustomerID, CustomerName FROM Customers
+                                    WHERE Active=1 AND Latitude IS NOT NULL AND Longitude IS NOT NULL
+                                    ORDER BY CustomerName""")
+            visit_plan_candidates = [c for c in all_located if c["CustomerID"] not in existing_customer_ids]
+            customers_without_location_count = db.query(
+                """SELECT COUNT(*) c FROM Customers WHERE Active=1
+                   AND (Latitude IS NULL OR Longitude IS NULL)""", one=True)["c"]
+
     return render_template("location_tracking.html", date_str=date_str, today=today_str(),
                             tracked_users=tracked_users, employee_id=employee_id,
                             by_user=by_user, point_count=len(points),
                             tracking_active_now=tracking_active_now,
                             working_days_display=working_days_display,
-                            ping_interval_minutes=company["LocationPingIntervalMinutes"] or 30)
+                            ping_interval_minutes=company["LocationPingIntervalMinutes"] or 30,
+                            visit_plan=visit_plan, can_manage_visit_plan=can_manage_visit_plan,
+                            visit_plan_candidates=visit_plan_candidates,
+                            customers_without_location_count=customers_without_location_count,
+                            can_mark_visited=bool(current and (can_manage_visit_plan
+                                or current["EmployeeID"] == employee_id)))
 
 
 # ---------------------------------------------------------------------

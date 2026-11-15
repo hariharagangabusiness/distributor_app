@@ -27,6 +27,11 @@ CREATE TABLE IF NOT EXISTS Customers (
     Phone           TEXT,
     Email           TEXT,
     Address         TEXT,
+    Latitude        REAL,     -- map location, saved once (Customer form's "Use my current location"
+                               -- button, same best-effort capture as a Sale's) - lets this customer be
+                               -- added to a Visit Plan and show as a pin on the Location Tracking map.
+                               -- NULL until set; a customer can't be put on a Visit Plan without it.
+    Longitude       REAL,
     Zone            TEXT,     -- free-text sales territory/route grouping, e.g. "North Zone"
     GSTIN           TEXT,
     State           TEXT,
@@ -548,6 +553,43 @@ CREATE TABLE IF NOT EXISTS LocationConsentLog (
     FOREIGN KEY (UserID) REFERENCES Users(UserID)
 );
 
+-- One Visit Plan per salesperson per day (Admin/Manager-built "who should
+-- this rep visit today") - shown as guide pins on the Location Tracking map,
+-- next to the routine ping trail and sale markers. See VisitPlanStops for
+-- the actual places.
+CREATE TABLE IF NOT EXISTS VisitPlans (
+    VisitPlanID         INTEGER PRIMARY KEY AUTOINCREMENT,
+    EmployeeID          INTEGER NOT NULL,
+    VisitDate           TEXT NOT NULL,
+    CreatedByUserID     INTEGER,
+    CreatedByUsername   TEXT,
+    CreatedAt           TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (EmployeeID, VisitDate),
+    FOREIGN KEY (EmployeeID) REFERENCES Employees(EmployeeID)
+);
+
+-- One stop on a Visit Plan - either an existing Customer (CustomerID set;
+-- its location/name always comes live from the Customers table, so a later
+-- correction there is reflected automatically) or a one-off ad-hoc stop
+-- (CustomerID NULL; its own StopName/Latitude/Longitude carry the place,
+-- since there's no Customer record to join to).
+CREATE TABLE IF NOT EXISTS VisitPlanStops (
+    StopID              INTEGER PRIMARY KEY AUTOINCREMENT,
+    VisitPlanID         INTEGER NOT NULL,
+    CustomerID          INTEGER,              -- NULL for an ad-hoc stop
+    StopName            TEXT,                 -- required (in app.py) only when CustomerID IS NULL
+    Latitude            REAL,                 -- required (in app.py) only when CustomerID IS NULL
+    Longitude           REAL,
+    SortOrder           INTEGER NOT NULL DEFAULT 0,
+    VisitedAt            TEXT,                -- NULL until marked visited
+    VisitedByUserID      INTEGER,
+    VisitedByUsername    TEXT,
+    Notes               TEXT,
+    CreatedAt           TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (VisitPlanID) REFERENCES VisitPlans(VisitPlanID) ON DELETE CASCADE,
+    FOREIGN KEY (CustomerID) REFERENCES Customers(CustomerID)
+);
+
 -- ---------------------------------------------------------------------
 -- Employee Leave & Attendance
 -- ---------------------------------------------------------------------
@@ -951,3 +993,5 @@ CREATE INDEX IF NOT EXISTS idx_locationlogs_date ON LocationLogs(RecordedDate);
 CREATE INDEX IF NOT EXISTS idx_stockissueauditlog_issue ON StockIssueAuditLog(IssueID, CreatedAt);
 CREATE INDEX IF NOT EXISTS idx_directsalereviews_status ON DirectSaleReviews(Status);
 CREATE INDEX IF NOT EXISTS idx_directsalereviews_product ON DirectSaleReviews(ProductID);
+CREATE INDEX IF NOT EXISTS idx_visitplanstops_plan ON VisitPlanStops(VisitPlanID);
+CREATE INDEX IF NOT EXISTS idx_visitplanstops_customer ON VisitPlanStops(CustomerID);

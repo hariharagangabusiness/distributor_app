@@ -6,7 +6,9 @@
   browser while the app was open, every {{ ping_interval_minutes }} minute(s) between 9 AM-8 PM on configured
   working days ({{ working_days_display }}). This only works while that person has the app open and has allowed
   location access — it can't track anyone once their tab or browser is closed. A <strong>★ star</strong> marker is
-  a location captured the moment a Sale was saved (any role, best-effort) — click it to see which invoice.
+  a location captured the moment a Sale was saved (any role, best-effort) — click it to see which invoice. A
+  <strong>📍 pin</strong> is a planned stop on that person's Visit Plan for the day (orange = pending, green =
+  visited) — pick a person below to see and manage theirs.
   Configure the ping interval/working days under <a href="{{ url_for('settings_form') }}">Company / GST
   Settings</a>.</p>
 
@@ -40,6 +42,112 @@
 
 {% if not by_user %}
 <div class="alert alert-secondary mt-3">No location points recorded for this day yet.</div>
+{% endif %}
+
+{% if employee_id %}
+<div class="card mt-3">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <strong>Today's Visit Plan</strong>
+    {% if can_manage_visit_plan %}
+    <button type="button" class="btn btn-sm btn-brand" data-bs-toggle="modal" data-bs-target="#addStopModal"><i class="bi bi-plus-lg"></i> Add Stop</button>
+    {% endif %}
+  </div>
+  <div class="card-body p-0">
+    {% if visit_plan and visit_plan.stops %}
+    <div class="table-responsive">
+    <table class="table mb-0 table-cards-mobile align-middle">
+      <thead><tr><th>Stop</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+        {% for s in visit_plan.stops %}
+        <tr>
+          <td data-label="Stop">
+            <span style="color:{{ '#1a7a34' if s.VisitedAt else '#d97706' }}">📍</span> {{ s.Name }}
+            {% if s.VisitedAt %}<div class="text-muted small">Visited {{ s.VisitedAt[11:16] }}{% if s.VisitedByUsername %} by {{ s.VisitedByUsername }}{% endif %}</div>{% endif %}
+            {% if s.CustomerLostLocation %}<div class="text-warning small">This customer's saved location has since been removed.</div>{% endif %}
+          </td>
+          <td data-label="Status">
+            <span class="badge {% if s.VisitedAt %}text-bg-success{% else %}text-bg-warning{% endif %}">{{ 'Visited' if s.VisitedAt else 'Pending' }}</span>
+          </td>
+          <td class="text-end">
+            {% if s.Latitude is not none and s.Longitude is not none %}
+            <a href="https://www.google.com/maps/dir/?api=1&destination={{ s.Latitude }},{{ s.Longitude }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-brand mobile-btn-full"><i class="bi bi-compass"></i> Navigate</a>
+            {% endif %}
+            {% if can_mark_visited %}
+            <form method="post" action="{{ url_for('visit_plan_stop_toggle', stop_id=s.StopID) }}" class="d-inline">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn btn-sm btn-outline-secondary mobile-btn-full">{{ 'Mark Pending' if s.VisitedAt else 'Mark Visited' }}</button>
+            </form>
+            {% endif %}
+            {% if can_manage_visit_plan %}
+            <form method="post" action="{{ url_for('visit_plan_stop_delete', stop_id=s.StopID) }}" class="d-inline" onsubmit="return confirm('Remove this stop from the visit plan?');">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn btn-sm btn-outline-danger mobile-btn-full"><i class="bi bi-trash"></i></button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="text-muted mb-0 p-3">No visit plan for this day yet.{% if can_manage_visit_plan %} Click "Add Stop" to start one.{% endif %}</p>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+{% if can_manage_visit_plan %}
+<div class="modal fade" id="addStopModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="post" action="{{ url_for('visit_plan_add_stop', employee_id=employee_id, date_str=date_str) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="modal-header">
+          <h5 class="modal-title">Add a Stop — {{ date_str }}</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" name="mode" id="addStopMode" value="customer">
+          <ul class="nav nav-pills mb-3" role="tablist">
+            <li class="nav-item"><button type="button" id="addStopTabCustomer" class="nav-link active" data-bs-toggle="pill" data-bs-target="#addStopCustomer">Existing Customer</button></li>
+            <li class="nav-item"><button type="button" id="addStopTabAdhoc" class="nav-link" data-bs-toggle="pill" data-bs-target="#addStopAdhoc">Custom Stop</button></li>
+          </ul>
+          <div class="tab-content">
+            <div class="tab-pane fade show active" id="addStopCustomer">
+              <label class="form-label">Customer</label>
+              <select name="customer_id" class="form-select">
+                <option value="">-- select --</option>
+                {% for c in visit_plan_candidates %}
+                <option value="{{ c.CustomerID }}">{{ c.CustomerName }}</option>
+                {% endfor %}
+              </select>
+              {% if customers_without_location_count %}
+              <div class="form-text">{{ customers_without_location_count }} customer(s) don't have a saved
+                location yet and won't show here — set one on their Customer page first.</div>
+              {% endif %}
+            </div>
+            <div class="tab-pane fade" id="addStopAdhoc">
+              <label class="form-label">Stop name</label>
+              <input type="text" name="stop_name" class="form-control mb-2" placeholder="e.g. New Prospect — MG Road">
+              <label class="form-label">Location</label>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <input type="hidden" name="latitude" id="adhoc_lat">
+                <input type="hidden" name="longitude" id="adhoc_lng">
+                <span id="adhocLocationStatus" class="text-muted small">Not captured yet.</span>
+                <button type="button" id="captureAdhocLocationBtn" class="btn btn-sm btn-outline-secondary"><i class="bi bi-geo-alt"></i> Use my current location</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-brand" id="addStopSubmitBtn">Add to Plan</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
 {% endif %}
 
 {% endblock %}
@@ -104,6 +212,27 @@
     });
   });
 
+  // The day's planned visit stops - a distinct 📍 pin (orange = pending, green = visited), next
+  // to the routine ping trail and ★ sale markers above. Only present when a specific person is
+  // selected (one plan per employee/date) - see location_tracking_view()/get_visit_plan().
+  var visitPlanStops = {{ (visit_plan.stops if visit_plan else [])|tojson }};
+  visitPlanStops.forEach(function (s) {
+    if (s.Latitude == null || s.Longitude == null) return;
+    var pinColor = s.VisitedAt ? '#1a7a34' : '#d97706';
+    var marker = L.marker([s.Latitude, s.Longitude], {
+      icon: L.divIcon({
+        className: '', html: '<div style="font-size:26px;line-height:1;color:' + pinColor +
+          ';text-shadow:0 1px 1px rgba(0,0,0,.35)">📍</div>',
+        iconSize: [26, 26], iconAnchor: [13, 26],
+      }),
+    }).addTo(map);
+    var popup = '<strong>' + s.Name + '</strong><br>' + (s.VisitedAt ? 'Visited' : 'Pending') +
+      '<br><a href="https://www.google.com/maps/dir/?api=1&destination=' + s.Latitude + ',' + s.Longitude +
+      '" target="_blank" rel="noopener">Navigate →</a>';
+    marker.bindPopup(popup);
+    allLatLngs.push([s.Latitude, s.Longitude]);
+  });
+
   if (allLatLngs.length) {
     map.fitBounds(allLatLngs, { padding: [30, 30] });
   } else {
@@ -113,4 +242,41 @@
   }
 })();
 </script>
+{% if can_manage_visit_plan %}
+<script>
+(function () {
+  var modeInput = document.getElementById('addStopMode');
+  var tabCustomer = document.getElementById('addStopTabCustomer');
+  var tabAdhoc = document.getElementById('addStopTabAdhoc');
+  if (modeInput && tabCustomer && tabAdhoc) {
+    tabCustomer.addEventListener('shown.bs.tab', function () { modeInput.value = 'customer'; });
+    tabAdhoc.addEventListener('shown.bs.tab', function () { modeInput.value = 'adhoc'; });
+  }
+
+  var captureBtn = document.getElementById('captureAdhocLocationBtn');
+  var status = document.getElementById('adhocLocationStatus');
+  if (captureBtn) {
+    captureBtn.addEventListener('click', function () {
+      if (!navigator.geolocation) {
+        status.textContent = "Location isn't supported on this device/browser.";
+        return;
+      }
+      captureBtn.disabled = true;
+      status.textContent = 'Locating…';
+      navigator.geolocation.getCurrentPosition(function (pos) {
+        document.getElementById('adhoc_lat').value = pos.coords.latitude;
+        document.getElementById('adhoc_lng').value = pos.coords.longitude;
+        status.textContent = 'Captured: ' + pos.coords.latitude.toFixed(4) + ', ' + pos.coords.longitude.toFixed(4);
+        status.className = 'text-success small';
+        captureBtn.disabled = false;
+      }, function () {
+        status.textContent = 'Could not get your location - check the browser\'s location permission.';
+        status.className = 'text-danger small';
+        captureBtn.disabled = false;
+      }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+    });
+  }
+})();
+</script>
+{% endif %}
 {% endblock %}
