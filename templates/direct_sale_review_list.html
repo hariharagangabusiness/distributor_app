@@ -107,7 +107,8 @@
   </table>
   </div>
 </div>
-
+{% endblock %}
+{% block modals %}
 {% for r in rows %}
 {% set candidates = candidates_by_key.get((r.EmployeeID, r.SaleDate), []) if r.Status == 'Pending' else [] %}
 {% if candidates|length >= 2 %}

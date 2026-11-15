@@ -276,6 +276,12 @@
   {% endfor %}
 </div>
 
+{% if not widget_order %}
+  <p class="text-muted">No dashboard widgets configured.
+  {% if current_user and current_user.Role == 'Admin' %}<a href="{{ url_for('dashboard_customize') }}">Customize your dashboard →</a>{% endif %}</p>
+{% endif %}
+{% endblock %}
+{% block modals %}
 <div class="modal fade" id="stockReturnsDetailModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-lg">
     <div class="modal-content">
@@ -296,10 +302,6 @@
     </div>
   </div>
 </div>
-{% if not widget_order %}
-  <p class="text-muted">No dashboard widgets configured.
-  {% if current_user and current_user.Role == 'Admin' %}<a href="{{ url_for('dashboard_customize') }}">Customize your dashboard →</a>{% endif %}</p>
-{% endif %}
 {% endblock %}
 {% block scripts %}
 <script>

@@ -244,6 +244,13 @@
       {% endwith %}
       {% block content %}{% endblock %}
     </div>
+    {# Bootstrap modals go here, NOT inside {% block content %} above: .page-body has
+       position:relative + z-index:1, which creates its own CSS stacking context - a modal
+       nested inside it gets trapped in that context, so Bootstrap's backdrop (appended as a
+       sibling of .page-body, at the body level) ends up stacked ABOVE the entire .page-body
+       subtree regardless of the modal's own z-index, silently intercepting every click on it.
+       A page with a modal defines {% block modals %} instead of putting it in {% block content %}. #}
+    {% block modals %}{% endblock %}
   </main>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
