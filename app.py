@@ -5995,6 +5995,105 @@ def visit_plan_stop_delete(stop_id):
     return redirect(url_for("location_tracking_view", date=stop["VisitDate"], employee_id=stop["EmployeeID"]))
 
 
+@app.route("/visit-plans/<int:employee_id>/<date_str>/save-as-template", methods=["POST"])
+def visit_plan_save_as_template(employee_id, date_str):
+    """Snapshot a day's Visit Plan stops into a named, reusable template -
+    not tied to the employee/date it was saved from, so it can be applied
+    to any employee/date later (see visit_plan_apply_template)."""
+    user = _visit_plan_manage_check()
+    if not user:
+        return redirect(url_for("location_tracking_view", date=date_str, employee_id=employee_id))
+
+    name = (request.form.get("name") or "").strip()
+    plan = get_visit_plan(employee_id, date_str)
+    if not name or not plan or not plan["stops"]:
+        flash("Can't save an empty visit plan as a template - add some stops first.", "error")
+        return redirect(url_for("location_tracking_view", date=date_str, employee_id=employee_id))
+
+    with db.transaction() as conn:
+        template_id = conn.execute(
+            "INSERT INTO VisitPlanTemplates (Name, CreatedByUserID, CreatedByUsername) VALUES (?,?,?)",
+            (name, user["UserID"], user["Username"])).lastrowid
+        for i, s in enumerate(plan["stops"], start=1):
+            conn.execute("""INSERT INTO VisitPlanTemplateStops
+                          (TemplateID, CustomerID, StopName, Latitude, Longitude, SortOrder)
+                          VALUES (?,?,?,?,?,?)""",
+                         (template_id, s["CustomerID"], None if s["CustomerID"] else s["Name"],
+                          s["Latitude"], s["Longitude"], i))
+    flash(f"Saved today's visit plan as template '{name}'.", "success")
+    return redirect(url_for("location_tracking_view", date=date_str, employee_id=employee_id))
+
+
+@app.route("/visit-plans/templates/<int:template_id>/delete", methods=["POST"])
+def visit_plan_template_delete(template_id):
+    user = _visit_plan_manage_check()
+    if not user:
+        return redirect(url_for("location_tracking_view"))
+    db.execute("DELETE FROM VisitPlanTemplates WHERE TemplateID=?", (template_id,))
+    flash("Template deleted.", "success")
+    return redirect(request.referrer or url_for("location_tracking_view"))
+
+
+@app.route("/visit-plans/<int:employee_id>/<date_str>/apply-template/<int:template_id>", methods=["POST"])
+def visit_plan_apply_template(employee_id, date_str, template_id):
+    """Copies a saved template's stops onto this employee/date's Visit Plan - a Customer stop
+    is skipped if that customer has since lost its saved location, or is already on this plan
+    (same dedup as the Add Stop dropdown's candidate list); an ad-hoc stop is always copied as-is."""
+    user = _visit_plan_manage_check()
+    if not user:
+        return redirect(url_for("location_tracking_view", date=date_str, employee_id=employee_id))
+
+    template = db.query("SELECT * FROM VisitPlanTemplates WHERE TemplateID=?", (template_id,), one=True)
+    if not template:
+        flash("Template not found.", "error")
+        return redirect(url_for("location_tracking_view", date=date_str, employee_id=employee_id))
+    template_stops = db.query(
+        "SELECT * FROM VisitPlanTemplateStops WHERE TemplateID=? ORDER BY SortOrder, TemplateStopID",
+        (template_id,))
+
+    existing_plan = get_visit_plan(employee_id, date_str)
+    existing_customer_ids = {s["CustomerID"] for s in existing_plan["stops"] if s["CustomerID"]} if existing_plan else set()
+
+    plan = db.query("SELECT VisitPlanID FROM VisitPlans WHERE EmployeeID=? AND VisitDate=?",
+                     (employee_id, date_str), one=True)
+    plan_id = plan["VisitPlanID"] if plan else None
+    next_sort = (db.query("SELECT COALESCE(MAX(SortOrder),0) n FROM VisitPlanStops WHERE VisitPlanID=?",
+                           (plan_id,), one=True)["n"] if plan_id else 0) + 1
+
+    added = skipped = 0
+    for ts in template_stops:
+        if ts["CustomerID"]:
+            if ts["CustomerID"] in existing_customer_ids:
+                skipped += 1
+                continue
+            customer = db.query("SELECT CustomerID FROM Customers WHERE CustomerID=? AND Latitude IS NOT NULL "
+                                 "AND Longitude IS NOT NULL", (ts["CustomerID"],), one=True)
+            if not customer:
+                skipped += 1
+                continue
+        if plan_id is None:
+            plan_id = db.execute(
+                "INSERT INTO VisitPlans (EmployeeID, VisitDate, CreatedByUserID, CreatedByUsername) VALUES (?,?,?,?)",
+                (employee_id, date_str, user["UserID"], user["Username"]))
+        db.execute("""INSERT INTO VisitPlanStops (VisitPlanID, CustomerID, StopName, Latitude, Longitude, SortOrder)
+                    VALUES (?,?,?,?,?,?)""",
+                   (plan_id, ts["CustomerID"], ts["StopName"], ts["Latitude"], ts["Longitude"], next_sort))
+        next_sort += 1
+        added += 1
+        if ts["CustomerID"]:
+            existing_customer_ids.add(ts["CustomerID"])
+
+    if added:
+        msg = f"Applied template '{template['Name']}': added {added} stop(s)."
+        if skipped:
+            msg += f" Skipped {skipped} (already on this plan or missing a saved location)."
+        flash(msg, "success")
+    else:
+        flash(f"Nothing to add from '{template['Name']}' - every stop is already on this plan "
+              "or no longer has a saved location.", "error")
+    return redirect(url_for("location_tracking_view", date=date_str, employee_id=employee_id))
+
+
 @app.route("/location-tracking")
 def location_tracking_view():
     date_str = request.args.get("date") or today_str()
@@ -6047,6 +6146,7 @@ def location_tracking_view():
     can_manage_visit_plan = False
     visit_plan_candidates = []
     customers_without_location_count = 0
+    visit_plan_templates = []
     if employee_id:
         visit_plan = get_visit_plan(employee_id, date_str)
         can_manage_visit_plan = bool(current and current["Role"] in ("Admin", "Manager"))
@@ -6059,6 +6159,7 @@ def location_tracking_view():
             customers_without_location_count = db.query(
                 """SELECT COUNT(*) c FROM Customers WHERE Active=1
                    AND (Latitude IS NULL OR Longitude IS NULL)""", one=True)["c"]
+            visit_plan_templates = db.query("SELECT TemplateID, Name FROM VisitPlanTemplates ORDER BY Name")
 
     return render_template("location_tracking.html", date_str=date_str, today=today_str(),
                             tracked_users=tracked_users, employee_id=employee_id,
@@ -6069,6 +6170,7 @@ def location_tracking_view():
                             visit_plan=visit_plan, can_manage_visit_plan=can_manage_visit_plan,
                             visit_plan_candidates=visit_plan_candidates,
                             customers_without_location_count=customers_without_location_count,
+                            visit_plan_templates=visit_plan_templates,
                             can_mark_visited=bool(current and (can_manage_visit_plan
                                 or current["EmployeeID"] == employee_id)))
 
