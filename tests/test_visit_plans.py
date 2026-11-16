@@ -560,3 +560,38 @@ class VisitPlanTemplateManageTests(DBTestCase):
                             (template_id,), one=True)["TemplateStopID"]
         client.post(f"/visit-plans/templates/stops/{stop_id}/move-up")
         self.assertEqual(self._ordered_stop_names(template_id), ["First Stop", "Second Stop", "Third Stop"])
+
+
+class VisitPlanRouteMarkingTests(DBTestCase):
+    def test_road_route_js_is_wired_and_gated_to_two_or_more_stops(self):
+        """The OSRM fetch is static markup (always in the page source, same as the map/Leaflet
+        setup around it) - what matters is it's wired to the real stops and gated so it only
+        fires once there's an actual route (2+ located stops) to draw."""
+        emp = self.make_employee()
+        cust = self.make_customer("Route Store")
+        db.execute("UPDATE Customers SET Latitude=1, Longitude=1 WHERE CustomerID=?", (cust,))
+        client = self.make_admin_client()
+        client.post(f"/visit-plans/{emp}/2026-11-20/add-stop", data={
+            "mode": "customer", "customer_id": str(cust),
+        })
+        resp = client.get(f"/location-tracking?date=2026-11-20&employee_id={emp}")
+        html = resp.data.decode()
+        self.assertIn("router.project-osrm.org/route/v1/driving/", html)
+        self.assertIn("routeStops.length >= 2", html)
+        self.assertIn("visitPlanStops.filter", html)
+
+    def test_road_route_coordinates_follow_visit_plan_order(self):
+        """The route line is built client-side straight from visit_plan.stops (already ordered by
+        SortOrder - see get_visit_plan()), so the OSRM waypoint order is whatever order the stops
+        render in on the page."""
+        emp = self.make_employee()
+        client = self.make_admin_client()
+        client.post(f"/visit-plans/{emp}/2026-11-20/add-stop", data={
+            "mode": "adhoc", "stop_name": "First", "latitude": "19.10", "longitude": "72.90",
+        })
+        client.post(f"/visit-plans/{emp}/2026-11-20/add-stop", data={
+            "mode": "adhoc", "stop_name": "Second", "latitude": "19.18", "longitude": "72.98",
+        })
+        resp = client.get(f"/location-tracking?date=2026-11-20&employee_id={emp}")
+        html = resp.data.decode()
+        self.assertLess(html.index("First"), html.index("Second"))

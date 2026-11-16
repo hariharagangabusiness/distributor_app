@@ -8,7 +8,9 @@
   location access — it can't track anyone once their tab or browser is closed. A <strong>★ star</strong> marker is
   a location captured the moment a Sale was saved (any role, best-effort) — click it to see which invoice. A
   <strong>📍 pin</strong> is a planned stop on that person's Visit Plan for the day (orange = pending, green =
-  visited) — pick a person below to see and manage theirs.
+  visited) — pick a person below to see and manage theirs. With 2 or more planned stops, a dashed blue line shows
+  the actual road route connecting them in order (via OpenStreetMap routing) — a suggested path, not a live GPS
+  trail.
   Configure the ping interval/working days under <a href="{{ url_for('settings_form') }}">Company / GST
   Settings</a>.</p>
 
@@ -306,6 +308,24 @@
     marker.bindPopup(popup);
     allLatLngs.push([s.Latitude, s.Longitude]);
   });
+
+  // Draws the actual road route connecting the day's planned stops, in Visit Plan order, via
+  // OSRM's free public routing API (no key needed) - a suggested path overlaid on the map, not
+  // a replacement for the ping trail/pins above. Best-effort: a network hiccup or the public
+  // OSRM server being briefly unavailable just means no route line, never a broken page.
+  var routeStops = visitPlanStops.filter(function (s) { return s.Latitude != null && s.Longitude != null; });
+  if (routeStops.length >= 2) {
+    var coordsParam = routeStops.map(function (s) { return s.Longitude + ',' + s.Latitude; }).join(';');
+    fetch('https://router.project-osrm.org/route/v1/driving/' + coordsParam + '?overview=full&geometries=geojson')
+      .then(function (resp) { return resp.json(); })
+      .then(function (data) {
+        if (data.code === 'Ok' && data.routes && data.routes.length) {
+          var routeLatLngs = data.routes[0].geometry.coordinates.map(function (c) { return [c[1], c[0]]; });
+          L.polyline(routeLatLngs, { color: '#1a73e8', weight: 4, opacity: 0.85, dashArray: '8 6' }).addTo(map);
+        }
+      })
+      .catch(function () { /* routing service unavailable - stops/pins above still work fine without it */ });
+  }
 
   if (allLatLngs.length) {
     map.fitBounds(allLatLngs, { padding: [30, 30] });
