@@ -6419,7 +6419,7 @@ EXPORT_SPECS = {
                (pl.CGSTAmount + pl.SGSTAmount + pl.IGSTAmount) AS "Tax Amount", pl.LineTotal AS "Line Total"
         FROM PurchaseLines pl JOIN Purchases p ON p.PurchaseID=pl.PurchaseID
              JOIN Suppliers s ON s.SupplierID=p.SupplierID JOIN Products pr ON pr.ProductID=pl.ProductID
-        ORDER BY p.PurchaseDate DESC, p.PurchaseID DESC, pl.LineID"""),
+        ORDER BY p.PurchaseDate DESC, p.PurchaseID DESC, pl.LineID""", detail_is_line_items=True),
     "sales": dict(title="Sales", admin_only=False, query="""
         SELECT s.SaleDate AS "Sale Date", c.CustomerName AS Customer, s.InvoiceNumber AS "Invoice Number",
                s.Status, s.PaymentStatus AS "Payment Status", s.TaxableAmount AS "Taxable Amount",
@@ -6438,7 +6438,7 @@ EXPORT_SPECS = {
                c.CreditLimit AS "Customer Credit Limit", c.CreditDays AS "Customer Credit Days"
         FROM SalesLines sl JOIN Sales s ON s.SaleID=sl.SaleID JOIN Customers c ON c.CustomerID=s.CustomerID
              JOIN Products pr ON pr.ProductID=sl.ProductID LEFT JOIN Employees e ON e.EmployeeID=s.EmployeeID
-        ORDER BY s.SaleDate DESC, s.SaleID DESC, sl.LineID"""),
+        ORDER BY s.SaleDate DESC, s.SaleID DESC, sl.LineID""", detail_is_line_items=True),
     "stock_issues": dict(title="Stock Issues", admin_only=False, query="""
         SELECT si.IssueDate AS "Issue Date", e.EmployeeName AS Salesperson, si.Status,
                si.ExpectedAmount AS "Expected Amount", si.CashCollected AS "Cash Collected",
@@ -6453,7 +6453,7 @@ EXPORT_SPECS = {
                sil.LineComments AS "Comments"
         FROM StockIssueLines sil JOIN StockIssues si ON si.IssueID=sil.IssueID
              JOIN Employees e ON e.EmployeeID=si.EmployeeID JOIN Products pr ON pr.ProductID=sil.ProductID
-        ORDER BY si.IssueDate DESC, si.IssueID DESC, sil.LineID"""),
+        ORDER BY si.IssueDate DESC, si.IssueID DESC, sil.LineID""", detail_is_line_items=True),
     "expenses": dict(title="Expenses", admin_only=False, query="""
         SELECT e.ExpenseDate AS "Expense Date", e.Category, v.RegistrationNumber AS Vehicle, e.PaidTo AS "Paid To",
                e.PaymentMode AS "Payment Mode", e.Amount, e.Description
@@ -6535,12 +6535,19 @@ def rows_to_xlsx(rows, sheet_title="Report"):
     return buf
 
 
-def rows_to_xlsx_multi(sheets):
+def rows_to_xlsx_multi(sheets, active_index=0):
     """Like rows_to_xlsx(), but writes multiple (title, rows) pairs as
     separate worksheets in one workbook - used so every "Export to Excel"
     button can offer a Summary tab (matches the on-screen list/columns) plus
     a Detail tab (every underlying field, including line items for
-    header+lines records like Sales/Purchases/Stock Issues) in one file."""
+    header+lines records like Sales/Purchases/Stock Issues) in one file.
+
+    active_index picks which sheet Excel opens showing - the line-item Detail
+    tab for a header+lines export (see EXPORT_SPECS' detail_is_line_items),
+    so a user drilling into Purchases/Sales/Stock Issues sees the actual line
+    items first rather than having to notice and click a second tab; Summary
+    stays the default everywhere else, where Detail is just the same rows
+    with every raw column rather than a deeper breakdown."""
     import openpyxl
     import io
     wb = openpyxl.Workbook()
@@ -6548,6 +6555,7 @@ def rows_to_xlsx_multi(sheets):
     for title, rows in sheets:
         ws = wb.create_sheet(title=(title or "Sheet")[:31])
         _write_xlsx_sheet(ws, rows)
+    wb.active = active_index
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
@@ -6678,9 +6686,12 @@ def export_module(module):
     summary_rows = db.query(spec["query"])
     sheets = [("Summary", summary_rows)]
     detail_query = spec.get("detail_query")
+    active_index = 0
     if detail_query:
         sheets.append(("Detail", db.query(detail_query)))
-    buf = rows_to_xlsx_multi(sheets)
+        if spec.get("detail_is_line_items"):
+            active_index = 1
+    buf = rows_to_xlsx_multi(sheets, active_index=active_index)
     from flask import send_file
     filename = f"{spec['title'].replace(' ', '_')}_{today_str()}.xlsx"
     return send_file(buf, as_attachment=True, download_name=filename,
