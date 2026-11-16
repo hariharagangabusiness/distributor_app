@@ -10,9 +10,11 @@
   <strong>📍 pin</strong> is a planned stop on that person's Visit Plan for the day (orange = pending, green =
   visited) — pick a person below to see and manage theirs. With 2 or more planned stops, a dashed blue line shows
   the actual road route connecting them in order (via OpenStreetMap routing) — a suggested path, not a live GPS
-  trail.
-  Configure the ping interval/working days under <a href="{{ url_for('settings_form') }}">Company / GST
-  Settings</a>.</p>
+  trail. A rep marking their own stop visited must be within {{ visit_geofence_radius_meters }}m of it (checked
+  from the browser's current location) — an Admin/Manager marking it on someone else's behalf isn't affected by
+  this.
+  Configure the ping interval/working days/geofence radius under <a href="{{ url_for('settings_form') }}">Company /
+  GST Settings</a>.</p>
 
 <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
   <form method="get" class="d-flex align-items-center gap-2 flex-wrap">
@@ -72,7 +74,7 @@
         <tr>
           <td data-label="Stop">
             <span style="color:{{ '#1a7a34' if s.VisitedAt else '#d97706' }}">📍</span> {{ s.Name }}
-            {% if s.VisitedAt %}<div class="text-muted small">Visited {{ s.VisitedAt[11:16] }}{% if s.VisitedByUsername %} by {{ s.VisitedByUsername }}{% endif %}</div>{% endif %}
+            {% if s.VisitedAt %}<div class="text-muted small">Visited {{ s.VisitedAt[11:16] }}{% if s.VisitedByUsername %} by {{ s.VisitedByUsername }}{% endif %}{% if s.VisitedDistanceMeters is not none %} · {{ s.VisitedDistanceMeters|round|int }}m away{% endif %}</div>{% endif %}
             {% if s.CustomerLostLocation %}<div class="text-warning small">This customer's saved location has since been removed.</div>{% endif %}
           </td>
           <td data-label="Status">
@@ -83,10 +85,19 @@
             <a href="https://www.google.com/maps/dir/?api=1&destination={{ s.Latitude }},{{ s.Longitude }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-brand mobile-btn-full"><i class="bi bi-compass"></i> Navigate</a>
             {% endif %}
             {% if can_mark_visited %}
+            {% if not s.VisitedAt and is_self_marking %}
+            <form method="post" action="{{ url_for('visit_plan_stop_toggle', stop_id=s.StopID) }}" class="d-inline js-geofence-visit-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="latitude" class="js-geofence-lat">
+              <input type="hidden" name="longitude" class="js-geofence-lng">
+              <button type="submit" class="btn btn-sm btn-outline-secondary mobile-btn-full">Mark Visited</button>
+            </form>
+            {% else %}
             <form method="post" action="{{ url_for('visit_plan_stop_toggle', stop_id=s.StopID) }}" class="d-inline">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button type="submit" class="btn btn-sm btn-outline-secondary mobile-btn-full">{{ 'Mark Pending' if s.VisitedAt else 'Mark Visited' }}</button>
             </form>
+            {% endif %}
             {% endif %}
             {% if can_manage_visit_plan %}
             <form method="post" action="{{ url_for('visit_plan_stop_delete', stop_id=s.StopID) }}" class="d-inline" onsubmit="return confirm('Remove this stop from the visit plan?');">
@@ -371,6 +382,42 @@
       }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
     });
   }
+})();
+</script>
+{% endif %}
+{% if is_self_marking %}
+<script>
+// Geofence check (see visit_plan_stop_toggle()) - before a "Mark Visited" submit for a rep's
+// OWN stop reaches the server, capture the browser's current location and attach it to the
+// form. Submission is blocked client-side if location can't be captured at all, since the
+// backend would reject it anyway without coordinates to check - this just avoids a round trip
+// and gives a clearer in-place message.
+(function () {
+  document.querySelectorAll('.js-geofence-visit-form').forEach(function (form) {
+    form.addEventListener('submit', function (e) {
+      if (form.dataset.located === '1') return;  // already captured - let this second submit through
+      e.preventDefault();
+      var btn = form.querySelector('button[type="submit"]');
+      var originalText = btn.textContent;
+      if (!navigator.geolocation) {
+        alert("Location isn't supported on this device/browser - ask an Admin/Manager to mark this visited.");
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = 'Locating…';
+      navigator.geolocation.getCurrentPosition(function (pos) {
+        form.querySelector('.js-geofence-lat').value = pos.coords.latitude;
+        form.querySelector('.js-geofence-lng').value = pos.coords.longitude;
+        form.dataset.located = '1';
+        form.submit();
+      }, function () {
+        alert("Could not get your current location - check the browser's location permission and try again, "
+              + "or ask an Admin/Manager to mark this visited.");
+        btn.disabled = false;
+        btn.textContent = originalText;
+      }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+    });
+  });
 })();
 </script>
 {% endif %}

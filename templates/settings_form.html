@@ -102,6 +102,11 @@
              value="{{ company.LocationPingIntervalMinutes or 30 }}">
       <div class="form-text">How often a tracked-role login's open tab uploads its location. Takes effect on that
         person's next page load.</div></div>
+    <div class="col-md-4"><label class="form-label">Visit geofence radius (meters)</label>
+      <input type="number" name="visit_geofence_radius_meters" class="form-control" min="10" max="5000"
+             value="{{ company.VisitGeofenceRadiusMeters or 200 }}">
+      <div class="form-text">How close a rep must be to a Visit Plan stop's location to mark it visited
+        themselves (an Admin/Manager marking it on someone else's behalf isn't affected by this).</div></div>
     <div class="col-12"><label class="form-label">Working days</label>
       <div class="d-flex flex-wrap gap-3">
         {% for abbr in location_weekdays %}

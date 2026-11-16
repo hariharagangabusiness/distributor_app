@@ -2,6 +2,7 @@ import os
 import re
 import time
 import uuid
+import math
 import logging
 import secrets
 import calendar
@@ -5881,7 +5882,7 @@ def get_visit_plan(employee_id, visit_date):
     if not plan:
         return None
     stops = db.query("""
-        SELECT vps.StopID, vps.CustomerID, vps.VisitedAt, vps.VisitedByUsername,
+        SELECT vps.StopID, vps.CustomerID, vps.VisitedAt, vps.VisitedByUsername, vps.VisitedDistanceMeters,
                COALESCE(c.CustomerName, vps.StopName) AS Name,
                COALESCE(c.Latitude, vps.Latitude) AS Latitude,
                COALESCE(c.Longitude, vps.Longitude) AS Longitude,
@@ -5902,6 +5903,18 @@ def _visit_plan_manage_check():
         flash("Only Admin/Manager accounts can manage a Visit Plan.", "error")
         return None
     return user
+
+
+def _haversine_meters(lat1, lng1, lat2, lng2):
+    """Great-circle distance between two lat/lng points, in meters - used by the Visit Plan
+    geofence check (visit_plan_stop_toggle()) to verify a rep is actually near the stop they're
+    marking visited, not an exact road distance."""
+    R = 6371000
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp = math.radians(lat2 - lat1)
+    dl = math.radians(lng2 - lng1)
+    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 2 * R * math.asin(math.sqrt(a))
 
 
 def get_visit_plan_template(template_id):
@@ -5981,22 +5994,53 @@ def visit_plan_add_stop(employee_id, date_str):
 @app.route("/visit-plans/stops/<int:stop_id>/toggle-visited", methods=["POST"])
 def visit_plan_stop_toggle(stop_id):
     user = get_current_user()
-    stop = db.query("""SELECT vps.StopID, vps.VisitedAt, vp.EmployeeID, vp.VisitDate FROM VisitPlanStops vps
-                     JOIN VisitPlans vp ON vp.VisitPlanID = vps.VisitPlanID WHERE vps.StopID=?""",
-                     (stop_id,), one=True)
+    stop = db.query("""
+        SELECT vps.StopID, vps.VisitedAt, vp.EmployeeID, vp.VisitDate,
+               COALESCE(c.Latitude, vps.Latitude) AS Latitude, COALESCE(c.Longitude, vps.Longitude) AS Longitude
+        FROM VisitPlanStops vps JOIN VisitPlans vp ON vp.VisitPlanID = vps.VisitPlanID
+             LEFT JOIN Customers c ON c.CustomerID = vps.CustomerID
+        WHERE vps.StopID=?""", (stop_id,), one=True)
     if not stop:
         flash("Visit plan stop not found.", "error")
         return redirect(url_for("location_tracking_view"))
-    allowed = user and (user["Role"] in ("Admin", "Manager") or user["EmployeeID"] == stop["EmployeeID"])
+    is_own_stop = bool(user and user["EmployeeID"] is not None and user["EmployeeID"] == stop["EmployeeID"])
+    allowed = user and (user["Role"] in ("Admin", "Manager") or is_own_stop)
     if not allowed:
         flash("You can't update this visit plan.", "error")
         return redirect(url_for("location_tracking_view", date=stop["VisitDate"], employee_id=stop["EmployeeID"]))
+
     if stop["VisitedAt"]:
-        db.execute("UPDATE VisitPlanStops SET VisitedAt=NULL, VisitedByUserID=NULL, VisitedByUsername=NULL "
-                    "WHERE StopID=?", (stop_id,))
-    else:
-        db.execute("UPDATE VisitPlanStops SET VisitedAt=?, VisitedByUserID=?, VisitedByUsername=? WHERE StopID=?",
-                   (_now_ist().strftime("%Y-%m-%d %H:%M:%S"), user["UserID"], user["Username"], stop_id))
+        db.execute("""UPDATE VisitPlanStops SET VisitedAt=NULL, VisitedByUserID=NULL, VisitedByUsername=NULL,
+                    VisitedDistanceMeters=NULL WHERE StopID=?""", (stop_id,))
+        return redirect(url_for("location_tracking_view", date=stop["VisitDate"], employee_id=stop["EmployeeID"]))
+
+    # Marking visited: a rep confirming their OWN stop has to prove (via the browser's current
+    # location, captured client-side right before this submits) that they're actually within the
+    # configured radius of it - this is the geofence check. An Admin/Manager marking it on behalf
+    # of someone else's stop is an override and skips this (they're not expected to be standing
+    # there themselves).
+    distance_m = None
+    if is_own_stop:
+        if stop["Latitude"] is None or stop["Longitude"] is None:
+            flash("This stop has no location to check against - ask an Admin/Manager to mark it visited.", "error")
+            return redirect(url_for("location_tracking_view", date=stop["VisitDate"], employee_id=stop["EmployeeID"]))
+        try:
+            user_lat = float(request.form.get("latitude"))
+            user_lng = float(request.form.get("longitude"))
+        except (TypeError, ValueError):
+            flash("Couldn't get your current location - check the browser's location permission and try again.",
+                  "error")
+            return redirect(url_for("location_tracking_view", date=stop["VisitDate"], employee_id=stop["EmployeeID"]))
+        distance_m = _haversine_meters(user_lat, user_lng, stop["Latitude"], stop["Longitude"])
+        radius_m = get_company_settings()["VisitGeofenceRadiusMeters"] or 200
+        if distance_m > radius_m:
+            flash(f"You're {distance_m:.0f}m away from this stop - get within {radius_m}m to mark it visited.",
+                  "error")
+            return redirect(url_for("location_tracking_view", date=stop["VisitDate"], employee_id=stop["EmployeeID"]))
+
+    db.execute("""UPDATE VisitPlanStops SET VisitedAt=?, VisitedByUserID=?, VisitedByUsername=?,
+                VisitedDistanceMeters=? WHERE StopID=?""",
+               (_now_ist().strftime("%Y-%m-%d %H:%M:%S"), user["UserID"], user["Username"], distance_m, stop_id))
     return redirect(url_for("location_tracking_view", date=stop["VisitDate"], employee_id=stop["EmployeeID"]))
 
 
@@ -6298,7 +6342,10 @@ def location_tracking_view():
                             customers_without_location_count=customers_without_location_count,
                             visit_plan_templates=visit_plan_templates,
                             can_mark_visited=bool(current and (can_manage_visit_plan
-                                or current["EmployeeID"] == employee_id)))
+                                or current["EmployeeID"] == employee_id)),
+                            is_self_marking=bool(current and current["EmployeeID"] is not None
+                                and current["EmployeeID"] == employee_id),
+                            visit_geofence_radius_meters=company["VisitGeofenceRadiusMeters"] or 200)
 
 
 # ---------------------------------------------------------------------
@@ -7290,7 +7337,7 @@ def settings_form():
                     GstFilingScheme=?, GstRemindersEnabled=?, GstReminderEmails=?, GstReminderDaysBefore=?,
                     SmtpHost=?, SmtpPort=?, SmtpUsername=?, SmtpPassword=?, SmtpFromEmail=?, SmtpUseTLS=?,
                     CreditControlMode=?, CreditBlockDays=?, LocationTrackingWorkingDays=?, LocationConsentText=?,
-                    LocationPingIntervalMinutes=?
+                    LocationPingIntervalMinutes=?, VisitGeofenceRadiusMeters=?
                     WHERE SettingsID=1""",
                    (f["company_name"], f["gstin"], f["pan"], f["address"], f["city"],
                     STATE_NAME_BY_CODE.get(f.get("state_code", ""), ""), f.get("state_code", ""), f["pincode"],
@@ -7309,7 +7356,8 @@ def settings_form():
                     ",".join(d for d in LOCATION_WEEKDAY_ABBR if d in set(request.form.getlist("working_day")))
                         or DEFAULT_LOCATION_WORKING_DAYS,
                     f.get("location_consent_text", "").strip() or None,
-                    min(max(int(f.get("location_ping_interval_minutes") or 30), 1), 720)))
+                    min(max(int(f.get("location_ping_interval_minutes") or 30), 1), 720),
+                    min(max(int(f.get("visit_geofence_radius_meters") or 200), 10), 5000)))
         flash("Company settings saved. These details now appear on every GST invoice.", "success")
         return redirect(url_for("settings_form"))
     company = get_company_settings()

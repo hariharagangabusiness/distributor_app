@@ -206,16 +206,19 @@ class VisitPlanStopToggleAndDeleteTests(DBTestCase):
         row = db.query("SELECT VisitedAt FROM VisitPlanStops WHERE StopID=?", (stop_id,), one=True)
         self.assertIsNone(row["VisitedAt"])
 
-    def test_the_reps_own_login_can_toggle_their_own_stop(self):
+    def test_the_reps_own_login_can_toggle_their_own_stop_when_within_the_geofence(self):
         emp = self.make_employee()
-        stop_id = self.make_plan_with_stop(emp)
+        stop_id = self.make_plan_with_stop(emp)  # stop is at (1.0, 1.0)
         client = self.make_role_client("Staff", username="rep_login")
         db.execute("UPDATE Users SET EmployeeID=? WHERE Username='rep_login'", (emp,))
 
-        resp = client.post(f"/visit-plans/stops/{stop_id}/toggle-visited", follow_redirects=True)
+        resp = client.post(f"/visit-plans/stops/{stop_id}/toggle-visited",
+                            data={"latitude": "1.0", "longitude": "1.0"}, follow_redirects=True)
         self.assertEqual(resp.status_code, 200)
-        row = db.query("SELECT VisitedAt FROM VisitPlanStops WHERE StopID=?", (stop_id,), one=True)
+        row = db.query("SELECT VisitedAt, VisitedDistanceMeters FROM VisitPlanStops WHERE StopID=?",
+                        (stop_id,), one=True)
         self.assertIsNotNone(row["VisitedAt"])
+        self.assertAlmostEqual(row["VisitedDistanceMeters"], 0, delta=1)
 
     def test_a_different_reps_login_cannot_toggle_someone_elses_stop(self):
         emp_a = self.make_employee("A")
@@ -244,6 +247,123 @@ class VisitPlanStopToggleAndDeleteTests(DBTestCase):
 
         client.post(f"/visit-plans/stops/{stop_id}/delete", follow_redirects=True)
         self.assertEqual(db.query("SELECT COUNT(*) c FROM VisitPlanStops", one=True)["c"], 1)
+
+
+class VisitPlanGeofenceTests(DBTestCase):
+    def make_plan_with_stop(self, employee_id, lat=1.0, lng=1.0, visit_date="2026-11-20"):
+        plan_id = db.execute("INSERT INTO VisitPlans (EmployeeID, VisitDate) VALUES (?,?)", (employee_id, visit_date))
+        return db.execute("""INSERT INTO VisitPlanStops (VisitPlanID, StopName, Latitude, Longitude, SortOrder)
+                            VALUES (?,?,?,?,1)""", (plan_id, "Test Stop", lat, lng))
+
+    def make_rep_client(self, employee_id, username="rep_login"):
+        client = self.make_role_client("Staff", username=username)
+        db.execute("UPDATE Users SET EmployeeID=? WHERE Username=?", (employee_id, username))
+        return client
+
+    def test_rejects_a_self_mark_with_no_location_submitted(self):
+        emp = self.make_employee()
+        stop_id = self.make_plan_with_stop(emp)
+        client = self.make_rep_client(emp)
+
+        resp = client.post(f"/visit-plans/stops/{stop_id}/toggle-visited", follow_redirects=True)
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"location permission", resp.data)
+        row = db.query("SELECT VisitedAt FROM VisitPlanStops WHERE StopID=?", (stop_id,), one=True)
+        self.assertIsNone(row["VisitedAt"])
+
+    def test_rejects_a_self_mark_from_too_far_away(self):
+        emp = self.make_employee()
+        stop_id = self.make_plan_with_stop(emp, lat=1.0, lng=1.0)
+        client = self.make_rep_client(emp)
+
+        # Default geofence radius is 200m; 0.01 degrees is roughly 1.1km away.
+        resp = client.post(f"/visit-plans/stops/{stop_id}/toggle-visited",
+                            data={"latitude": "1.01", "longitude": "1.01"}, follow_redirects=True)
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"away from this stop", resp.data)
+        row = db.query("SELECT VisitedAt FROM VisitPlanStops WHERE StopID=?", (stop_id,), one=True)
+        self.assertIsNone(row["VisitedAt"])
+
+    def test_accepts_a_self_mark_within_a_configured_wider_radius(self):
+        db.execute("UPDATE CompanySettings SET VisitGeofenceRadiusMeters=2000 WHERE SettingsID=1")
+        emp = self.make_employee()
+        stop_id = self.make_plan_with_stop(emp, lat=1.0, lng=1.0)
+        client = self.make_rep_client(emp)
+
+        resp = client.post(f"/visit-plans/stops/{stop_id}/toggle-visited",
+                            data={"latitude": "1.01", "longitude": "1.01"}, follow_redirects=True)
+        self.assertEqual(resp.status_code, 200)
+        row = db.query("SELECT VisitedAt, VisitedDistanceMeters FROM VisitPlanStops WHERE StopID=?",
+                        (stop_id,), one=True)
+        self.assertIsNotNone(row["VisitedAt"])
+        self.assertGreater(row["VisitedDistanceMeters"], 1000)
+
+    def test_admin_marking_on_a_reps_behalf_skips_the_geofence_entirely(self):
+        emp = self.make_employee()
+        stop_id = self.make_plan_with_stop(emp, lat=1.0, lng=1.0)
+        client = self.make_admin_client()
+
+        resp = client.post(f"/visit-plans/stops/{stop_id}/toggle-visited", follow_redirects=True)
+        self.assertEqual(resp.status_code, 200)
+        row = db.query("SELECT VisitedAt, VisitedDistanceMeters FROM VisitPlanStops WHERE StopID=?",
+                        (stop_id,), one=True)
+        self.assertIsNotNone(row["VisitedAt"])
+        self.assertIsNone(row["VisitedDistanceMeters"])
+
+    def test_a_stop_with_no_location_cannot_be_self_marked_visited(self):
+        emp = self.make_employee()
+        plan_id = db.execute("INSERT INTO VisitPlans (EmployeeID, VisitDate) VALUES (?, '2026-11-20')", (emp,))
+        stop_id = db.execute("""INSERT INTO VisitPlanStops (VisitPlanID, StopName, SortOrder)
+                              VALUES (?, 'No Location Stop', 1)""", (plan_id,))
+        client = self.make_rep_client(emp)
+
+        resp = client.post(f"/visit-plans/stops/{stop_id}/toggle-visited",
+                            data={"latitude": "1.0", "longitude": "1.0"}, follow_redirects=True)
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"no location to check against", resp.data)
+
+    def test_unmarking_a_visited_stop_never_needs_location(self):
+        emp = self.make_employee()
+        stop_id = self.make_plan_with_stop(emp, lat=1.0, lng=1.0)
+        client = self.make_rep_client(emp)
+        client.post(f"/visit-plans/stops/{stop_id}/toggle-visited",
+                    data={"latitude": "1.0", "longitude": "1.0"}, follow_redirects=True)
+
+        resp = client.post(f"/visit-plans/stops/{stop_id}/toggle-visited", follow_redirects=True)
+        self.assertEqual(resp.status_code, 200)
+        row = db.query("SELECT VisitedAt, VisitedDistanceMeters FROM VisitPlanStops WHERE StopID=?",
+                        (stop_id,), one=True)
+        self.assertIsNone(row["VisitedAt"])
+        self.assertIsNone(row["VisitedDistanceMeters"])
+
+    def test_location_tracking_page_shows_distance_on_a_self_marked_visit(self):
+        emp = self.make_employee()
+        stop_id = self.make_plan_with_stop(emp, lat=1.0, lng=1.0)
+        db.execute("INSERT INTO RoleTabPermissions (Role, TabKey, Allowed) VALUES ('Staff', 'location_tracking', 1)")
+        client = self.make_rep_client(emp)
+        client.post(f"/visit-plans/stops/{stop_id}/toggle-visited",
+                    data={"latitude": "1.001", "longitude": "1.0"}, follow_redirects=True)
+
+        resp = client.get(f"/location-tracking?date=2026-11-20&employee_id={emp}")
+        self.assertIn(b"m away", resp.data)
+
+    def test_settings_page_can_update_the_geofence_radius(self):
+        client = self.make_admin_client()
+        resp = client.get("/settings")
+        self.assertIn(b"visit_geofence_radius_meters", resp.data)
+
+        settings_data = {
+            "company_name": "Test Co", "gstin": "", "pan": "", "address": "", "city": "",
+            "state_code": "36", "pincode": "", "phone": "", "email": "", "bank_name": "",
+            "bank_account_name": "", "bank_account_number": "", "bank_ifsc": "", "bank_branch": "",
+            "invoice_prefix": "INV", "invoice_terms": "", "credit_control_mode": "Informational",
+            "credit_block_days": "0", "location_ping_interval_minutes": "30",
+            "visit_geofence_radius_meters": "350",
+        }
+        resp = client.post("/settings", data=settings_data, follow_redirects=True)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(db.query("SELECT VisitGeofenceRadiusMeters FROM CompanySettings WHERE SettingsID=1",
+                                   one=True)["VisitGeofenceRadiusMeters"], 350)
 
 
 class LocationTrackingViewVisitPlanTests(DBTestCase):
