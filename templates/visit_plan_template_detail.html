@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}{{ template.template.Name }} — Template{% endblock %}
+{% block page_title %}Template — {{ template.template.Name }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-end mb-3">
+  <a href="{{ url_for('visit_plan_templates_list') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left"></i> Back to Templates</a>
+</div>
+
+<div class="card mb-3">
+  <div class="card-header">Rename</div>
+  <div class="card-body">
+    <form method="post" action="{{ url_for('visit_plan_template_rename', template_id=template.template.TemplateID) }}" class="d-flex gap-2">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="text" name="name" class="form-control" value="{{ template.template.Name }}" required>
+      <button type="submit" class="btn btn-outline-secondary text-nowrap">Save Name</button>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">Stops ({{ template.stops|length }})</div>
+  <div class="card-body p-0">
+    {% if template.stops %}
+    <div class="table-responsive">
+    <table class="table mb-0 table-cards-mobile align-middle">
+      <thead><tr><th style="width:40px">#</th><th>Stop</th><th class="text-end">Order</th><th></th></tr></thead>
+      <tbody>
+        {% for s in template.stops %}
+        <tr>
+          <td data-label="#">{{ loop.index }}</td>
+          <td data-label="Stop">
+            📍 {{ s.Name }}
+            {% if s.CustomerLostLocation %}<div class="text-warning small">This customer's saved location has since been removed.</div>{% endif %}
+          </td>
+          <td class="text-end" data-label="Order">
+            <form method="post" action="{{ url_for('visit_plan_template_stop_move_up', template_stop_id=s.TemplateStopID) }}" class="d-inline">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn btn-sm btn-outline-secondary" {% if loop.first %}disabled{% endif %} title="Move up"><i class="bi bi-arrow-up"></i></button>
+            </form>
+            <form method="post" action="{{ url_for('visit_plan_template_stop_move_down', template_stop_id=s.TemplateStopID) }}" class="d-inline">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn btn-sm btn-outline-secondary" {% if loop.last %}disabled{% endif %} title="Move down"><i class="bi bi-arrow-down"></i></button>
+            </form>
+          </td>
+          <td class="text-end">
+            <form method="post" action="{{ url_for('visit_plan_template_stop_delete', template_stop_id=s.TemplateStopID) }}" class="d-inline" onsubmit="return confirm('Remove this stop from the template?');">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn btn-sm btn-outline-danger mobile-btn-full"><i class="bi bi-trash"></i></button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="text-muted mb-0 p-3">This template has no stops left.</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="mt-3">
+  <form method="post" action="{{ url_for('visit_plan_template_delete', template_id=template.template.TemplateID) }}" onsubmit="return confirm('Delete this template? This can\'t be undone.');">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn btn-outline-danger btn-sm"><i class="bi bi-trash"></i> Delete Template</button>
+  </form>
+</div>
+{% endblock %}

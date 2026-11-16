@@ -148,6 +148,7 @@
         <div class="d-flex justify-content-between align-items-center border-bottom py-2">
           <span>{{ t.Name }}</span>
           <div class="d-flex gap-1">
+            <a href="{{ url_for('visit_plan_template_detail', template_id=t.TemplateID) }}" class="btn btn-sm btn-outline-secondary" title="Manage stops / reorder"><i class="bi bi-list-ol"></i></a>
             <form method="post" action="{{ url_for('visit_plan_apply_template', employee_id=employee_id, date_str=date_str, template_id=t.TemplateID) }}">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button type="submit" class="btn btn-sm btn-outline-brand">Apply</button>
@@ -161,6 +162,7 @@
         {% endfor %}
       </div>
       <div class="modal-footer">
+        <a href="{{ url_for('visit_plan_templates_list') }}" class="btn btn-outline-secondary me-auto">Manage Templates</a>
         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
       </div>
     </div>
