@@ -590,6 +590,33 @@ CREATE TABLE IF NOT EXISTS VisitPlanStops (
     FOREIGN KEY (CustomerID) REFERENCES Customers(CustomerID)
 );
 
+-- A named, reusable list of stops an Admin/Manager can save from one day's
+-- Visit Plan and apply again to any employee/date later (e.g. a recurring
+-- weekly route) - not tied to the employee/date it was saved from. See
+-- VisitPlanTemplateStops for the actual places.
+CREATE TABLE IF NOT EXISTS VisitPlanTemplates (
+    TemplateID          INTEGER PRIMARY KEY AUTOINCREMENT,
+    Name                TEXT NOT NULL,
+    CreatedByUserID     INTEGER,
+    CreatedByUsername   TEXT,
+    CreatedAt           TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- One stop on a template - same CustomerID-vs-ad-hoc shape as
+-- VisitPlanStops, minus the per-plan visited-state columns, which don't
+-- make sense on a reusable template.
+CREATE TABLE IF NOT EXISTS VisitPlanTemplateStops (
+    TemplateStopID      INTEGER PRIMARY KEY AUTOINCREMENT,
+    TemplateID          INTEGER NOT NULL,
+    CustomerID          INTEGER,              -- NULL for an ad-hoc stop
+    StopName            TEXT,
+    Latitude            REAL,
+    Longitude           REAL,
+    SortOrder           INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (TemplateID) REFERENCES VisitPlanTemplates(TemplateID) ON DELETE CASCADE,
+    FOREIGN KEY (CustomerID) REFERENCES Customers(CustomerID)
+);
+
 -- ---------------------------------------------------------------------
 -- Employee Leave & Attendance
 -- ---------------------------------------------------------------------
@@ -995,3 +1022,5 @@ CREATE INDEX IF NOT EXISTS idx_directsalereviews_status ON DirectSaleReviews(Sta
 CREATE INDEX IF NOT EXISTS idx_directsalereviews_product ON DirectSaleReviews(ProductID);
 CREATE INDEX IF NOT EXISTS idx_visitplanstops_plan ON VisitPlanStops(VisitPlanID);
 CREATE INDEX IF NOT EXISTS idx_visitplanstops_customer ON VisitPlanStops(CustomerID);
+CREATE INDEX IF NOT EXISTS idx_visitplantemplatestops_template ON VisitPlanTemplateStops(TemplateID);
+CREATE INDEX IF NOT EXISTS idx_visitplantemplatestops_customer ON VisitPlanTemplateStops(CustomerID);

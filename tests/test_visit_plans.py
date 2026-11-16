@@ -340,3 +340,130 @@ class LocationTrackingViewVisitPlanTests(DBTestCase):
         self.assertIsNotNone(stop)
         self.assertAlmostEqual(stop["Latitude"], 17.4321)
         self.assertAlmostEqual(stop["Longitude"], 78.5123)
+
+
+class VisitPlanTemplateTests(DBTestCase):
+    def test_admin_can_save_and_apply_a_template(self):
+        emp = self.make_employee()
+        other_emp = self.make_employee("Other Rep")
+        cust = self.make_customer("Template Store")
+        db.execute("UPDATE Customers SET Latitude=1, Longitude=1 WHERE CustomerID=?", (cust,))
+        client = self.make_admin_client()
+
+        client.post(f"/visit-plans/{emp}/2026-11-20/add-stop", data={
+            "mode": "customer", "customer_id": str(cust),
+        })
+        client.post(f"/visit-plans/{emp}/2026-11-20/add-stop", data={
+            "mode": "adhoc", "stop_name": "Prospect Corner", "latitude": "5", "longitude": "6",
+        })
+
+        resp = client.post(f"/visit-plans/{emp}/2026-11-20/save-as-template", data={
+            "name": "North Zone Route",
+        }, follow_redirects=True)
+        self.assertEqual(resp.status_code, 200)
+        template = db.query("SELECT * FROM VisitPlanTemplates WHERE Name=?", ("North Zone Route",), one=True)
+        self.assertIsNotNone(template)
+        self.assertEqual(db.query("SELECT COUNT(*) c FROM VisitPlanTemplateStops WHERE TemplateID=?",
+                                   (template["TemplateID"],), one=True)["c"], 2)
+
+        # Apply it to a different employee/date - both stops should land on the new plan.
+        resp = client.post(
+            f"/visit-plans/{other_emp}/2026-12-01/apply-template/{template['TemplateID']}",
+            follow_redirects=True)
+        self.assertEqual(resp.status_code, 200)
+        plan = db.query("SELECT VisitPlanID FROM VisitPlans WHERE EmployeeID=? AND VisitDate=?",
+                         (other_emp, "2026-12-01"), one=True)
+        self.assertIsNotNone(plan)
+        stops = db.query("SELECT * FROM VisitPlanStops WHERE VisitPlanID=?", (plan["VisitPlanID"],))
+        self.assertEqual(len(stops), 2)
+        self.assertIn("Prospect Corner", [s["StopName"] for s in stops])
+
+    def test_cannot_save_an_empty_plan_as_a_template(self):
+        emp = self.make_employee()
+        client = self.make_admin_client()
+        resp = client.post(f"/visit-plans/{emp}/2026-11-20/save-as-template", data={
+            "name": "Empty Route",
+        }, follow_redirects=True)
+        self.assertEqual(resp.status_code, 200)
+        self.assertIsNone(db.query("SELECT 1 FROM VisitPlanTemplates WHERE Name=?", ("Empty Route",), one=True))
+
+    def test_applying_a_template_skips_a_customer_already_on_the_plan(self):
+        emp = self.make_employee()
+        cust = self.make_customer("Dup Store")
+        db.execute("UPDATE Customers SET Latitude=1, Longitude=1 WHERE CustomerID=?", (cust,))
+        template_id = db.execute("INSERT INTO VisitPlanTemplates (Name) VALUES ('Route A')")
+        db.execute("INSERT INTO VisitPlanTemplateStops (TemplateID, CustomerID, SortOrder) VALUES (?,?,1)",
+                   (template_id, cust))
+        plan_id = db.execute("INSERT INTO VisitPlans (EmployeeID, VisitDate) VALUES (?,?)", (emp, "2026-11-20"))
+        db.execute("INSERT INTO VisitPlanStops (VisitPlanID, CustomerID, SortOrder) VALUES (?,?,1)",
+                   (plan_id, cust))
+
+        client = self.make_admin_client()
+        resp = client.post(f"/visit-plans/{emp}/2026-11-20/apply-template/{template_id}", follow_redirects=True)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(db.query("SELECT COUNT(*) c FROM VisitPlanStops WHERE VisitPlanID=?",
+                                   (plan_id,), one=True)["c"], 1)
+
+    def test_applying_a_template_skips_a_customer_that_lost_its_location(self):
+        emp = self.make_employee()
+        cust = self.make_customer("Now Unlocated Store")
+        template_id = db.execute("INSERT INTO VisitPlanTemplates (Name) VALUES ('Route B')")
+        db.execute("INSERT INTO VisitPlanTemplateStops (TemplateID, CustomerID, SortOrder) VALUES (?,?,1)",
+                   (template_id, cust))
+
+        client = self.make_admin_client()
+        resp = client.post(f"/visit-plans/{emp}/2026-11-20/apply-template/{template_id}", follow_redirects=True)
+        self.assertEqual(resp.status_code, 200)
+        plan = db.query("SELECT VisitPlanID FROM VisitPlans WHERE EmployeeID=? AND VisitDate=?",
+                         (emp, "2026-11-20"), one=True)
+        self.assertIsNone(plan)
+
+    def test_admin_can_delete_a_template(self):
+        template_id = db.execute("INSERT INTO VisitPlanTemplates (Name) VALUES ('Old Route')")
+        client = self.make_admin_client()
+        resp = client.post(f"/visit-plans/templates/{template_id}/delete", follow_redirects=True)
+        self.assertEqual(resp.status_code, 200)
+        self.assertIsNone(db.query("SELECT 1 FROM VisitPlanTemplates WHERE TemplateID=?",
+                                    (template_id,), one=True))
+
+    def test_staff_cannot_save_or_apply_or_delete_templates(self):
+        emp = self.make_employee()
+        db.execute("INSERT INTO RoleTabPermissions (Role, TabKey, Allowed) VALUES ('Staff', 'location_tracking', 1)")
+        client = self.make_role_client("Staff", username="rep_login")
+        db.execute("UPDATE Users SET EmployeeID=? WHERE Username='rep_login'", (emp,))
+        template_id = db.execute("INSERT INTO VisitPlanTemplates (Name) VALUES ('Admin Only Route')")
+
+        client.post(f"/visit-plans/{emp}/2026-11-20/save-as-template", data={"name": "Rep Route"})
+        self.assertIsNone(db.query("SELECT 1 FROM VisitPlanTemplates WHERE Name=?", ("Rep Route",), one=True))
+
+        client.post(f"/visit-plans/{emp}/2026-11-20/apply-template/{template_id}")
+        self.assertIsNone(db.query("SELECT VisitPlanID FROM VisitPlans WHERE EmployeeID=?", (emp,), one=True))
+
+        client.post(f"/visit-plans/templates/{template_id}/delete")
+        self.assertIsNotNone(db.query("SELECT 1 FROM VisitPlanTemplates WHERE TemplateID=?",
+                                       (template_id,), one=True))
+
+    def test_apply_template_button_only_shows_when_templates_exist(self):
+        emp = self.make_employee()
+        client = self.make_admin_client()
+        resp = client.get(f"/location-tracking?date=2026-11-20&employee_id={emp}")
+        self.assertNotIn(b"Apply Template", resp.data)
+
+        db.execute("INSERT INTO VisitPlanTemplates (Name) VALUES ('Some Route')")
+        resp = client.get(f"/location-tracking?date=2026-11-20&employee_id={emp}")
+        self.assertIn(b"Apply Template", resp.data)
+
+    def test_save_as_template_button_only_shows_when_plan_has_stops(self):
+        emp = self.make_employee()
+        cust = self.make_customer("Has Location Store")
+        db.execute("UPDATE Customers SET Latitude=1, Longitude=1 WHERE CustomerID=?", (cust,))
+        client = self.make_admin_client()
+
+        resp = client.get(f"/location-tracking?date=2026-11-20&employee_id={emp}")
+        self.assertNotIn(b"Save as Template", resp.data)
+
+        client.post(f"/visit-plans/{emp}/2026-11-20/add-stop", data={
+            "mode": "customer", "customer_id": str(cust),
+        })
+        resp = client.get(f"/location-tracking?date=2026-11-20&employee_id={emp}")
+        self.assertIn(b"Save as Template", resp.data)
