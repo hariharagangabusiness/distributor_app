@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Visit Plan Templates{% endblock %}
+{% block page_title %}Visit Plan Templates{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-end mb-3">
+  <a href="{{ url_for('location_tracking_view') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left"></i> Back to Location Tracking</a>
+</div>
+<p class="text-muted">A template is a named, reusable stop list - save one from a day's Visit Plan (the "Save as
+  Template" button on Location Tracking), then apply it to any employee/date later. Manage a template's stops
+  (reorder, remove) or rename/delete it here.</p>
+
+<div class="card">
+  <div class="card-header">Templates</div>
+  <div class="table-responsive">
+    <table class="table mb-0 align-middle">
+      <thead><tr><th>Name</th><th>Stops</th><th>Created by</th><th></th></tr></thead>
+      <tbody>
+        {% for t in templates %}
+        <tr>
+          <td><a href="{{ url_for('visit_plan_template_detail', template_id=t.TemplateID) }}">{{ t.Name }}</a></td>
+          <td>{{ t.StopCount }}</td>
+          <td class="text-muted small">{{ t.CreatedByUsername or '' }}{% if t.CreatedAt %} · {{ t.CreatedAt }}{% endif %}</td>
+          <td class="text-end">
+            <a href="{{ url_for('visit_plan_template_detail', template_id=t.TemplateID) }}" class="btn btn-sm btn-outline-secondary">Manage</a>
+            <form method="post" action="{{ url_for('visit_plan_template_delete', template_id=t.TemplateID) }}" class="d-inline" onsubmit="return confirm('Delete this template? This can\'t be undone.');">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" class="text-center text-muted py-4">No templates saved yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

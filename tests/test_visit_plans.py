@@ -467,3 +467,96 @@ class VisitPlanTemplateTests(DBTestCase):
         })
         resp = client.get(f"/location-tracking?date=2026-11-20&employee_id={emp}")
         self.assertIn(b"Save as Template", resp.data)
+
+
+class VisitPlanTemplateManageTests(DBTestCase):
+    def _make_template_with_three_stops(self):
+        template_id = db.execute("INSERT INTO VisitPlanTemplates (Name) VALUES ('Multi-Stop Route')")
+        for i, name in enumerate(["First Stop", "Second Stop", "Third Stop"], start=1):
+            db.execute("""INSERT INTO VisitPlanTemplateStops (TemplateID, StopName, Latitude, Longitude, SortOrder)
+                        VALUES (?,?,1,1,?)""", (template_id, name, i))
+        return template_id
+
+    def _ordered_stop_names(self, template_id):
+        rows = db.query("SELECT StopName FROM VisitPlanTemplateStops WHERE TemplateID=? "
+                         "ORDER BY SortOrder, TemplateStopID", (template_id,))
+        return [r["StopName"] for r in rows]
+
+    def test_templates_list_page_shows_saved_templates(self):
+        db.execute("INSERT INTO VisitPlanTemplates (Name) VALUES ('Visible Route')")
+        client = self.make_admin_client()
+        resp = client.get("/visit-plans/templates")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"Visible Route", resp.data)
+
+    def test_template_detail_page_lists_stops_in_order(self):
+        template_id = self._make_template_with_three_stops()
+        client = self.make_admin_client()
+        resp = client.get(f"/visit-plans/templates/{template_id}")
+        self.assertEqual(resp.status_code, 200)
+        html = resp.data.decode()
+        self.assertLess(html.index("First Stop"), html.index("Second Stop"))
+        self.assertLess(html.index("Second Stop"), html.index("Third Stop"))
+
+    def test_move_stop_up_and_down_changes_order(self):
+        template_id = self._make_template_with_three_stops()
+        stop_ids = [r["TemplateStopID"] for r in db.query(
+            "SELECT TemplateStopID FROM VisitPlanTemplateStops WHERE TemplateID=? ORDER BY SortOrder",
+            (template_id,))]
+        client = self.make_admin_client()
+
+        # Move the (currently last) "Third Stop" up once -> Second, Third, First... no:
+        # First, Second, Third -> move Third up -> First, Third, Second.
+        client.post(f"/visit-plans/templates/stops/{stop_ids[2]}/move-up", follow_redirects=True)
+        self.assertEqual(self._ordered_stop_names(template_id), ["First Stop", "Third Stop", "Second Stop"])
+
+        # Move it back down -> First, Second, Third again.
+        client.post(f"/visit-plans/templates/stops/{stop_ids[2]}/move-down", follow_redirects=True)
+        self.assertEqual(self._ordered_stop_names(template_id), ["First Stop", "Second Stop", "Third Stop"])
+
+    def test_moving_the_first_stop_up_is_a_no_op(self):
+        template_id = self._make_template_with_three_stops()
+        stop_ids = [r["TemplateStopID"] for r in db.query(
+            "SELECT TemplateStopID FROM VisitPlanTemplateStops WHERE TemplateID=? ORDER BY SortOrder",
+            (template_id,))]
+        client = self.make_admin_client()
+        resp = client.post(f"/visit-plans/templates/stops/{stop_ids[0]}/move-up", follow_redirects=True)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(self._ordered_stop_names(template_id), ["First Stop", "Second Stop", "Third Stop"])
+
+    def test_can_remove_one_stop_from_a_template(self):
+        template_id = self._make_template_with_three_stops()
+        stop_ids = [r["TemplateStopID"] for r in db.query(
+            "SELECT TemplateStopID FROM VisitPlanTemplateStops WHERE TemplateID=? ORDER BY SortOrder",
+            (template_id,))]
+        client = self.make_admin_client()
+        resp = client.post(f"/visit-plans/templates/stops/{stop_ids[1]}/delete", follow_redirects=True)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(self._ordered_stop_names(template_id), ["First Stop", "Third Stop"])
+
+    def test_can_rename_a_template(self):
+        template_id = db.execute("INSERT INTO VisitPlanTemplates (Name) VALUES ('Old Name')")
+        client = self.make_admin_client()
+        resp = client.post(f"/visit-plans/templates/{template_id}/rename", data={"name": "New Name"},
+                            follow_redirects=True)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(db.query("SELECT Name FROM VisitPlanTemplates WHERE TemplateID=?",
+                                   (template_id,), one=True)["Name"], "New Name")
+
+    def test_staff_cannot_reach_template_management_pages(self):
+        emp = self.make_employee()
+        db.execute("INSERT INTO RoleTabPermissions (Role, TabKey, Allowed) VALUES ('Staff', 'location_tracking', 1)")
+        client = self.make_role_client("Staff", username="rep_login")
+        db.execute("UPDATE Users SET EmployeeID=? WHERE Username='rep_login'", (emp,))
+        template_id = self._make_template_with_three_stops()
+
+        resp = client.get("/visit-plans/templates", follow_redirects=True)
+        self.assertNotIn(b"Multi-Stop Route", resp.data)
+
+        resp = client.get(f"/visit-plans/templates/{template_id}", follow_redirects=True)
+        self.assertNotIn(b"First Stop", resp.data)
+
+        stop_id = db.query("SELECT TemplateStopID FROM VisitPlanTemplateStops WHERE TemplateID=? LIMIT 1",
+                            (template_id,), one=True)["TemplateStopID"]
+        client.post(f"/visit-plans/templates/stops/{stop_id}/move-up")
+        self.assertEqual(self._ordered_stop_names(template_id), ["First Stop", "Second Stop", "Third Stop"])

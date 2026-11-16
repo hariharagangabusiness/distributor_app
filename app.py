@@ -5904,6 +5904,27 @@ def _visit_plan_manage_check():
     return user
 
 
+def get_visit_plan_template(template_id):
+    """A saved template with its stops resolved - same live-vs-snapshot shape as
+    get_visit_plan() above (a Customer stop's name/location always comes live from
+    Customers; an ad-hoc stop carries its own). Returns None if the template doesn't
+    exist."""
+    template = db.query("SELECT * FROM VisitPlanTemplates WHERE TemplateID=?", (template_id,), one=True)
+    if not template:
+        return None
+    stops = db.query("""
+        SELECT vpts.TemplateStopID, vpts.CustomerID,
+               COALESCE(c.CustomerName, vpts.StopName) AS Name,
+               COALESCE(c.Latitude, vpts.Latitude) AS Latitude,
+               COALESCE(c.Longitude, vpts.Longitude) AS Longitude,
+               (c.CustomerID IS NOT NULL AND (c.Latitude IS NULL OR c.Longitude IS NULL)) AS CustomerLostLocation
+        FROM VisitPlanTemplateStops vpts
+        LEFT JOIN Customers c ON c.CustomerID = vpts.CustomerID
+        WHERE vpts.TemplateID=? ORDER BY vpts.SortOrder, vpts.TemplateStopID
+    """, (template_id,))
+    return {"template": template, "stops": [dict(s) for s in stops]}
+
+
 @app.route("/visit-plans/<int:employee_id>/<date_str>/add-stop", methods=["POST"])
 def visit_plan_add_stop(employee_id, date_str):
     user = _visit_plan_manage_check()
@@ -6024,6 +6045,108 @@ def visit_plan_save_as_template(employee_id, date_str):
     return redirect(url_for("location_tracking_view", date=date_str, employee_id=employee_id))
 
 
+@app.route("/visit-plans/templates")
+def visit_plan_templates_list():
+    """Admin/Manager landing page for managing saved templates - separate from any one
+    employee/date's Visit Plan, since a template isn't tied to either."""
+    user = _visit_plan_manage_check()
+    if not user:
+        return redirect(url_for("location_tracking_view"))
+    templates = db.query("""SELECT t.*, (SELECT COUNT(*) FROM VisitPlanTemplateStops s
+                           WHERE s.TemplateID=t.TemplateID) AS StopCount
+                           FROM VisitPlanTemplates t ORDER BY t.Name""")
+    return render_template("visit_plan_templates_list.html", templates=templates)
+
+
+@app.route("/visit-plans/templates/<int:template_id>")
+def visit_plan_template_detail(template_id):
+    """One template's stops, in order, with controls to reorder/remove them or rename/delete
+    the template itself."""
+    user = _visit_plan_manage_check()
+    if not user:
+        return redirect(url_for("location_tracking_view"))
+    template = get_visit_plan_template(template_id)
+    if not template:
+        flash("Template not found.", "error")
+        return redirect(url_for("visit_plan_templates_list"))
+    return render_template("visit_plan_template_detail.html", template=template)
+
+
+@app.route("/visit-plans/templates/<int:template_id>/rename", methods=["POST"])
+def visit_plan_template_rename(template_id):
+    user = _visit_plan_manage_check()
+    if not user:
+        return redirect(url_for("location_tracking_view"))
+    name = (request.form.get("name") or "").strip()
+    if not name:
+        flash("Template name can't be blank.", "error")
+        return redirect(url_for("visit_plan_template_detail", template_id=template_id))
+    db.execute("UPDATE VisitPlanTemplates SET Name=? WHERE TemplateID=?", (name, template_id))
+    flash("Template renamed.", "success")
+    return redirect(url_for("visit_plan_template_detail", template_id=template_id))
+
+
+def _visit_plan_template_stop_move(template_stop_id, direction):
+    """Swaps this stop's SortOrder with its neighbor (direction=-1 for up, +1 for down) within
+    the same template - a no-op at either end of the list. Returns the TemplateID (for the
+    redirect) or None if the stop doesn't exist."""
+    stop = db.query("SELECT * FROM VisitPlanTemplateStops WHERE TemplateStopID=?",
+                     (template_stop_id,), one=True)
+    if not stop:
+        return None
+    ordered = db.query("SELECT TemplateStopID, SortOrder FROM VisitPlanTemplateStops "
+                        "WHERE TemplateID=? ORDER BY SortOrder, TemplateStopID", (stop["TemplateID"],))
+    idx = next(i for i, s in enumerate(ordered) if s["TemplateStopID"] == template_stop_id)
+    neighbor_idx = idx + direction
+    if 0 <= neighbor_idx < len(ordered):
+        neighbor = ordered[neighbor_idx]
+        with db.transaction() as conn:
+            conn.execute("UPDATE VisitPlanTemplateStops SET SortOrder=? WHERE TemplateStopID=?",
+                         (neighbor["SortOrder"], template_stop_id))
+            conn.execute("UPDATE VisitPlanTemplateStops SET SortOrder=? WHERE TemplateStopID=?",
+                         (ordered[idx]["SortOrder"], neighbor["TemplateStopID"]))
+    return stop["TemplateID"]
+
+
+@app.route("/visit-plans/templates/stops/<int:template_stop_id>/move-up", methods=["POST"])
+def visit_plan_template_stop_move_up(template_stop_id):
+    user = _visit_plan_manage_check()
+    if not user:
+        return redirect(url_for("location_tracking_view"))
+    template_id = _visit_plan_template_stop_move(template_stop_id, -1)
+    if not template_id:
+        flash("Template stop not found.", "error")
+        return redirect(url_for("visit_plan_templates_list"))
+    return redirect(url_for("visit_plan_template_detail", template_id=template_id))
+
+
+@app.route("/visit-plans/templates/stops/<int:template_stop_id>/move-down", methods=["POST"])
+def visit_plan_template_stop_move_down(template_stop_id):
+    user = _visit_plan_manage_check()
+    if not user:
+        return redirect(url_for("location_tracking_view"))
+    template_id = _visit_plan_template_stop_move(template_stop_id, 1)
+    if not template_id:
+        flash("Template stop not found.", "error")
+        return redirect(url_for("visit_plan_templates_list"))
+    return redirect(url_for("visit_plan_template_detail", template_id=template_id))
+
+
+@app.route("/visit-plans/templates/stops/<int:template_stop_id>/delete", methods=["POST"])
+def visit_plan_template_stop_delete(template_stop_id):
+    user = _visit_plan_manage_check()
+    if not user:
+        return redirect(url_for("location_tracking_view"))
+    stop = db.query("SELECT TemplateID FROM VisitPlanTemplateStops WHERE TemplateStopID=?",
+                     (template_stop_id,), one=True)
+    if not stop:
+        flash("Template stop not found.", "error")
+        return redirect(url_for("visit_plan_templates_list"))
+    db.execute("DELETE FROM VisitPlanTemplateStops WHERE TemplateStopID=?", (template_stop_id,))
+    flash("Removed from the template.", "success")
+    return redirect(url_for("visit_plan_template_detail", template_id=stop["TemplateID"]))
+
+
 @app.route("/visit-plans/templates/<int:template_id>/delete", methods=["POST"])
 def visit_plan_template_delete(template_id):
     user = _visit_plan_manage_check()
@@ -6031,7 +6154,10 @@ def visit_plan_template_delete(template_id):
         return redirect(url_for("location_tracking_view"))
     db.execute("DELETE FROM VisitPlanTemplates WHERE TemplateID=?", (template_id,))
     flash("Template deleted.", "success")
-    return redirect(request.referrer or url_for("location_tracking_view"))
+    next_url = request.referrer or url_for("location_tracking_view")
+    if next_url.rstrip("/").endswith(f"/visit-plans/templates/{template_id}"):
+        next_url = url_for("visit_plan_templates_list")
+    return redirect(next_url)
 
 
 @app.route("/visit-plans/<int:employee_id>/<date_str>/apply-template/<int:template_id>", methods=["POST"])
