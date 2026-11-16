@@ -160,7 +160,11 @@ CREATE TABLE IF NOT EXISTS CompanySettings (
     -- How often (minutes) a tracked-role login's open tab uploads its periodic location fix -
     -- see static/js/location-tracking.js. Admin-configurable from Company / GST Settings;
     -- used to be a hardcoded 30.
-    LocationPingIntervalMinutes INTEGER NOT NULL DEFAULT 30
+    LocationPingIntervalMinutes INTEGER NOT NULL DEFAULT 30,
+    -- The geofence radius (meters) a rep must be within to mark their own Visit Plan stop
+    -- visited - see visit_plan_stop_toggle(). Doesn't apply to an Admin/Manager marking a stop
+    -- visited on someone else's behalf (that's an override, not a location claim).
+    VisitGeofenceRadiusMeters INTEGER NOT NULL DEFAULT 200
 );
 
 INSERT OR IGNORE INTO CompanySettings (SettingsID) VALUES (1);
@@ -584,6 +588,10 @@ CREATE TABLE IF NOT EXISTS VisitPlanStops (
     VisitedAt            TEXT,                -- NULL until marked visited
     VisitedByUserID      INTEGER,
     VisitedByUsername    TEXT,
+    -- How far (meters) the rep's device was from this stop's location at the moment they marked
+    -- it visited (the geofence check - see visit_plan_stop_toggle()). NULL when an Admin/Manager
+    -- marked it on someone else's behalf (no location claim to check), or while pending.
+    VisitedDistanceMeters REAL,
     Notes               TEXT,
     CreatedAt           TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (VisitPlanID) REFERENCES VisitPlans(VisitPlanID) ON DELETE CASCADE,
