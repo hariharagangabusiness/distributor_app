@@ -7436,7 +7436,11 @@ def get_ar_base_rows():
     """Every unpaid/partially-paid invoice, across all time (dues don't
     expire at a month boundary) - the shared source data behind every
     Accounts Receivable view and its PDF export. See accounts_receivable()
-    for the full definition of "due" used here."""
+    for the full definition of "due" used here.
+
+    Only Completed sales count (not Draft - it isn't billed/sent to the
+    customer yet, so there's nothing yet to chase payment for; not
+    Cancelled - it never was)."""
     return db.query("""
         SELECT s.SaleID, s.InvoiceNumber, s.SaleDate, s.PaymentDueDate, s.PaymentStatus,
                s.TotalAmount, s.TaxableAmount, s.AmountReceived, (s.TaxableAmount - s.AmountReceived) AS Due,
@@ -7447,7 +7451,7 @@ def get_ar_base_rows():
         JOIN Customers c ON c.CustomerID = s.CustomerID
         LEFT JOIN Customers p ON p.CustomerID = c.ParentCustomerID
         LEFT JOIN Employees e ON e.EmployeeID = s.EmployeeID
-        WHERE s.Status <> 'Cancelled' AND c.IsUnassignedBucket = 0
+        WHERE s.Status = 'Completed' AND c.IsUnassignedBucket = 0
           AND (s.TaxableAmount - s.AmountReceived) > 0.005
         ORDER BY s.PaymentDueDate IS NULL, s.PaymentDueDate, s.SaleDate
     """)
