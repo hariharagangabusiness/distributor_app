@@ -7337,7 +7337,7 @@ def settings_form():
                     GstFilingScheme=?, GstRemindersEnabled=?, GstReminderEmails=?, GstReminderDaysBefore=?,
                     SmtpHost=?, SmtpPort=?, SmtpUsername=?, SmtpPassword=?, SmtpFromEmail=?, SmtpUseTLS=?,
                     CreditControlMode=?, CreditBlockDays=?, LocationTrackingWorkingDays=?, LocationConsentText=?,
-                    LocationPingIntervalMinutes=?, VisitGeofenceRadiusMeters=?
+                    LocationPingIntervalMinutes=?, VisitGeofenceRadiusMeters=?, ARReminderOverdueDays=?
                     WHERE SettingsID=1""",
                    (f["company_name"], f["gstin"], f["pan"], f["address"], f["city"],
                     STATE_NAME_BY_CODE.get(f.get("state_code", ""), ""), f.get("state_code", ""), f["pincode"],
@@ -7357,7 +7357,8 @@ def settings_form():
                         or DEFAULT_LOCATION_WORKING_DAYS,
                     f.get("location_consent_text", "").strip() or None,
                     min(max(int(f.get("location_ping_interval_minutes") or 30), 1), 720),
-                    min(max(int(f.get("visit_geofence_radius_meters") or 200), 10), 5000)))
+                    min(max(int(f.get("visit_geofence_radius_meters") or 200), 10), 5000),
+                    min(max(int(f.get("ar_reminder_overdue_days") or 7), 1), 365)))
         flash("Company settings saved. These details now appear on every GST invoice.", "success")
         return redirect(url_for("settings_form"))
     company = get_company_settings()
@@ -7534,6 +7535,98 @@ def _ar_invoice_pdf_row(r):
         "Received": indian_number_format(r["AmountReceived"]),
         "Due": indian_number_format(r["Due"]),
     }
+
+
+# ---------------------------------------------------------------------
+# Accounts Receivable: payment reminders (Call / WhatsApp)
+#
+# A "Remind" button next to an invoice (Invoice-wise tab) or a customer's
+# whole balance (Customer Summary tab) opens the device's own dialer or
+# WhatsApp with a pre-filled message - nothing is sent automatically or
+# through any paid gateway. ARReminderLog records that it happened (who,
+# when, which channel, against which invoice/customer), which drives the
+# "Reminder due" flag: overdue past ARReminderOverdueDays AND not already
+# reminded within that same window. An automated SMS/voice-call channel
+# would need a chosen provider + API key and isn't wired up here - this
+# only covers the two channels that need no account/cost to use.
+# ---------------------------------------------------------------------
+
+def _ar_phone_e164(phone):
+    """Best-effort normalize a saved Phone value to a bare international-format number
+    (country code + number, digits only, no '+') for tel:/WhatsApp links. Customer/Employee
+    phone fields throughout this app are plain text with no format enforcement - assumes
+    India (+91) for what looks like a bare 10-digit mobile number, since that's what's
+    actually typed in practice. Returns None if there's nothing usable."""
+    digits = re.sub(r"\D", "", phone or "")
+    if not digits:
+        return None
+    if len(digits) == 10:
+        return "91" + digits
+    if len(digits) == 11 and digits.startswith("0"):
+        return "91" + digits[1:]
+    if len(digits) == 12 and digits.startswith("91"):
+        return digits
+    if len(digits) == 13 and digits.startswith("091"):
+        return digits[1:]
+    return digits if 10 <= len(digits) <= 15 else None
+
+
+def _ar_reminder_message(customer_name, due_amount, invoice_number=None, age_days=None):
+    company_name = get_company_settings()["CompanyName"] or "us"
+    amount = indian_number_format(due_amount)
+    if invoice_number:
+        age_note = f" ({age_days} day(s) overdue)" if age_days else ""
+        return (f"Hi {customer_name}, this is a reminder from {company_name} that {amount} is still due "
+                f"against Invoice {invoice_number}{age_note}. Please arrange payment at your earliest "
+                "convenience. Thank you.")
+    return (f"Hi {customer_name}, this is a reminder from {company_name} that {amount} is due on your "
+            "account. Please arrange payment at your earliest convenience. Thank you.")
+
+
+def get_ar_reminder_flags(invoice_rows, customer_summary):
+    """Adds ReminderDue (bool) to every invoice_rows/customer_summary row in place - True once
+    it's overdue past the configured threshold AND hasn't had a reminder logged in that same
+    window. Also adds TelLink/WhatsAppLink (None if the saved Phone can't be normalized) and,
+    for invoice rows, ReminderMessage/WhatsAppUrl (customer_summary builds its own account-level
+    message in the template, since it needs the row's own due total)."""
+    threshold = get_company_settings()["ARReminderOverdueDays"] or 7
+    cutoff = (date.today() - timedelta(days=threshold)).isoformat()
+
+    recent_invoice = {r["SaleID"] for r in db.query(
+        "SELECT DISTINCT SaleID FROM ARReminderLog WHERE SaleID IS NOT NULL AND SentAt >= ?", (cutoff,))}
+    recent_account = {r["CustomerID"] for r in db.query(
+        "SELECT DISTINCT CustomerID FROM ARReminderLog WHERE SaleID IS NULL AND SentAt >= ?", (cutoff,))}
+
+    for r in invoice_rows:
+        r["TelLink"] = _ar_phone_e164(r["Phone"])
+        r["ReminderDue"] = r["AgeDays"] >= threshold and r["SaleID"] not in recent_invoice
+        r["ReminderMessage"] = _ar_reminder_message(r["CustomerName"], r["Due"], r["InvoiceNumber"], r["AgeDays"])
+
+    for c in customer_summary:
+        c["TelLink"] = _ar_phone_e164(c["Phone"])
+        c["ReminderDue"] = (ar_age_days(c["oldest_due_date"]) >= threshold if c["oldest_due_date"] else False) \
+            and c["CustomerID"] not in recent_account
+        c["ReminderMessage"] = _ar_reminder_message(c["CustomerName"], c["due"])
+
+    return threshold
+
+
+@app.route("/reports/accounts-receivable/remind", methods=["POST"])
+def ar_remind():
+    """Fire-and-forget logging call from the Call/WhatsApp buttons - the browser has already
+    (or is about to) navigate to tel:/wa.me on its own; this just records that it happened, for
+    the 'Reminder due' flag and an audit trail. Never blocks or redirects the actual call/chat."""
+    user = get_current_user()
+    customer_id = request.form.get("customer_id", type=int)
+    sale_id = request.form.get("sale_id", type=int)  # optional - absent for an account-level reminder
+    channel = request.form.get("channel")
+    if not customer_id or channel not in ("Call", "WhatsApp"):
+        return jsonify({"ok": False}), 400
+    db.execute("""INSERT INTO ARReminderLog (CustomerID, SaleID, Channel, SentByUserID, SentByUsername)
+                VALUES (?,?,?,?,?)""",
+               (customer_id, sale_id, channel, user["UserID"] if user else None,
+                user["Username"] if user else None))
+    return jsonify({"ok": True})
 
 
 @app.route("/reports/accounts-receivable/invoices/pdf")
@@ -7729,13 +7822,21 @@ def accounts_receivable():
         r["AgeDays"] = age_days(r["PaymentDueDate"] or r["SaleDate"])
         r["Due"] = round(r["Due"], 2)
 
+    ar_reminder_overdue_days = get_ar_reminder_flags(invoice_rows, customer_summary)
+    # Distinct customers, not invoice count - one customer with 3 overdue invoices is one
+    # reminder to make, not three. Computed from invoice_rows (not customer_summary) regardless
+    # of which tab is open, so this stat card means the same thing on every view.
+    reminders_due_count = len({r["CustomerID"] for r in invoice_rows if r["ReminderDue"]})
+
     return render_template("accounts_receivable.html", view=view, today=today_iso,
                             total_due=total_due, customer_count=customer_count,
                             customer_summary=customer_summary, aging_rows=aging_rows,
                             aging_totals=aging_totals, invoice_rows=invoice_rows,
                             zone_wise=zone_wise, salesperson_rows=salesperson_rows,
                             payment_rows=payment_rows, payment_totals=payment_totals,
-                            pay_date_from=pay_date_from, pay_date_to=pay_date_to, q=q)
+                            pay_date_from=pay_date_from, pay_date_to=pay_date_to, q=q,
+                            ar_reminder_overdue_days=ar_reminder_overdue_days,
+                            reminders_due_count=reminders_due_count)
 
 
 @app.route("/reports/pnl")

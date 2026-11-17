@@ -164,7 +164,11 @@ CREATE TABLE IF NOT EXISTS CompanySettings (
     -- The geofence radius (meters) a rep must be within to mark their own Visit Plan stop
     -- visited - see visit_plan_stop_toggle(). Doesn't apply to an Admin/Manager marking a stop
     -- visited on someone else's behalf (that's an override, not a location claim).
-    VisitGeofenceRadiusMeters INTEGER NOT NULL DEFAULT 200
+    VisitGeofenceRadiusMeters INTEGER NOT NULL DEFAULT 200,
+    -- Accounts Receivable: an invoice/customer is flagged "reminder due" once it's this many
+    -- days overdue AND hasn't had a reminder logged (ARReminderLog) in that same window - see
+    -- get_ar_reminder_flags() in app.py.
+    ARReminderOverdueDays INTEGER NOT NULL DEFAULT 7
 );
 
 INSERT OR IGNORE INTO CompanySettings (SettingsID) VALUES (1);
@@ -625,6 +629,24 @@ CREATE TABLE IF NOT EXISTS VisitPlanTemplateStops (
     FOREIGN KEY (CustomerID) REFERENCES Customers(CustomerID)
 );
 
+-- One row per payment reminder sent from Accounts Receivable, whether aimed at a single
+-- invoice (SaleID set) or a customer's whole outstanding balance (SaleID NULL) - see
+-- ar_remind() and get_ar_reminder_flags() in app.py. Channel is 'Call' or 'WhatsApp' today
+-- (both just open the device's own dialer/WhatsApp - nothing is sent automatically); an
+-- automated SMS/voice-call channel would slot in here as another Channel value once a
+-- provider is chosen, without a schema change.
+CREATE TABLE IF NOT EXISTS ARReminderLog (
+    ReminderLogID       INTEGER PRIMARY KEY AUTOINCREMENT,
+    CustomerID          INTEGER NOT NULL,
+    SaleID              INTEGER,              -- NULL = reminder was for the whole account, not one invoice
+    Channel             TEXT NOT NULL,        -- 'Call' or 'WhatsApp'
+    SentByUserID        INTEGER,
+    SentByUsername       TEXT,
+    SentAt              TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (CustomerID) REFERENCES Customers(CustomerID),
+    FOREIGN KEY (SaleID) REFERENCES Sales(SaleID)
+);
+
 -- ---------------------------------------------------------------------
 -- Employee Leave & Attendance
 -- ---------------------------------------------------------------------
@@ -1032,3 +1054,5 @@ CREATE INDEX IF NOT EXISTS idx_visitplanstops_plan ON VisitPlanStops(VisitPlanID
 CREATE INDEX IF NOT EXISTS idx_visitplanstops_customer ON VisitPlanStops(CustomerID);
 CREATE INDEX IF NOT EXISTS idx_visitplantemplatestops_template ON VisitPlanTemplateStops(TemplateID);
 CREATE INDEX IF NOT EXISTS idx_visitplantemplatestops_customer ON VisitPlanTemplateStops(CustomerID);
+CREATE INDEX IF NOT EXISTS idx_arreminderlog_customer ON ARReminderLog(CustomerID);
+CREATE INDEX IF NOT EXISTS idx_arreminderlog_sale ON ARReminderLog(SaleID);
