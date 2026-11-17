@@ -119,17 +119,26 @@
   <a href="{{ url_for('accounts_receivable_invoices_pdf') }}" class="btn btn-outline-secondary btn-sm">
     <i class="bi bi-file-earmark-pdf"></i> Generate PDF</a>
 </div>
+<div id="ar-bulk-bar" class="d-none mb-2 p-2 bg-light border rounded d-flex justify-content-between align-items-center flex-wrap gap-2">
+  <span><strong><span id="ar-bulk-count">0</span></strong> invoice(s) selected</span>
+  <div>
+    <button type="button" class="btn btn-sm btn-outline-secondary" id="ar-bulk-clear">Clear</button>
+    <button type="button" class="btn btn-sm btn-success" id="ar-bulk-send-btn"><i class="bi bi-whatsapp"></i> Send WhatsApp to Selected</button>
+  </div>
+</div>
 <div class="card">
   <div class="card-header">Invoice-wise Due Detail ({{ invoice_rows|length }}) <span class="text-muted small fw-normal">— click a column heading to sort</span>
     <div class="text-muted small fw-normal mt-1">The <i class="bi bi-whatsapp"></i> button opens that customer's WhatsApp chat directly.
-      Use the <i class="bi bi-file-earmark-pdf"></i> button next to it to open the invoice PDF in its own tab, ready to attach by hand.</div>
+      Use the <i class="bi bi-file-earmark-pdf"></i> button next to it to open the invoice PDF in its own tab, ready to attach by hand.
+      Tick several rows' checkboxes to send WhatsApp reminders to each of those customers, one chat per click.</div>
   </div>
   <div class="table-responsive">
   <table class="table mb-0 sortable-table table-cards-mobile">
-    <thead><tr><th>Invoice #</th><th>Account #</th><th>Customer</th><th data-sort-type="date">Sale Date</th><th data-sort-type="date">Due Date</th><th>Age (days)</th><th>Status</th><th>Taxable Value</th><th>Total (incl. GST)</th><th>Received</th><th>Due</th><th class="no-sort"></th></tr></thead>
+    <thead><tr><th class="no-sort">{% if invoice_rows|selectattr('TelLink')|list %}<input type="checkbox" id="ar-select-all" title="Select all with a phone number">{% endif %}</th><th>Invoice #</th><th>Account #</th><th>Customer</th><th data-sort-type="date">Sale Date</th><th data-sort-type="date">Due Date</th><th>Age (days)</th><th>Status</th><th>Taxable Value</th><th>Total (incl. GST)</th><th>Received</th><th>Due</th><th class="no-sort"></th></tr></thead>
     <tbody>
       {% for r in invoice_rows %}
       <tr>
+        <td data-label="Select">{% if r.TelLink %}<input type="checkbox" class="js-ar-bulk-select" aria-label="Select {{ r.CustomerName }}'s invoice {{ r.InvoiceNumber }}">{% endif %}</td>
         <td data-label="Invoice #">{{ r.InvoiceNumber }}</td>
         <td data-label="Account #" class="text-muted small">{{ r.AccountNumber or '-' }}</td>
         <td data-label="Customer">{{ r.CustomerName }}</td>
@@ -158,7 +167,7 @@
           {% endif %}
         </td>
       </tr>
-      <tr class="collapse" id="pay-{{ r.SaleID }}"><td colspan="12" class="bg-light">
+      <tr class="collapse" id="pay-{{ r.SaleID }}"><td colspan="13" class="bg-light">
         <form method="post" action="{{ url_for('sale_record_payment', sid=r.SaleID) }}" class="row g-2 align-items-end">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="next" value="{{ request.full_path }}">
@@ -173,9 +182,26 @@
           <div class="col-md-2"><button type="submit" class="btn btn-brand btn-sm mobile-btn-full">Save Payment</button></div>
         </form>
       </td></tr>
-      {% else %}<tr><td colspan="12" class="text-center text-muted py-4">{% if q %}No matches for your search.{% else %}No unpaid or partially-paid invoices.{% endif %}</td></tr>{% endfor %}
+      {% else %}<tr><td colspan="13" class="text-center text-muted py-4">{% if q %}No matches for your search.{% else %}No unpaid or partially-paid invoices.{% endif %}</td></tr>{% endfor %}
     </tbody>
   </table>
+  </div>
+</div>
+<div class="modal fade" id="ar-bulk-modal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Send WhatsApp Reminders</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted small">Your browser only lets one WhatsApp chat open per click - click each button below in turn.</p>
+        <div id="ar-bulk-modal-list" class="list-group"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
   </div>
 </div>
 {% endif %}
@@ -272,6 +298,11 @@
 // link's own target="_blank" navigation for the browser's one-popup-per-click allowance, and
 // loses - which is why the invoice PDF now gets its own separate button/click instead of being
 // opened automatically alongside WhatsApp.
+//
+// The logging listener is delegated on document rather than attached per-element, so it also
+// covers the WhatsApp buttons cloned into the bulk-reminder modal below - a clone carries no
+// listeners of its own, but a delegated one matches it by selector regardless of where it lives
+// in the DOM.
 (function () {
   var csrfMeta = document.querySelector('meta[name="csrf-token"]');
 
@@ -287,11 +318,94 @@
     }).catch(function () { /* best-effort logging only - the call/chat itself already opened */ });
   }
 
-  document.querySelectorAll('.js-ar-remind').forEach(function (el) {
-    el.addEventListener('click', function () {
-      logReminder(el);
-      // No preventDefault() - the anchor's own href (tel:/wa.me) navigates as normal.
+  document.addEventListener('click', function (e) {
+    var el = e.target.closest('.js-ar-remind');
+    if (!el) return;
+    logReminder(el);
+    // No preventDefault() - the anchor's own href (tel:/wa.me) navigates as normal.
+  });
+})();
+
+// Bulk WhatsApp reminders (Invoice-wise tab): select several invoices' checkboxes, then click
+// through a short list in a modal, one real click per customer - WhatsApp has no API here to
+// blast several chats from a single click, and browsers block more than one popup per click
+// anyway, so this is the most it can do: cut out re-finding each customer in the full table.
+(function () {
+  var checkboxes = Array.prototype.slice.call(document.querySelectorAll('.js-ar-bulk-select'));
+  if (!checkboxes.length) return;
+
+  var selectAll = document.getElementById('ar-select-all');
+  var bar = document.getElementById('ar-bulk-bar');
+  var countEl = document.getElementById('ar-bulk-count');
+  var sendBtn = document.getElementById('ar-bulk-send-btn');
+  var clearBtn = document.getElementById('ar-bulk-clear');
+  var modalList = document.getElementById('ar-bulk-modal-list');
+  var modalEl = document.getElementById('ar-bulk-modal');
+
+  function selected() {
+    return checkboxes.filter(function (cb) { return cb.checked; });
+  }
+
+  function updateBar() {
+    var n = selected().length;
+    countEl.textContent = n;
+    bar.classList.toggle('d-none', n === 0);
+    if (selectAll) selectAll.checked = n > 0 && n === checkboxes.length;
+  }
+
+  checkboxes.forEach(function (cb) { cb.addEventListener('change', updateBar); });
+
+  if (selectAll) {
+    selectAll.addEventListener('change', function () {
+      checkboxes.forEach(function (cb) { cb.checked = selectAll.checked; });
+      updateBar();
     });
+  }
+
+  if (clearBtn) {
+    clearBtn.addEventListener('click', function () {
+      checkboxes.forEach(function (cb) { cb.checked = false; });
+      updateBar();
+    });
+  }
+
+  sendBtn.addEventListener('click', function () {
+    modalList.innerHTML = '';
+    selected().forEach(function (cb) {
+      var row = cb.closest('tr');
+      var waLink = row.querySelector('.js-ar-remind-wa-invoice');
+      if (!waLink) return;
+      var customer = row.querySelector('[data-label="Customer"]').textContent.trim();
+      var invoice = row.querySelector('[data-label="Invoice #"]').textContent.trim();
+      var due = row.querySelector('[data-label="Due"]').textContent.trim();
+
+      var item = document.createElement('div');
+      item.className = 'list-group-item d-flex justify-content-between align-items-center flex-wrap gap-2';
+
+      var info = document.createElement('div');
+      info.innerHTML = '<div class="fw-bold">' + customer + '</div>' +
+        '<div class="text-muted small">Invoice ' + invoice + ' &middot; Due ' + due + '</div>';
+      item.appendChild(info);
+
+      var btn = waLink.cloneNode(true);
+      btn.classList.remove('mobile-btn-full');
+      btn.innerHTML = '<i class="bi bi-whatsapp"></i> Open WhatsApp';
+      btn.addEventListener('click', function () {
+        item.classList.add('list-group-item-success');
+        var tag = document.createElement('span');
+        tag.className = 'badge text-bg-success ms-2';
+        tag.textContent = 'Opened';
+        if (!item.querySelector('.badge')) info.appendChild(tag);
+      });
+      item.appendChild(btn);
+
+      modalList.appendChild(item);
+    });
+    // Re-parent to <body>: nested inside the page's layout containers, this modal would sit in
+    // a stacking context trapped below Bootstrap's own backdrop (which it always appends as a
+    // direct child of <body>), leaving every button underneath it unclickable.
+    if (modalEl.parentElement !== document.body) document.body.appendChild(modalEl);
+    new bootstrap.Modal(modalEl).show();
   });
 })();
 </script>
