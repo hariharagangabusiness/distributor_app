@@ -112,11 +112,14 @@
       // Accounts Receivable's per-invoice "Record Payment" form) doesn't
       // count - it's not a persistent editable row alongside the sortable
       // data, just an occasionally-opened action panel, so it shouldn't
-      // disable sorting for the whole table.
+      // disable sorting for the whole table. Neither does a plain row-select
+      // checkbox (e.g. Accounts Receivable's bulk-WhatsApp selection) - it
+      // carries no data a sort could lose, and since it reorders whole <tr>
+      // elements, a checked box simply moves along with its row.
       var body = table.querySelector('tbody');
       var hasLiveDataEntry = body && Array.prototype.some.call(
         body.querySelectorAll('input, select, textarea'),
-        function (el) { return !el.closest('tr.collapse'); }
+        function (el) { return el.type !== 'checkbox' && !el.closest('tr.collapse'); }
       );
       if (hasLiveDataEntry) return;
       wireTable(table);
