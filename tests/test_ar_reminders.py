@@ -137,20 +137,24 @@ class ARReminderDueFlagTests(DBTestCase):
         self.assertIn("No Phone Co", html)
         self.assertIn("No phone", html)
 
-    def test_invoice_level_whatsapp_button_carries_the_pdf_url_for_attaching(self):
+    def test_invoice_level_row_has_a_separate_pdf_button_next_to_whatsapp(self):
+        """The WhatsApp button itself must stay a plain wa.me link with nothing else attached to
+        its click (so it always navigates straight to the chat, not fight a second popup for the
+        browser's one-popup-per-click allowance) - the invoice PDF gets its own separate button/
+        link instead."""
         old_date = (date.today() - timedelta(days=20)).isoformat()
         sale_id = self.make_sale(self.cust, 1000, 0, "INV-OLD-6", old_date)
         client = self.make_admin_client()
         resp = client.get("/reports/accounts-receivable?view=invoices")
         html = resp.data.decode()
         self.assertRegex(html, r'<a[^>]*\bjs-ar-remind-wa-invoice\b')
+        self.assertNotRegex(html, r'<a[^>]*\bjs-ar-remind-wa-invoice\b[^>]*\bdata-pdf-url\b')
         self.assertIn(f"/sales/{sale_id}/invoice.pdf", html)
-        self.assertIn("Invoice-INV-OLD-6.pdf", html)
 
     def test_account_level_whatsapp_button_has_no_pdf_attachment(self):
         """Attaching one specific invoice makes no sense for a whole-account reminder (it could
-        cover several invoices) - only the Invoice-wise tab's WhatsApp button gets this. (The
-        class name itself still appears elsewhere on the page, in the always-present JS that
+        cover several invoices) - only the Invoice-wise tab's row gets the separate PDF button.
+        (The class name itself still appears elsewhere on the page, in the always-present JS that
         wires up that other tab's button - so this checks for an actual <a> tag carrying it,
         not just the substring.)"""
         old_date = (date.today() - timedelta(days=20)).isoformat()
@@ -160,7 +164,7 @@ class ARReminderDueFlagTests(DBTestCase):
         html = resp.data.decode()
         self.assertIn("https://wa.me/919876543210", html)
         self.assertNotRegex(html, r'<a[^>]*\bjs-ar-remind-wa-invoice\b')
-        self.assertNotIn("data-pdf-url", html)
+        self.assertNotIn("invoice.pdf", html)
 
     def test_settings_page_can_update_the_overdue_threshold(self):
         client = self.make_admin_client()

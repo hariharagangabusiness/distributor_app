@@ -121,9 +121,8 @@
 </div>
 <div class="card">
   <div class="card-header">Invoice-wise Due Detail ({{ invoice_rows|length }}) <span class="text-muted small fw-normal">— click a column heading to sort</span>
-    <div class="text-muted small fw-normal mt-1">The <i class="bi bi-whatsapp"></i> button attaches a copy of that invoice where your phone/browser
-      supports sharing a file (most mobile browsers) — on ones that don't (mostly desktop), the invoice PDF opens in
-      its own tab alongside WhatsApp so you can attach it yourself.</div>
+    <div class="text-muted small fw-normal mt-1">The <i class="bi bi-whatsapp"></i> button opens that customer's WhatsApp chat directly.
+      Use the <i class="bi bi-file-earmark-pdf"></i> button next to it to open the invoice PDF in its own tab, ready to attach by hand.</div>
   </div>
   <div class="table-responsive">
   <table class="table mb-0 sortable-table table-cards-mobile">
@@ -152,9 +151,10 @@
           <a href="https://wa.me/{{ r.TelLink }}?text={{ r.ReminderMessage|urlencode }}" target="_blank" rel="noopener"
              class="btn btn-sm btn-outline-success mobile-btn-full js-ar-remind js-ar-remind-wa-invoice"
              data-customer-id="{{ r.CustomerID }}" data-sale-id="{{ r.SaleID }}" data-channel="WhatsApp"
-             data-pdf-url="{{ url_for('sale_invoice_pdf', sid=r.SaleID) }}"
-             data-pdf-name="Invoice-{{ r.InvoiceNumber.replace('/', '-') }}.pdf"
-             title="WhatsApp {{ r.CustomerName }} (opens the invoice PDF in another tab too, ready to attach)"><i class="bi bi-whatsapp"></i></a>
+             title="WhatsApp {{ r.CustomerName }}"><i class="bi bi-whatsapp"></i></a>
+          <a href="{{ url_for('sale_invoice_pdf', sid=r.SaleID) }}" target="_blank" rel="noopener"
+             class="btn btn-sm btn-outline-secondary mobile-btn-full"
+             title="Open the invoice PDF in another tab, ready to attach to WhatsApp yourself"><i class="bi bi-file-earmark-pdf"></i></a>
           {% endif %}
         </td>
       </tr>
@@ -264,14 +264,14 @@
 {% block scripts %}
 <script>
 // Fire-and-forget logging for the Call/WhatsApp reminder buttons - the click's own default
-// action (navigating to tel:/wa.me) is never interrupted for any of them, including the
-// per-invoice WhatsApp button, so it always goes straight to that customer's chat exactly like
-// before; this just records that it happened, driving the overdue-nudge badge elsewhere on this
-// page and an audit trail (see ar_remind() in app.py). The per-invoice button additionally opens
-// the invoice PDF in its own tab alongside, ready to attach to that same chat by hand - the OS/
-// browser share sheet (navigator.share) is deliberately not used here, since on several desktop
-// browsers (e.g. Windows/Edge) it hands the person a generic share picker instead of jumping
-// straight to the right WhatsApp chat.
+// action (navigating to tel:/wa.me) is never interrupted for any of them, so it always goes
+// straight to that customer's chat exactly like before; this just records that it happened,
+// driving the overdue-nudge badge elsewhere on this page and an audit trail (see ar_remind() in
+// app.py). Nothing here calls window.open() or navigator.share(): a second popup triggered from
+// the same click (whether via window.open or the OS share sheet) competes with the WhatsApp
+// link's own target="_blank" navigation for the browser's one-popup-per-click allowance, and
+// loses - which is why the invoice PDF now gets its own separate button/click instead of being
+// opened automatically alongside WhatsApp.
 (function () {
   var csrfMeta = document.querySelector('meta[name="csrf-token"]');
 
@@ -290,9 +290,6 @@
   document.querySelectorAll('.js-ar-remind').forEach(function (el) {
     el.addEventListener('click', function () {
       logReminder(el);
-      if (el.classList.contains('js-ar-remind-wa-invoice') && el.dataset.pdfUrl) {
-        window.open(el.dataset.pdfUrl, '_blank');
-      }
       // No preventDefault() - the anchor's own href (tel:/wa.me) navigates as normal.
     });
   });
