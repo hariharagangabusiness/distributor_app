@@ -137,6 +137,31 @@ class ARReminderDueFlagTests(DBTestCase):
         self.assertIn("No Phone Co", html)
         self.assertIn("No phone", html)
 
+    def test_invoice_level_whatsapp_button_carries_the_pdf_url_for_attaching(self):
+        old_date = (date.today() - timedelta(days=20)).isoformat()
+        sale_id = self.make_sale(self.cust, 1000, 0, "INV-OLD-6", old_date)
+        client = self.make_admin_client()
+        resp = client.get("/reports/accounts-receivable?view=invoices")
+        html = resp.data.decode()
+        self.assertRegex(html, r'<a[^>]*\bjs-ar-remind-wa-invoice\b')
+        self.assertIn(f"/sales/{sale_id}/invoice.pdf", html)
+        self.assertIn("Invoice-INV-OLD-6.pdf", html)
+
+    def test_account_level_whatsapp_button_has_no_pdf_attachment(self):
+        """Attaching one specific invoice makes no sense for a whole-account reminder (it could
+        cover several invoices) - only the Invoice-wise tab's WhatsApp button gets this. (The
+        class name itself still appears elsewhere on the page, in the always-present JS that
+        wires up that other tab's button - so this checks for an actual <a> tag carrying it,
+        not just the substring.)"""
+        old_date = (date.today() - timedelta(days=20)).isoformat()
+        self.make_sale(self.cust, 1000, 0, "INV-OLD-7", old_date)
+        client = self.make_admin_client()
+        resp = client.get("/reports/accounts-receivable?view=summary")
+        html = resp.data.decode()
+        self.assertIn("https://wa.me/919876543210", html)
+        self.assertNotRegex(html, r'<a[^>]*\bjs-ar-remind-wa-invoice\b')
+        self.assertNotIn("data-pdf-url", html)
+
     def test_settings_page_can_update_the_overdue_threshold(self):
         client = self.make_admin_client()
         resp = client.get("/settings")

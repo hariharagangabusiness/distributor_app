@@ -120,7 +120,11 @@
     <i class="bi bi-file-earmark-pdf"></i> Generate PDF</a>
 </div>
 <div class="card">
-  <div class="card-header">Invoice-wise Due Detail ({{ invoice_rows|length }}) <span class="text-muted small fw-normal">— click a column heading to sort</span></div>
+  <div class="card-header">Invoice-wise Due Detail ({{ invoice_rows|length }}) <span class="text-muted small fw-normal">— click a column heading to sort</span>
+    <div class="text-muted small fw-normal mt-1">The <i class="bi bi-whatsapp"></i> button attaches a copy of that invoice where your phone/browser
+      supports sharing a file (most mobile browsers) — on ones that don't (mostly desktop), the invoice PDF opens in
+      its own tab alongside WhatsApp so you can attach it yourself.</div>
+  </div>
   <div class="table-responsive">
   <table class="table mb-0 sortable-table table-cards-mobile">
     <thead><tr><th>Invoice #</th><th>Account #</th><th>Customer</th><th data-sort-type="date">Sale Date</th><th data-sort-type="date">Due Date</th><th>Age (days)</th><th>Status</th><th>Taxable Value</th><th>Total (incl. GST)</th><th>Received</th><th>Due</th><th class="no-sort"></th></tr></thead>
@@ -146,8 +150,11 @@
           <a href="tel:+{{ r.TelLink }}" class="btn btn-sm btn-outline-brand mobile-btn-full js-ar-remind"
              data-customer-id="{{ r.CustomerID }}" data-sale-id="{{ r.SaleID }}" data-channel="Call" title="Call {{ r.CustomerName }}"><i class="bi bi-telephone"></i></a>
           <a href="https://wa.me/{{ r.TelLink }}?text={{ r.ReminderMessage|urlencode }}" target="_blank" rel="noopener"
-             class="btn btn-sm btn-outline-success mobile-btn-full js-ar-remind"
-             data-customer-id="{{ r.CustomerID }}" data-sale-id="{{ r.SaleID }}" data-channel="WhatsApp" title="WhatsApp {{ r.CustomerName }}"><i class="bi bi-whatsapp"></i></a>
+             class="btn btn-sm btn-outline-success mobile-btn-full js-ar-remind js-ar-remind-wa-invoice"
+             data-customer-id="{{ r.CustomerID }}" data-sale-id="{{ r.SaleID }}" data-channel="WhatsApp"
+             data-message="{{ r.ReminderMessage }}" data-pdf-url="{{ url_for('sale_invoice_pdf', sid=r.SaleID) }}"
+             data-pdf-name="Invoice-{{ r.InvoiceNumber.replace('/', '-') }}.pdf"
+             title="WhatsApp {{ r.CustomerName }} (with the invoice attached, where your browser/device supports sharing a file)"><i class="bi bi-whatsapp"></i></a>
           {% endif %}
         </td>
       </tr>
@@ -257,25 +264,62 @@
 {% block scripts %}
 <script>
 // Fire-and-forget logging for the Call/WhatsApp reminder buttons - the click's own default
-// action (navigating to tel:/wa.me) is never interrupted; this just records that it happened,
-// driving the overdue-nudge badge elsewhere on this page and an audit trail (see ar_remind()
-// in app.py).
+// action (navigating to tel:/wa.me) is never interrupted for Call or an account-level WhatsApp
+// reminder; this just records that it happened, driving the overdue-nudge badge elsewhere on
+// this page and an audit trail (see ar_remind() in app.py). The per-invoice WhatsApp button
+// gets a separate handler below instead, so it can attach the invoice PDF via the Web Share
+// API where the browser supports sharing files.
 (function () {
   var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+
+  function logReminder(el) {
+    var body = new URLSearchParams({ customer_id: el.dataset.customerId, channel: el.dataset.channel });
+    if (el.dataset.saleId) body.set('sale_id', el.dataset.saleId);
+    return fetch('{{ url_for("ar_remind") }}', {
+      method: 'POST',
+      headers: Object.assign({ 'Content-Type': 'application/x-www-form-urlencoded' },
+        csrfMeta ? { 'X-CSRFToken': csrfMeta.content } : {}),
+      body: body.toString(),
+      keepalive: true,
+    }).catch(function () { /* best-effort logging only - the call/chat itself already opened */ });
+  }
+
   document.querySelectorAll('.js-ar-remind').forEach(function (el) {
-    el.addEventListener('click', function () {
-      var body = new URLSearchParams({
-        customer_id: el.dataset.customerId,
-        channel: el.dataset.channel,
-      });
-      if (el.dataset.saleId) body.set('sale_id', el.dataset.saleId);
-      fetch('{{ url_for("ar_remind") }}', {
-        method: 'POST',
-        headers: Object.assign({ 'Content-Type': 'application/x-www-form-urlencoded' },
-          csrfMeta ? { 'X-CSRFToken': csrfMeta.content } : {}),
-        body: body.toString(),
-        keepalive: true,
-      }).catch(function () { /* best-effort logging only - the call/chat itself already opened */ });
+    if (el.classList.contains('js-ar-remind-wa-invoice')) return;  // handled separately below
+    el.addEventListener('click', function () { logReminder(el); });
+  });
+
+  // Invoice-level WhatsApp: fetch the invoice PDF and, where navigator.share() supports
+  // attaching files (most mobile browsers), hand it straight to the native share sheet
+  // alongside the drafted text - the person picks WhatsApp there, invoice already attached.
+  // Desktop browsers mostly don't support sharing files yet, so fall back to opening the PDF
+  // in its own tab (ready to drag into the chat) plus the plain WhatsApp text link, same as
+  // before this existed.
+  document.querySelectorAll('.js-ar-remind-wa-invoice').forEach(function (el) {
+    el.addEventListener('click', function (e) {
+      e.preventDefault();
+      logReminder(el);
+      var waUrl = el.href;
+      var message = el.dataset.message;
+
+      function fallback() {
+        window.open(el.dataset.pdfUrl, '_blank');
+        window.open(waUrl, '_blank');
+      }
+
+      fetch(el.dataset.pdfUrl).then(function (resp) {
+        if (!resp.ok) throw new Error('PDF fetch failed');
+        return resp.blob();
+      }).then(function (blob) {
+        var file = new File([blob], el.dataset.pdfName || 'Invoice.pdf', { type: 'application/pdf' });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          return navigator.share({ files: [file], text: message }).catch(function () {
+            /* share sheet dismissed/cancelled by the person - nothing more to do, they can
+               click the button again if they changed their mind */
+          });
+        }
+        fallback();
+      }).catch(fallback);
     });
   });
 })();
