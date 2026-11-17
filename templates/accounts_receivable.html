@@ -4,9 +4,10 @@
 {% block content %}
 
 <div class="row g-3 mb-3">
-  <div class="col-md-4 col-6"><div class="stat-card"><div class="stat-value text-danger">{{ (total_due)|inr(0) }}</div><div class="stat-label">Total Due (Taxable Amount − Received, all customers)</div></div></div>
-  <div class="col-md-4 col-6"><div class="stat-card"><div class="stat-value">{{ customer_count }}</div><div class="stat-label">Customers with a balance</div></div></div>
-  <div class="col-md-4 col-6"><div class="stat-card"><div class="stat-value">{{ invoice_rows|length }}</div><div class="stat-label">Unpaid / partially-paid invoices</div></div></div>
+  <div class="col-md-3 col-6"><div class="stat-card"><div class="stat-value text-danger">{{ (total_due)|inr(0) }}</div><div class="stat-label">Total Due (Taxable Amount − Received, all customers)</div></div></div>
+  <div class="col-md-3 col-6"><div class="stat-card"><div class="stat-value">{{ customer_count }}</div><div class="stat-label">Customers with a balance</div></div></div>
+  <div class="col-md-3 col-6"><div class="stat-card"><div class="stat-value">{{ invoice_rows|length }}</div><div class="stat-label">Unpaid / partially-paid invoices</div></div></div>
+  <div class="col-md-3 col-6"><div class="stat-card"><div class="stat-value {% if reminders_due_count %}text-danger{% endif %}">{{ reminders_due_count }}</div><div class="stat-label">Customers with a reminder due (overdue {{ ar_reminder_overdue_days }}+ days, not reminded recently)</div></div></div>
 </div>
 
 <ul class="nav nav-tabs mb-3">
@@ -42,7 +43,7 @@
   <div class="card-header">Customer-wise Due Summary ({{ customer_summary|length }}) <span class="text-muted small fw-normal">— click a column heading to sort</span></div>
   <div class="table-responsive">
   <table class="table mb-0 sortable-table table-cards-mobile" id="ar-summary-table">
-    <thead><tr><th>Account #</th><th>Customer</th><th>Phone</th><th>Zone</th><th>Parent Account</th><th># Invoices</th><th>Taxable Value</th><th>Invoiced (incl. GST)</th><th>Received</th><th>Due</th><th data-sort-type="date">Oldest Due Since</th></tr></thead>
+    <thead><tr><th>Account #</th><th>Customer</th><th>Phone</th><th>Zone</th><th>Parent Account</th><th># Invoices</th><th>Taxable Value</th><th>Invoiced (incl. GST)</th><th>Received</th><th>Due</th><th data-sort-type="date">Oldest Due Since</th><th class="no-sort"></th></tr></thead>
     <tbody>
       {% for c in customer_summary %}
       <tr>
@@ -56,9 +57,21 @@
         <td data-label="Invoiced (incl. GST)">{{ (c.invoiced)|inr(2) }}</td>
         <td data-label="Received">{{ (c.received)|inr(2) }}</td>
         <td data-label="Due" class="text-danger fw-bold">{{ (c.due)|inr(2) }}</td>
-        <td data-label="Oldest Due Since">{{ c.oldest_due_date|dmy if c.oldest_due_date else '-' }}</td>
+        <td data-label="Oldest Due Since">{{ c.oldest_due_date|dmy if c.oldest_due_date else '-' }}
+          {% if c.ReminderDue %}<div class="badge text-bg-danger">Reminder due</div>{% endif %}</td>
+        <td>
+          {% if c.TelLink %}
+          <a href="tel:+{{ c.TelLink }}" class="btn btn-sm btn-outline-brand mobile-btn-full js-ar-remind"
+             data-customer-id="{{ c.CustomerID }}" data-channel="Call" title="Call {{ c.CustomerName }}"><i class="bi bi-telephone"></i></a>
+          <a href="https://wa.me/{{ c.TelLink }}?text={{ c.ReminderMessage|urlencode }}" target="_blank" rel="noopener"
+             class="btn btn-sm btn-outline-success mobile-btn-full js-ar-remind"
+             data-customer-id="{{ c.CustomerID }}" data-channel="WhatsApp" title="WhatsApp {{ c.CustomerName }}"><i class="bi bi-whatsapp"></i></a>
+          {% else %}
+          <span class="text-muted small">No phone</span>
+          {% endif %}
+        </td>
       </tr>
-      {% else %}<tr><td colspan="11" class="text-center text-muted py-4">{% if q %}No matches for your search.{% else %}No outstanding dues — everything's collected.{% endif %}</td></tr>{% endfor %}
+      {% else %}<tr><td colspan="12" class="text-center text-muted py-4">{% if q %}No matches for your search.{% else %}No outstanding dues — everything's collected.{% endif %}</td></tr>{% endfor %}
     </tbody>
   </table>
   </div>
@@ -119,7 +132,8 @@
         <td data-label="Customer">{{ r.CustomerName }}</td>
         <td data-label="Sale Date">{{ r.SaleDate|dmy }}</td>
         <td data-label="Due Date">{{ r.PaymentDueDate|dmy if r.PaymentDueDate else '-' }}</td>
-        <td data-label="Age (days)" class="{% if r.AgeDays > 90 %}text-danger fw-bold{% elif r.AgeDays > 30 %}text-warning{% endif %}">{{ r.AgeDays }}</td>
+        <td data-label="Age (days)" class="{% if r.AgeDays > 90 %}text-danger fw-bold{% elif r.AgeDays > 30 %}text-warning{% endif %}">{{ r.AgeDays }}
+          {% if r.ReminderDue %}<div class="badge text-bg-danger">Reminder due</div>{% endif %}</td>
         <td data-label="Status"><span class="badge {% if r.PaymentStatus=='Partial' %}text-bg-warning{% else %}text-bg-danger{% endif %}">{{ r.PaymentStatus }}</span></td>
         <td data-label="Taxable Value">{{ (r.TaxableAmount)|inr(2) }}</td>
         <td data-label="Total (incl. GST)">{{ (r.TotalAmount)|inr(2) }}</td>
@@ -128,6 +142,13 @@
         <td>
           <a href="{{ url_for('sale_view', sid=r.SaleID) }}" class="btn btn-sm btn-outline-secondary mobile-btn-full">View</a>
           <button type="button" class="btn btn-sm btn-brand mobile-btn-full" data-bs-toggle="collapse" data-bs-target="#pay-{{ r.SaleID }}">Record Payment</button>
+          {% if r.TelLink %}
+          <a href="tel:+{{ r.TelLink }}" class="btn btn-sm btn-outline-brand mobile-btn-full js-ar-remind"
+             data-customer-id="{{ r.CustomerID }}" data-sale-id="{{ r.SaleID }}" data-channel="Call" title="Call {{ r.CustomerName }}"><i class="bi bi-telephone"></i></a>
+          <a href="https://wa.me/{{ r.TelLink }}?text={{ r.ReminderMessage|urlencode }}" target="_blank" rel="noopener"
+             class="btn btn-sm btn-outline-success mobile-btn-full js-ar-remind"
+             data-customer-id="{{ r.CustomerID }}" data-sale-id="{{ r.SaleID }}" data-channel="WhatsApp" title="WhatsApp {{ r.CustomerName }}"><i class="bi bi-whatsapp"></i></a>
+          {% endif %}
         </td>
       </tr>
       <tr class="collapse" id="pay-{{ r.SaleID }}"><td colspan="12" class="bg-light">
@@ -232,4 +253,31 @@
 </div>
 {% endif %}
 
+{% endblock %}
+{% block scripts %}
+<script>
+// Fire-and-forget logging for the Call/WhatsApp reminder buttons - the click's own default
+// action (navigating to tel:/wa.me) is never interrupted; this just records that it happened,
+// driving the overdue-nudge badge elsewhere on this page and an audit trail (see ar_remind()
+// in app.py).
+(function () {
+  var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+  document.querySelectorAll('.js-ar-remind').forEach(function (el) {
+    el.addEventListener('click', function () {
+      var body = new URLSearchParams({
+        customer_id: el.dataset.customerId,
+        channel: el.dataset.channel,
+      });
+      if (el.dataset.saleId) body.set('sale_id', el.dataset.saleId);
+      fetch('{{ url_for("ar_remind") }}', {
+        method: 'POST',
+        headers: Object.assign({ 'Content-Type': 'application/x-www-form-urlencoded' },
+          csrfMeta ? { 'X-CSRFToken': csrfMeta.content } : {}),
+        body: body.toString(),
+        keepalive: true,
+      }).catch(function () { /* best-effort logging only - the call/chat itself already opened */ });
+    });
+  });
+})();
+</script>
 {% endblock %}
