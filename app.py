@@ -7575,12 +7575,17 @@ def _ar_reminder_message(customer_name, due_amount, invoice_number=None, age_day
     company_name = get_company_settings()["CompanyName"] or "us"
     amount = indian_number_format(due_amount)
     if invoice_number:
-        age_note = f" ({age_days} day(s) overdue)" if age_days else ""
-        return (f"Hi {customer_name}, this is a reminder from {company_name} that {amount} is still due "
-                f"against Invoice {invoice_number}{age_note}. Please arrange payment at your earliest "
-                "convenience. Thank you.")
-    return (f"Hi {customer_name}, this is a reminder from {company_name} that {amount} is due on your "
-            "account. Please arrange payment at your earliest convenience. Thank you.")
+        age_note = f", which is now {age_days} day(s) overdue" if age_days else ""
+        due_note = f"against Invoice No. {invoice_number}{age_note}"
+    else:
+        due_note = "on your account with us"
+    return (f"This is a reminder from {company_name} that an outstanding balance of ₹{amount} remains due "
+            f"{due_note}.\n\n"
+            "We kindly request you to arrange for the settlement at your earliest convenience. Our bank "
+            "account details and UPI QR code are provided on the invoice for easy payment. If you have "
+            "already processed this payment, please disregard this message and share the transaction "
+            "reference details.\n\n"
+            "Thank you for your prompt attention.")
 
 
 def get_ar_reminder_flags(invoice_rows, customer_summary):
