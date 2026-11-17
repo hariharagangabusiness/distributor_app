@@ -152,9 +152,9 @@
           <a href="https://wa.me/{{ r.TelLink }}?text={{ r.ReminderMessage|urlencode }}" target="_blank" rel="noopener"
              class="btn btn-sm btn-outline-success mobile-btn-full js-ar-remind js-ar-remind-wa-invoice"
              data-customer-id="{{ r.CustomerID }}" data-sale-id="{{ r.SaleID }}" data-channel="WhatsApp"
-             data-message="{{ r.ReminderMessage }}" data-pdf-url="{{ url_for('sale_invoice_pdf', sid=r.SaleID) }}"
+             data-pdf-url="{{ url_for('sale_invoice_pdf', sid=r.SaleID) }}"
              data-pdf-name="Invoice-{{ r.InvoiceNumber.replace('/', '-') }}.pdf"
-             title="WhatsApp {{ r.CustomerName }} (with the invoice attached, where your browser/device supports sharing a file)"><i class="bi bi-whatsapp"></i></a>
+             title="WhatsApp {{ r.CustomerName }} (opens the invoice PDF in another tab too, ready to attach)"><i class="bi bi-whatsapp"></i></a>
           {% endif %}
         </td>
       </tr>
@@ -264,11 +264,14 @@
 {% block scripts %}
 <script>
 // Fire-and-forget logging for the Call/WhatsApp reminder buttons - the click's own default
-// action (navigating to tel:/wa.me) is never interrupted for Call or an account-level WhatsApp
-// reminder; this just records that it happened, driving the overdue-nudge badge elsewhere on
-// this page and an audit trail (see ar_remind() in app.py). The per-invoice WhatsApp button
-// gets a separate handler below instead, so it can attach the invoice PDF via the Web Share
-// API where the browser supports sharing files.
+// action (navigating to tel:/wa.me) is never interrupted for any of them, including the
+// per-invoice WhatsApp button, so it always goes straight to that customer's chat exactly like
+// before; this just records that it happened, driving the overdue-nudge badge elsewhere on this
+// page and an audit trail (see ar_remind() in app.py). The per-invoice button additionally opens
+// the invoice PDF in its own tab alongside, ready to attach to that same chat by hand - the OS/
+// browser share sheet (navigator.share) is deliberately not used here, since on several desktop
+// browsers (e.g. Windows/Edge) it hands the person a generic share picker instead of jumping
+// straight to the right WhatsApp chat.
 (function () {
   var csrfMeta = document.querySelector('meta[name="csrf-token"]');
 
@@ -285,41 +288,12 @@
   }
 
   document.querySelectorAll('.js-ar-remind').forEach(function (el) {
-    if (el.classList.contains('js-ar-remind-wa-invoice')) return;  // handled separately below
-    el.addEventListener('click', function () { logReminder(el); });
-  });
-
-  // Invoice-level WhatsApp: fetch the invoice PDF and, where navigator.share() supports
-  // attaching files (most mobile browsers), hand it straight to the native share sheet
-  // alongside the drafted text - the person picks WhatsApp there, invoice already attached.
-  // Desktop browsers mostly don't support sharing files yet, so fall back to opening the PDF
-  // in its own tab (ready to drag into the chat) plus the plain WhatsApp text link, same as
-  // before this existed.
-  document.querySelectorAll('.js-ar-remind-wa-invoice').forEach(function (el) {
-    el.addEventListener('click', function (e) {
-      e.preventDefault();
+    el.addEventListener('click', function () {
       logReminder(el);
-      var waUrl = el.href;
-      var message = el.dataset.message;
-
-      function fallback() {
+      if (el.classList.contains('js-ar-remind-wa-invoice') && el.dataset.pdfUrl) {
         window.open(el.dataset.pdfUrl, '_blank');
-        window.open(waUrl, '_blank');
       }
-
-      fetch(el.dataset.pdfUrl).then(function (resp) {
-        if (!resp.ok) throw new Error('PDF fetch failed');
-        return resp.blob();
-      }).then(function (blob) {
-        var file = new File([blob], el.dataset.pdfName || 'Invoice.pdf', { type: 'application/pdf' });
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
-          return navigator.share({ files: [file], text: message }).catch(function () {
-            /* share sheet dismissed/cancelled by the person - nothing more to do, they can
-               click the button again if they changed their mind */
-          });
-        }
-        fallback();
-      }).catch(fallback);
+      // No preventDefault() - the anchor's own href (tel:/wa.me) navigates as normal.
     });
   });
 })();
