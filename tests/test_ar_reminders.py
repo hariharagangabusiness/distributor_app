@@ -191,3 +191,25 @@ class ARReminderDueFlagTests(DBTestCase):
         client = self.make_admin_client()
         resp = client.get("/reports/accounts-receivable?view=invoices")
         self.assertNotIn(b"Reminder due", resp.data)
+
+    def test_invoice_rows_with_a_phone_get_a_bulk_select_checkbox(self):
+        old_date = (date.today() - timedelta(days=20)).isoformat()
+        self.make_sale(self.cust, 1000, 0, "INV-OLD-8", old_date)
+        no_phone_cust = self.make_customer("No Phone Co")
+        self.make_sale(no_phone_cust, 500, 0, "INV-NOPHONE-2", old_date)
+        client = self.make_admin_client()
+        resp = client.get("/reports/accounts-receivable?view=invoices")
+        html = resp.data.decode()
+        self.assertEqual(html.count('class="js-ar-bulk-select"'), 1)
+        self.assertIn('id="ar-select-all"', html)
+        self.assertIn('id="ar-bulk-modal"', html)
+
+    def test_no_phones_at_all_skips_the_select_all_checkbox(self):
+        no_phone_cust = self.make_customer("No Phone Co 2")
+        old_date = (date.today() - timedelta(days=20)).isoformat()
+        self.make_sale(no_phone_cust, 500, 0, "INV-NOPHONE-3", old_date)
+        client = self.make_admin_client()
+        resp = client.get("/reports/accounts-receivable?view=invoices")
+        html = resp.data.decode()
+        self.assertNotIn('id="ar-select-all"', html)
+        self.assertNotIn('class="js-ar-bulk-select"', html)
