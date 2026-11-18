@@ -7337,7 +7337,8 @@ def settings_form():
                     GstFilingScheme=?, GstRemindersEnabled=?, GstReminderEmails=?, GstReminderDaysBefore=?,
                     SmtpHost=?, SmtpPort=?, SmtpUsername=?, SmtpPassword=?, SmtpFromEmail=?, SmtpUseTLS=?,
                     CreditControlMode=?, CreditBlockDays=?, LocationTrackingWorkingDays=?, LocationConsentText=?,
-                    LocationPingIntervalMinutes=?, VisitGeofenceRadiusMeters=?, ARReminderOverdueDays=?
+                    LocationPingIntervalMinutes=?, VisitGeofenceRadiusMeters=?, ARReminderOverdueDays=?,
+                    ARReminderDailyAfterDays=?
                     WHERE SettingsID=1""",
                    (f["company_name"], f["gstin"], f["pan"], f["address"], f["city"],
                     STATE_NAME_BY_CODE.get(f.get("state_code", ""), ""), f.get("state_code", ""), f["pincode"],
@@ -7358,7 +7359,8 @@ def settings_form():
                     f.get("location_consent_text", "").strip() or None,
                     min(max(int(f.get("location_ping_interval_minutes") or 30), 1), 720),
                     min(max(int(f.get("visit_geofence_radius_meters") or 200), 10), 5000),
-                    min(max(int(f.get("ar_reminder_overdue_days") or 7), 1), 365)))
+                    min(max(int(f.get("ar_reminder_overdue_days") or 7), 1), 365),
+                    min(max(int(f.get("ar_reminder_daily_after_days") or 14), 1), 365)))
         flash("Company settings saved. These details now appear on every GST invoice.", "success")
         return redirect(url_for("settings_form"))
     company = get_company_settings()
@@ -7593,28 +7595,49 @@ def _ar_reminder_message(customer_name, due_amount, invoice_number=None, age_day
 
 
 def get_ar_reminder_flags(invoice_rows, customer_summary):
-    """Adds ReminderDue (bool) to every invoice_rows/customer_summary row in place - True once
-    it's overdue past the configured threshold AND hasn't had a reminder logged in that same
-    window. Also adds TelLink/WhatsAppLink (None if the saved Phone can't be normalized) and,
-    for invoice rows, ReminderMessage/WhatsAppUrl (customer_summary builds its own account-level
-    message in the template, since it needs the row's own due total)."""
-    threshold = get_company_settings()["ARReminderOverdueDays"] or 7
+    """Adds ReminderDue (bool) to every invoice_rows/customer_summary row in place.
+
+    An invoice up to ARReminderDailyAfterDays overdue is flagged once it crosses
+    ARReminderOverdueDays AND hasn't had a reminder logged in that same window (so the
+    re-reminder cadence matches the configured threshold, as before). Past
+    ARReminderDailyAfterDays, it's flagged daily instead - a badly overdue invoice needs a
+    reminder every day it stays unpaid, not just once every `threshold` days.
+
+    A customer (Customer Summary tab) is flagged whenever ANY of their own invoices above is -
+    so reminding every one of a customer's overdue invoices from the Invoice-wise tab (one at a
+    time, or in bulk) also clears their Customer Summary badge. The account-level Call/WhatsApp
+    button logs its reminder against each of that customer's currently outstanding invoices
+    instead of one account-wide entry (see ar_remind()), so acting from Customer Summary clears
+    the same per-invoice flags in the other direction too - both tabs always agree.
+
+    Also adds TelLink (None if the saved Phone can't be normalized) and ReminderMessage."""
+    settings = get_company_settings()
+    threshold = settings["ARReminderOverdueDays"] or 7
+    daily_after = settings["ARReminderDailyAfterDays"] or 14
     cutoff = (date.today() - timedelta(days=threshold)).isoformat()
+    today_iso = date.today().isoformat()
 
-    recent_invoice = {r["SaleID"] for r in db.query(
-        "SELECT DISTINCT SaleID FROM ARReminderLog WHERE SaleID IS NOT NULL AND SentAt >= ?", (cutoff,))}
-    recent_account = {r["CustomerID"] for r in db.query(
-        "SELECT DISTINCT CustomerID FROM ARReminderLog WHERE SaleID IS NULL AND SentAt >= ?", (cutoff,))}
+    last_reminded = {r["SaleID"]: r["LastSentAt"] for r in db.query(
+        "SELECT SaleID, MAX(SentAt) AS LastSentAt FROM ARReminderLog WHERE SaleID IS NOT NULL GROUP BY SaleID")}
 
+    customer_due = {}
     for r in invoice_rows:
         r["TelLink"] = _ar_phone_e164(r["Phone"])
-        r["ReminderDue"] = r["AgeDays"] >= threshold and r["SaleID"] not in recent_invoice
+        last_sent = last_reminded.get(r["SaleID"])
+        if r["AgeDays"] > daily_after:
+            due = r["AgeDays"] >= threshold and (last_sent is None or last_sent[:10] < today_iso)
+        else:
+            due = r["AgeDays"] >= threshold and (last_sent is None or last_sent < cutoff)
+        r["ReminderDue"] = due
         r["ReminderMessage"] = _ar_reminder_message(r["CustomerName"], r["Due"], r["InvoiceNumber"], r["AgeDays"])
+        if due:
+            customer_due[r["CustomerID"]] = True
+        else:
+            customer_due.setdefault(r["CustomerID"], False)
 
     for c in customer_summary:
         c["TelLink"] = _ar_phone_e164(c["Phone"])
-        c["ReminderDue"] = (ar_age_days(c["oldest_due_date"]) >= threshold if c["oldest_due_date"] else False) \
-            and c["CustomerID"] not in recent_account
+        c["ReminderDue"] = customer_due.get(c["CustomerID"], False)
         c["ReminderMessage"] = _ar_reminder_message(c["CustomerName"], c["due"])
 
     return threshold
@@ -7624,17 +7647,33 @@ def get_ar_reminder_flags(invoice_rows, customer_summary):
 def ar_remind():
     """Fire-and-forget logging call from the Call/WhatsApp buttons - the browser has already
     (or is about to) navigate to tel:/wa.me on its own; this just records that it happened, for
-    the 'Reminder due' flag and an audit trail. Never blocks or redirects the actual call/chat."""
+    the 'Reminder due' flag and an audit trail. Never blocks or redirects the actual call/chat.
+
+    An account-level reminder (Customer Summary tab - no sale_id passed) logs one row per
+    invoice currently contributing to that customer's due balance, not a single account-wide
+    entry - its one WhatsApp/Call message covers the whole balance, so it counts as reminding
+    every invoice within it, keeping the Invoice-wise tab's own per-invoice flags in sync with
+    whatever was just actioned here (see get_ar_reminder_flags())."""
     user = get_current_user()
     customer_id = request.form.get("customer_id", type=int)
     sale_id = request.form.get("sale_id", type=int)  # optional - absent for an account-level reminder
     channel = request.form.get("channel")
     if not customer_id or channel not in ("Call", "WhatsApp"):
         return jsonify({"ok": False}), 400
-    db.execute("""INSERT INTO ARReminderLog (CustomerID, SaleID, Channel, SentByUserID, SentByUsername)
-                VALUES (?,?,?,?,?)""",
-               (customer_id, sale_id, channel, user["UserID"] if user else None,
-                user["Username"] if user else None))
+
+    if sale_id:
+        sale_ids = [sale_id]
+    else:
+        sale_ids = [r["SaleID"] for r in db.query(
+            """SELECT SaleID FROM Sales WHERE CustomerID=? AND Status='Completed'
+               AND (TaxableAmount - AmountReceived) > 0.005""", (customer_id,))] or [None]
+
+    with db.transaction():
+        for sid in sale_ids:
+            db.execute("""INSERT INTO ARReminderLog (CustomerID, SaleID, Channel, SentByUserID, SentByUsername)
+                        VALUES (?,?,?,?,?)""",
+                       (customer_id, sid, channel, user["UserID"] if user else None,
+                        user["Username"] if user else None))
     return jsonify({"ok": True})
 
 

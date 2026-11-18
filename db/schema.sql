@@ -168,7 +168,11 @@ CREATE TABLE IF NOT EXISTS CompanySettings (
     -- Accounts Receivable: an invoice/customer is flagged "reminder due" once it's this many
     -- days overdue AND hasn't had a reminder logged (ARReminderLog) in that same window - see
     -- get_ar_reminder_flags() in app.py.
-    ARReminderOverdueDays INTEGER NOT NULL DEFAULT 7
+    ARReminderOverdueDays INTEGER NOT NULL DEFAULT 7,
+    -- Accounts Receivable: once an invoice is overdue past this many days, "reminder due" is
+    -- re-flagged daily instead of once every ARReminderOverdueDays - see
+    -- get_ar_reminder_flags() in app.py.
+    ARReminderDailyAfterDays INTEGER NOT NULL DEFAULT 14
 );
 
 INSERT OR IGNORE INTO CompanySettings (SettingsID) VALUES (1);

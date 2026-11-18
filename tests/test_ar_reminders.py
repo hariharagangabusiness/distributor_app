@@ -1,11 +1,13 @@
 """Regression tests for Accounts Receivable payment reminders:
 - _ar_phone_e164() normalizes a saved Phone value for tel:/WhatsApp links.
 - ar_remind() logs a reminder (ARReminderLog) for the Call/WhatsApp buttons'
-  fire-and-forget JS.
-- get_ar_reminder_flags() flags an invoice/customer "Reminder due" once
-  it's overdue past the configured threshold AND hasn't had a reminder
-  logged in that same window - shared by the Invoice-wise and Customer
-  Summary tabs.
+  fire-and-forget JS - an account-level reminder (no sale_id) logs one row
+  per invoice currently contributing to that customer's due balance.
+- get_ar_reminder_flags() flags an invoice "Reminder due" once it's overdue
+  past the configured threshold AND hasn't had a reminder logged in that
+  same window - except past ARReminderDailyAfterDays, where it's re-flagged
+  every day instead. A customer (Customer Summary tab) is flagged whenever
+  any of their own invoices is, so both tabs always agree.
 """
 from datetime import date, timedelta
 
@@ -57,14 +59,19 @@ class ARReminderLogTests(DBTestCase):
         self.assertEqual(row["SaleID"], self.sale_id)
         self.assertEqual(row["Channel"], "Call")
 
-    def test_remind_logs_an_account_level_reminder_with_no_sale_id(self):
+    def test_remind_logs_an_account_level_reminder_against_every_outstanding_invoice(self):
+        """A whole-account reminder's one message covers every invoice contributing to the
+        balance it quotes, so it's logged against each of them (not a single account-wide
+        entry) - that's what lets it also clear each invoice's own Invoice-wise flag."""
+        second_sale_id = self.make_sale(self.cust, 500, 0, "INV-REM-2", self.old_due_date)
         client = self.make_admin_client()
         resp = client.post("/reports/accounts-receivable/remind",
                             data={"customer_id": str(self.cust), "channel": "WhatsApp"})
         self.assertEqual(resp.status_code, 200)
-        row = db.query("SELECT * FROM ARReminderLog", one=True)
-        self.assertIsNone(row["SaleID"])
-        self.assertEqual(row["Channel"], "WhatsApp")
+        rows = db.query("SELECT * FROM ARReminderLog ORDER BY SaleID")
+        self.assertEqual(len(rows), 2)
+        self.assertEqual({r["SaleID"] for r in rows}, {self.sale_id, second_sale_id})
+        self.assertTrue(all(r["Channel"] == "WhatsApp" for r in rows))
 
     def test_remind_rejects_an_invalid_channel(self):
         client = self.make_admin_client()
@@ -170,6 +177,7 @@ class ARReminderDueFlagTests(DBTestCase):
         client = self.make_admin_client()
         resp = client.get("/settings")
         self.assertIn(b"ar_reminder_overdue_days", resp.data)
+        self.assertIn(b"ar_reminder_daily_after_days", resp.data)
 
         settings_data = {
             "company_name": "Test Co", "gstin": "", "pan": "", "address": "", "city": "",
@@ -178,17 +186,89 @@ class ARReminderDueFlagTests(DBTestCase):
             "invoice_prefix": "INV", "invoice_terms": "", "credit_control_mode": "Informational",
             "credit_block_days": "0", "location_ping_interval_minutes": "30",
             "visit_geofence_radius_meters": "200", "ar_reminder_overdue_days": "15",
+            "ar_reminder_daily_after_days": "21",
         }
         resp = client.post("/settings", data=settings_data, follow_redirects=True)
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual(db.query("SELECT ARReminderOverdueDays FROM CompanySettings WHERE SettingsID=1",
-                                   one=True)["ARReminderOverdueDays"], 15)
+        row = db.query("SELECT ARReminderOverdueDays, ARReminderDailyAfterDays FROM CompanySettings WHERE SettingsID=1",
+                        one=True)
+        self.assertEqual(row["ARReminderOverdueDays"], 15)
+        self.assertEqual(row["ARReminderDailyAfterDays"], 21)
 
     def test_raising_the_threshold_un_flags_an_invoice_that_was_previously_due(self):
         db.execute("UPDATE CompanySettings SET ARReminderOverdueDays=30 WHERE SettingsID=1")
         old_date = (date.today() - timedelta(days=20)).isoformat()
         self.make_sale(self.cust, 1000, 0, "INV-OLD-5", old_date)
         client = self.make_admin_client()
+        resp = client.get("/reports/accounts-receivable?view=invoices")
+        self.assertNotIn(b"Reminder due", resp.data)
+
+    def test_badly_overdue_invoice_is_due_again_even_within_the_normal_cooldown_window(self):
+        """Past ARReminderDailyAfterDays (14 by default), the normal 'once every threshold days'
+        cooldown is ignored - a reminder logged a few days ago (well within the default 7-day
+        threshold window) still leaves it flagged, since daily cadence only cares whether today's
+        reminder has gone out yet."""
+        old_date = (date.today() - timedelta(days=25)).isoformat()  # AgeDays=25 > 14
+        sale_id = self.make_sale(self.cust, 1000, 0, "INV-DAILY-1", old_date)
+        recent_sent_at = (date.today() - timedelta(days=3)).strftime("%Y-%m-%d 10:00:00")
+        db.execute("""INSERT INTO ARReminderLog (CustomerID, SaleID, Channel, SentAt)
+                    VALUES (?,?,?,?)""", (self.cust, sale_id, "Call", recent_sent_at))
+        client = self.make_admin_client()
+        resp = client.get("/reports/accounts-receivable?view=invoices")
+        self.assertIn(b"Reminder due", resp.data)
+
+    def test_badly_overdue_invoice_already_reminded_today_is_not_due_again(self):
+        old_date = (date.today() - timedelta(days=25)).isoformat()
+        sale_id = self.make_sale(self.cust, 1000, 0, "INV-DAILY-2", old_date)
+        today_sent_at = date.today().strftime("%Y-%m-%d 09:00:00")
+        db.execute("""INSERT INTO ARReminderLog (CustomerID, SaleID, Channel, SentAt)
+                    VALUES (?,?,?,?)""", (self.cust, sale_id, "Call", today_sent_at))
+        client = self.make_admin_client()
+        resp = client.get("/reports/accounts-receivable?view=invoices")
+        self.assertNotIn(b"Reminder due", resp.data)
+
+    def test_moderately_overdue_invoice_still_follows_the_normal_cooldown_not_daily(self):
+        """Between the threshold and ARReminderDailyAfterDays, a reminder logged a few days ago
+        still clears the flag for the rest of that threshold-day window - only past
+        ARReminderDailyAfterDays does it switch to daily."""
+        old_date = (date.today() - timedelta(days=10)).isoformat()  # threshold(7) < AgeDays(10) <= 14
+        sale_id = self.make_sale(self.cust, 1000, 0, "INV-MID-1", old_date)
+        recent_sent_at = (date.today() - timedelta(days=3)).strftime("%Y-%m-%d 10:00:00")
+        db.execute("""INSERT INTO ARReminderLog (CustomerID, SaleID, Channel, SentAt)
+                    VALUES (?,?,?,?)""", (self.cust, sale_id, "Call", recent_sent_at))
+        client = self.make_admin_client()
+        resp = client.get("/reports/accounts-receivable?view=invoices")
+        self.assertNotIn(b"Reminder due", resp.data)
+
+    def test_customer_summary_clears_once_its_only_overdue_invoice_is_reminded(self):
+        old_date = (date.today() - timedelta(days=20)).isoformat()
+        sale_id = self.make_sale(self.cust, 1000, 0, "INV-SYNC-1", old_date)
+        client = self.make_admin_client()
+        client.post("/reports/accounts-receivable/remind",
+                    data={"customer_id": str(self.cust), "sale_id": str(sale_id), "channel": "WhatsApp"})
+
+        resp = client.get("/reports/accounts-receivable?view=summary")
+        self.assertNotIn(b"Reminder due", resp.data)
+
+    def test_customer_summary_stays_flagged_while_a_second_invoice_is_unreminded(self):
+        old_date = (date.today() - timedelta(days=20)).isoformat()
+        sale_id = self.make_sale(self.cust, 1000, 0, "INV-SYNC-2", old_date)
+        self.make_sale(self.cust, 500, 0, "INV-SYNC-3", old_date)  # left unreminded
+        client = self.make_admin_client()
+        client.post("/reports/accounts-receivable/remind",
+                    data={"customer_id": str(self.cust), "sale_id": str(sale_id), "channel": "WhatsApp"})
+
+        resp = client.get("/reports/accounts-receivable?view=summary")
+        self.assertIn(b"Reminder due", resp.data)
+
+    def test_account_level_remind_clears_invoice_wise_flags_too(self):
+        old_date = (date.today() - timedelta(days=20)).isoformat()
+        self.make_sale(self.cust, 1000, 0, "INV-SYNC-4", old_date)
+        self.make_sale(self.cust, 500, 0, "INV-SYNC-5", old_date)
+        client = self.make_admin_client()
+        client.post("/reports/accounts-receivable/remind",
+                    data={"customer_id": str(self.cust), "channel": "WhatsApp"})
+
         resp = client.get("/reports/accounts-receivable?view=invoices")
         self.assertNotIn(b"Reminder due", resp.data)
 

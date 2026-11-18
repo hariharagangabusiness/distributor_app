@@ -95,12 +95,15 @@
   <p class="text-muted small">Accounts Receivable's Invoice-wise and Customer Summary tabs have Call/WhatsApp
     buttons (using the customer's saved Phone) — these just open your own dialer/WhatsApp with a drafted
     message; nothing is sent automatically. An invoice or customer is flagged <strong>"Reminder due"</strong>
-    once it's overdue by the number of days below, as long as it hasn't already had a reminder logged in
-    that same window.</p>
+    once it's overdue by the first number of days below, re-flagged once every that many days until it
+    crosses the second number — after which it's flagged <strong>every day</strong> until it's paid.</p>
   <div class="row g-3 mb-3">
     <div class="col-md-4"><label class="form-label">Flag as "Reminder due" after (days overdue)</label>
       <input type="number" min="1" max="365" name="ar_reminder_overdue_days" class="form-control"
              value="{{ company.ARReminderOverdueDays or 7 }}"></div>
+    <div class="col-md-4"><label class="form-label">Switch to a daily reminder after (days overdue)</label>
+      <input type="number" min="1" max="365" name="ar_reminder_daily_after_days" class="form-control"
+             value="{{ company.ARReminderDailyAfterDays or 14 }}"></div>
   </div>
 
   <h6 class="mb-3">Location Tracking</h6>
