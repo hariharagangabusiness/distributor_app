@@ -191,11 +191,11 @@
   <div class="modal-dialog modal-dialog-scrollable">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title">Send WhatsApp Reminders</h5>
+        <h5 class="modal-title">Some chats were blocked</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <p class="text-muted small">Your browser only lets one WhatsApp chat open per click - click each button below in turn.</p>
+        <p class="text-muted small">Your browser's pop-up blocker stopped these from opening automatically - click each one to open it.</p>
         <div id="ar-bulk-modal-list" class="list-group"></div>
       </div>
       <div class="modal-footer">
@@ -293,14 +293,16 @@
 // action (navigating to tel:/wa.me) is never interrupted for any of them, so it always goes
 // straight to that customer's chat exactly like before; this just records that it happened,
 // driving the overdue-nudge badge elsewhere on this page and an audit trail (see ar_remind() in
-// app.py). Nothing here calls window.open() or navigator.share(): a second popup triggered from
-// the same click (whether via window.open or the OS share sheet) competes with the WhatsApp
-// link's own target="_blank" navigation for the browser's one-popup-per-click allowance, and
-// loses - which is why the invoice PDF now gets its own separate button/click instead of being
-// opened automatically alongside WhatsApp.
+// app.py). Nothing here calls window.open() or navigator.share() for a SINGLE button's own click:
+// a second popup triggered from the same click (whether via window.open or the OS share sheet)
+// competes with the WhatsApp link's own target="_blank" navigation and loses - which is why the
+// invoice PDF has its own separate button/click instead of opening automatically alongside
+// WhatsApp. The bulk-send button below is different: it's the ONE click, and everything it opens
+// is a fresh window.open() call made synchronously inside its own handler (never mixed with a
+// link's default navigation) - browsers allow any number of those from a single real click.
 //
 // The logging listener is delegated on document rather than attached per-element, so it also
-// covers the WhatsApp buttons cloned into the bulk-reminder modal below - a clone carries no
+// covers the WhatsApp buttons cloned into the bulk-send fallback modal below - a clone carries no
 // listeners of its own, but a delegated one matches it by selector regardless of where it lives
 // in the DOM.
 (function () {
@@ -324,13 +326,17 @@
     logReminder(el);
     // No preventDefault() - the anchor's own href (tel:/wa.me) navigates as normal.
   });
-})();
 
-// Bulk WhatsApp reminders (Invoice-wise tab): select several invoices' checkboxes, then click
-// through a short list in a modal, one real click per customer - WhatsApp has no API here to
-// blast several chats from a single click, and browsers block more than one popup per click
-// anyway, so this is the most it can do: cut out re-finding each customer in the full table.
-(function () {
+  // Bulk WhatsApp reminders (Invoice-wise tab): select several invoices' checkboxes, then one
+  // click on "Send WhatsApp to Selected" opens every selected customer's chat at once. Each is
+  // its own window.open() call made synchronously inside this one handler - never mixed with a
+  // link's own default navigation, which is what this handler avoids - so the browser treats
+  // them all as part of the same click and lets every one of them through.
+  //
+  // A browser can still block some of these on its own (a strict popup-blocker setting, a
+  // corporate policy, or just a very large selection) - window.open() returns null/closed for
+  // one it refused. Anything blocked gets listed in a small fallback modal, one real "Open
+  // WhatsApp" click each, same as the single-invoice button works.
   var checkboxes = Array.prototype.slice.call(document.querySelectorAll('.js-ar-bulk-select'));
   if (!checkboxes.length) return;
 
@@ -369,38 +375,52 @@
     });
   }
 
+  function addFallbackItem(waLink, customer, invoice, due) {
+    var item = document.createElement('div');
+    item.className = 'list-group-item d-flex justify-content-between align-items-center flex-wrap gap-2';
+
+    var info = document.createElement('div');
+    info.innerHTML = '<div class="fw-bold">' + customer + '</div>' +
+      '<div class="text-muted small">Invoice ' + invoice + ' &middot; Due ' + due + '</div>';
+    item.appendChild(info);
+
+    var btn = waLink.cloneNode(true);
+    btn.classList.remove('mobile-btn-full');
+    btn.innerHTML = '<i class="bi bi-whatsapp"></i> Open WhatsApp';
+    btn.addEventListener('click', function () {
+      item.classList.add('list-group-item-success');
+      if (!item.querySelector('.badge')) {
+        var tag = document.createElement('span');
+        tag.className = 'badge text-bg-success ms-2';
+        tag.textContent = 'Opened';
+        info.appendChild(tag);
+      }
+    });
+    item.appendChild(btn);
+    modalList.appendChild(item);
+  }
+
   sendBtn.addEventListener('click', function () {
-    modalList.innerHTML = '';
+    var blocked = [];
     selected().forEach(function (cb) {
       var row = cb.closest('tr');
       var waLink = row.querySelector('.js-ar-remind-wa-invoice');
       if (!waLink) return;
-      var customer = row.querySelector('[data-label="Customer"]').textContent.trim();
-      var invoice = row.querySelector('[data-label="Invoice #"]').textContent.trim();
-      var due = row.querySelector('[data-label="Due"]').textContent.trim();
-
-      var item = document.createElement('div');
-      item.className = 'list-group-item d-flex justify-content-between align-items-center flex-wrap gap-2';
-
-      var info = document.createElement('div');
-      info.innerHTML = '<div class="fw-bold">' + customer + '</div>' +
-        '<div class="text-muted small">Invoice ' + invoice + ' &middot; Due ' + due + '</div>';
-      item.appendChild(info);
-
-      var btn = waLink.cloneNode(true);
-      btn.classList.remove('mobile-btn-full');
-      btn.innerHTML = '<i class="bi bi-whatsapp"></i> Open WhatsApp';
-      btn.addEventListener('click', function () {
-        item.classList.add('list-group-item-success');
-        var tag = document.createElement('span');
-        tag.className = 'badge text-bg-success ms-2';
-        tag.textContent = 'Opened';
-        if (!item.querySelector('.badge')) info.appendChild(tag);
-      });
-      item.appendChild(btn);
-
-      modalList.appendChild(item);
+      logReminder(waLink);
+      var w = window.open(waLink.href, '_blank');
+      if (!w || w.closed || typeof w.closed === 'undefined') {
+        blocked.push({
+          waLink: waLink,
+          customer: row.querySelector('[data-label="Customer"]').textContent.trim(),
+          invoice: row.querySelector('[data-label="Invoice #"]').textContent.trim(),
+          due: row.querySelector('[data-label="Due"]').textContent.trim(),
+        });
+      }
     });
+    if (!blocked.length) return;  // everything opened - nothing more to do
+
+    modalList.innerHTML = '';
+    blocked.forEach(function (b) { addFallbackItem(b.waLink, b.customer, b.invoice, b.due); });
     // Re-parent to <body>: nested inside the page's layout containers, this modal would sit in
     // a stacking context trapped below Bootstrap's own backdrop (which it always appends as a
     // direct child of <body>), leaving every button underneath it unclickable.
