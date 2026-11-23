@@ -3,7 +3,7 @@ import bulk_import
 import db
 import os
 from core.auth import admin_required, get_current_user
-from core.helpers import INDIAN_STATES, MONTH_NAMES, STATE_NAME_BY_CODE, SaleStockIssueLockedError, UPLOAD_ROOT, _now_ist, amount_in_words, build_target_view, create_sale, custom_field_attachment_module, get_attachments, get_company_settings, get_custom_attachments, get_custom_field_defs, get_custom_values, get_customer_due_info, get_effective_columns, get_effective_form_fields, get_products_with_stock, get_target_buckets, log_stock_issue_change, next_customer_account_number, pct, reverse_sale_stock_issue_links, sale_balance_due, sale_due_amount, save_custom_fields, target_days_elapsed, target_month_bounds, today_str
+from core.helpers import locked_issue_for_sale, locked_sale_message, INDIAN_STATES, MONTH_NAMES, STATE_NAME_BY_CODE, SaleStockIssueLockedError, UPLOAD_ROOT, _now_ist, amount_in_words, build_target_view, create_sale, custom_field_attachment_module, get_attachments, get_company_settings, get_custom_attachments, get_custom_field_defs, get_custom_values, get_customer_due_info, get_effective_columns, get_effective_form_fields, get_products_with_stock, get_target_buckets, log_stock_issue_change, next_customer_account_number, pct, reverse_sale_stock_issue_links, sale_balance_due, sale_due_amount, save_custom_fields, target_days_elapsed, target_month_bounds, today_str
 from datetime import date, datetime, timedelta
 from flask import flash, redirect, render_template, request, url_for
 
@@ -210,6 +210,14 @@ def sale_delete_impact(sid):
 @bp.route("/sales/<int:sid>/delete", methods=["GET", "POST"])
 @admin_required
 def sale_delete(sid):
+    # One atomic transaction for the whole POST (reads and writes), so overlapping requests serialize.
+    if request.method == "POST":
+        with db.transaction():
+            return _sale_delete(sid)
+    return _sale_delete(sid)
+
+
+def _sale_delete(sid):
     """GET shows a confirmation page listing the actual, computed impact of
     deleting this Sale (stock that will be restored, any Stock Issue credit
     that will be reversed, whether it's reconciliation-linked) before asking
@@ -228,6 +236,13 @@ def sale_delete(sid):
     if not sale:
         flash("Sale not found.", "error")
         return redirect(url_for("sales_list"))
+
+    locked_issue_id = locked_issue_for_sale(sid)
+    if locked_issue_id:
+        log_stock_issue_change(locked_issue_id, "Blocked Delete Attempt", f"Invoice {sale['InvoiceNumber']}",
+                                None, "delete blocked - this Stock Issue is Reconciled")
+        flash(locked_sale_message(locked_issue_id, "delete"), "error")
+        return redirect(url_for("sale_view", sid=sid))
 
     if request.method == "GET":
         impact = sale_delete_impact(sid)
@@ -409,6 +424,19 @@ def sale_form():
                             line_fields={f["key"]: f for f in get_effective_form_fields("SaleFormLine")})
 
 
+def _sale_inventory_unchanged(existing, status, employee_id, sale_date, lines):
+    """True if a submitted sale edit leaves every inventory-affecting field as stored: status,
+    salesperson, date, and each line's product/qty/rate/total discount (lines carry a per-unit
+    discount, stored lines a per-line total)."""
+    if (existing["Status"], existing["EmployeeID"], existing["SaleDate"]) != (status, employee_id, sale_date):
+        return False
+    stored = sorted((r["ProductID"], round(r["Qty"], 4), round(r["UnitPrice"], 2), round(r["DiscountAmount"] or 0, 2))
+                    for r in db.query("SELECT ProductID, Qty, UnitPrice, DiscountAmount FROM SalesLines WHERE SaleID=?",
+                                      (existing["SaleID"],)))
+    submitted = sorted((p, round(q, 4), round(pr, 2), round(d * q, 2)) for p, q, pr, d in lines)
+    return stored == submitted
+
+
 @bp.route("/sales/<int:sid>/edit", methods=["GET", "POST"])
 @admin_required
 def sale_edit(sid):
@@ -446,20 +474,33 @@ def sale_edit(sid):
         employee_id = int(f["employee_id"]) if f.get("employee_id") else None
 
         try:
-            create_sale(
-                customer_id=customer_id, sale_date=f["sale_date"], status=f["status"],
-                payment_status=f["payment_status"], payment_due_date=f.get("payment_due_date"),
-                amount_received=amount_received, notes=f.get("notes", ""),
-                place_of_supply_code=place_of_supply_code, lines=lines,
-                reverse_charge=bool(f.get("reverse_charge")), invoice_no=existing["InvoiceNumber"], sale_id=sid,
-                employee_id=employee_id, cash_amount=cash_amount, bank_amount=bank_amount)
+            locked_issue_id = locked_issue_for_sale(sid)
+            if locked_issue_id and _sale_inventory_unchanged(existing, f["status"], employee_id, f["sale_date"], lines):
+                # Locked by a Reconciled Stock Issue, but nothing inventory-affecting is changing:
+                # allow only the safe metadata (Notes, Due Date) and reject anything else.
+                if (existing["CustomerID"] != customer_id or existing["PaymentStatus"] != f["payment_status"]
+                        or round(existing["CashAmount"] or 0, 2) != round(cash_amount, 2)
+                        or round(existing["BankAmount"] or 0, 2) != round(bank_amount, 2)
+                        or (existing["PlaceOfSupplyStateCode"] or "") != (place_of_supply_code or "")
+                        or bool(existing["ReverseCharge"]) != bool(f.get("reverse_charge"))):
+                    raise SaleStockIssueLockedError(locked_issue_id)
+                with db.transaction():
+                    db.execute("UPDATE Sales SET Notes=?, PaymentDueDate=? WHERE SaleID=?",
+                               (f.get("notes", ""), f.get("payment_due_date") or None, sid))
+                    log_stock_issue_change(locked_issue_id, "Sale Header Edited", f"Invoice {existing['InvoiceNumber']}",
+                                            None, "notes / due date updated")
+            else:
+                create_sale(
+                    customer_id=customer_id, sale_date=f["sale_date"], status=f["status"],
+                    payment_status=f["payment_status"], payment_due_date=f.get("payment_due_date"),
+                    amount_received=amount_received, notes=f.get("notes", ""),
+                    place_of_supply_code=place_of_supply_code, lines=lines,
+                    reverse_charge=bool(f.get("reverse_charge")), invoice_no=existing["InvoiceNumber"], sale_id=sid,
+                    employee_id=employee_id, cash_amount=cash_amount, bank_amount=bank_amount)
         except SaleStockIssueLockedError as e:
             log_stock_issue_change(e.issue_id, "Blocked Edit Attempt", f"Invoice {existing['InvoiceNumber']}",
                                     None, "edit blocked - this Stock Issue is Reconciled")
-            flash(f"Nothing was saved. This invoice's salesperson has an already-Reconciled Stock Issue "
-                  f"(#{e.issue_id}) covering this date - editing it would silently recompute that closed "
-                  f"reconciliation. Use 'Reopen & Correct' on Stock Issue #{e.issue_id} first, then retry "
-                  f"this edit.", "error")
+            flash(locked_sale_message(e.issue_id, "edit"), "error")
             return redirect(url_for("sale_edit", sid=sid))
         save_custom_fields("Sale", sid, f)
         log_sale_location(sid, get_current_user(), f.get("sale_lat"), f.get("sale_lng"), f.get("sale_accuracy"))
@@ -689,6 +730,14 @@ def sale_view(sid):
 
 @bp.route("/sales/<int:sid>/record-payment", methods=["POST"])
 def sale_record_payment(sid):
+    # One atomic transaction for the whole POST (reads and writes), so overlapping requests serialize.
+    if request.method == "POST":
+        with db.transaction():
+            return _sale_record_payment(sid)
+    return _sale_record_payment(sid)
+
+
+def _sale_record_payment(sid):
     """Log one payment received against a specific invoice's outstanding
     balance (Accounts Receivable / Sale detail page "Record Payment"). Adds a
     dated SalePayments row (building up a full audit trail / customer ledger)
@@ -739,6 +788,14 @@ def sale_record_payment(sid):
 
 @bp.route("/sales/<int:sid>/reassign", methods=["GET", "POST"])
 def sale_reassign(sid):
+    # One atomic transaction for the whole POST (reads and writes), so overlapping requests serialize.
+    if request.method == "POST":
+        with db.transaction():
+            return _sale_reassign(sid)
+    return _sale_reassign(sid)
+
+
+def _sale_reassign(sid):
     """Split an 'Unassigned' Sale's lines out to the real customer(s). Each
     line's quantity can itself be broken down across multiple customers (e.g.
     20 units of a product sold that day split 8/7/5 across three customers) -

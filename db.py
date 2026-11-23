@@ -118,6 +118,9 @@ def transaction():
     conn = get_conn()
     _local.conn = conn
     try:
+        # IMMEDIATE takes the write lock up front: a check-then-write inside the block (e.g. the
+        # Reconciled-issue guards) can't be interleaved by another gunicorn thread's commit.
+        conn.execute("BEGIN IMMEDIATE")
         yield conn
         conn.commit()
     except Exception:
