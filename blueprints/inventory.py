@@ -747,6 +747,15 @@ def stock_issue_money_locked(issue):
 
 @bp.route("/stock-issues/<int:issue_id>/reconcile", methods=["GET", "POST"])
 def stock_issue_reconcile(issue_id):
+    # Whole request in one IMMEDIATE transaction: the Status/is_reedit read below can't be interleaved
+    # with another request's reconcile or delete.
+    if request.method == "POST":
+        with db.transaction():
+            return _stock_issue_reconcile(issue_id)
+    return _stock_issue_reconcile(issue_id)
+
+
+def _stock_issue_reconcile(issue_id):
     # Joins Employees for EmployeeName - the template's page title and (new) Target-progress
     # box both display it; a plain "SELECT * FROM StockIssues" here previously left it blank.
     issue = db.query("""SELECT si.*, e.EmployeeName FROM StockIssues si
@@ -1012,10 +1021,26 @@ def stock_issue_reconcile(issue_id):
 @bp.route("/stock-issues/<int:issue_id>/delete", methods=["POST"])
 @admin_required
 def stock_issue_delete(issue_id):
+    # Whole request in one IMMEDIATE transaction: the Status/is_reedit read below can't be interleaved
+    # with another request's reconcile or delete.
+    with db.transaction():
+        return _stock_issue_delete(issue_id)
+
+
+def _stock_issue_delete(issue_id):
     issue = db.query("SELECT * FROM StockIssues WHERE IssueID=?", (issue_id,), one=True)
     if not issue:
         flash("Stock issue not found.", "error")
         return redirect(url_for("stock_issues_list"))
+    # Sales that credited this issue's lines (SaleStockIssueLinks) are still sold: deleting the issue
+    # would hit a foreign key and, worse, restore its whole issued stock while those units stay sold.
+    credited = db.query("""SELECT COUNT(DISTINCT ssl.SaleID) c FROM SaleStockIssueLinks ssl
+                         JOIN StockIssueLines sil ON sil.LineID = ssl.StockIssueLineID
+                         WHERE sil.IssueID=?""", (issue_id,), one=True)["c"]
+    if credited:
+        flash(f"Can't delete this Stock Issue: {credited} sale(s) are credited against it. Delete or "
+              f"reassign those sales first, or use Reconcile to correct the figures instead. Nothing was changed.", "error")
+        return redirect(url_for("stock_issue_view", issue_id=issue_id))
     # A due payment or scheme claim already recorded against this issue used to block
     # deletion outright. It no longer does (Admin-only, as this whole route already is) -
     # instead the delete performs a full reversal: due-payment history and claim status
