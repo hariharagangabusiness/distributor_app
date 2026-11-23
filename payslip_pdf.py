@@ -12,6 +12,7 @@ a payment status/date line. All money and day figures use Indian-style
 digit grouping (e.g. 8,62,000.00), matching the rest of the app.
 """
 from io import BytesIO
+from formatting import indian_number_format
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
@@ -30,33 +31,8 @@ LABEL = ParagraphStyle("label", parent=styles["Normal"], fontSize=8, leading=10,
 RIGHT = ParagraphStyle("right", parent=NORMAL, alignment=TA_RIGHT)
 
 
-def _indian_number_format(value, decimals=2):
-    """Indian-style grouped number, e.g. 862000 -> 8,62,000.00. Mirrors
-    app.py's indian_number_format() template filter so PDF and on-screen
-    figures always match."""
-    value = value or 0
-    negative = value < 0
-    value = abs(value)
-    if decimals > 0:
-        whole_str, dec_str = f"{value:.{decimals}f}".split(".")
-    else:
-        whole_str, dec_str = f"{value:.0f}", None
-    if len(whole_str) > 3:
-        last_three = whole_str[-3:]
-        rest = whole_str[:-3]
-        groups = []
-        while len(rest) > 2:
-            groups.insert(0, rest[-2:])
-            rest = rest[:-2]
-        if rest:
-            groups.insert(0, rest)
-        whole_str = ",".join(groups) + "," + last_three
-    result = whole_str + (f".{dec_str}" if dec_str is not None else "")
-    return ("-" if negative else "") + result
-
-
 def _inr(value, decimals=2):
-    return "Rs. " + _indian_number_format(value, decimals)
+    return "Rs. " + indian_number_format(value, decimals)
 
 
 def _days(value):
