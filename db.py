@@ -43,8 +43,18 @@ def init_db():
     with open(SCHEMA_PATH, "r") as f:
         conn.executescript(f.read())
     conn.commit()
+    _ensure_vehicle_purchase_price(conn)
     _bootstrap_schema_migrations(conn)
     conn.close()
+
+
+def _ensure_vehicle_purchase_price(conn):
+    """Older databases predate Vehicles.PurchasePrice (the P&L depreciation line and the
+    vehicle form read it); schema.sql's CREATE TABLE IF NOT EXISTS never alters an existing table."""
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(Vehicles)").fetchall()]
+    if "PurchasePrice" not in cols:
+        conn.execute("ALTER TABLE Vehicles ADD COLUMN PurchasePrice REAL DEFAULT 0")
+        conn.commit()
 
 
 def _bootstrap_schema_migrations(conn):

@@ -184,6 +184,7 @@ CREATE TABLE IF NOT EXISTS Vehicles (
     Make                TEXT,
     Model                TEXT,
     PurchaseDate         TEXT,
+    PurchasePrice        REAL DEFAULT 0,
     InsuranceExpiry      TEXT,
     PermitExpiry         TEXT,
     PUCExpiry            TEXT,
