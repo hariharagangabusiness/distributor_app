@@ -18,3 +18,5 @@ venv/
 
 # Editor/OS cruft
 .DS_Store
+
+graphify-out/

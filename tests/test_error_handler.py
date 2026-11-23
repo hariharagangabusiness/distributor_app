@@ -4,6 +4,7 @@ all previously)."""
 import logging
 import io
 
+import blueprints.customers as customers_bp
 from tests.base import DBTestCase, appmod
 
 
@@ -24,12 +25,12 @@ class ErrorHandlerTests(DBTestCase):
     def test_unhandled_exception_is_logged_and_returns_friendly_500(self):
         client = self.make_admin_client()
 
-        orig = appmod.get_effective_columns
-        appmod.get_effective_columns = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom"))
+        orig = customers_bp.get_effective_columns
+        customers_bp.get_effective_columns = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom"))
         try:
             resp = client.get("/customers")
         finally:
-            appmod.get_effective_columns = orig
+            customers_bp.get_effective_columns = orig
 
         self.assertEqual(resp.status_code, 500)
         self.assertIn(b"Something went wrong", resp.data)
