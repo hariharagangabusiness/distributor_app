@@ -821,3 +821,93 @@ table.table-cards-mobile.view-grid tbody tr:not(.collapse) td:not([data-label]) 
    being clipped or pushing the 2-column grid wider than the screen. */
 table.table-cards-mobile.view-grid tbody tr:not(.collapse) { min-width: 0; }
 table.table-cards-mobile.view-grid td[data-key-field] { min-width: 0; overflow-wrap: anywhere; }
+
+/* ============ Dashboard - Apple HIG polish ============
+   Everything below is scoped to the Dashboard (main[data-section="dashboard"] /
+   .dash-hig in templates/dashboard.html) so no other page is affected. */
+main.content[data-section="dashboard"] { background: #F5F5F7; }
+[data-bs-theme="dark"] main.content[data-section="dashboard"] { background: transparent; }
+
+.dash-hig {
+  --hig-text: #1D1D1F; --hig-muted: #6E6E73; --hig-surface: #FFFFFF; --hig-track: #E5E5EA;
+  --hig-hair: rgba(0,0,0,.05); --hig-hover: #F9F9FB; --hig-border: rgba(0,0,0,.06);
+  --hig-blue: #0071E3; --hig-green: #34C759; --hig-amber: #FF9F0A; --hig-red: #FF3B30;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", system-ui, sans-serif;
+  color: var(--hig-text);
+  font-variant-numeric: tabular-nums;
+}
+[data-bs-theme="dark"] .dash-hig {
+  --hig-text: #F5F5F7; --hig-muted: #A1A1A6; --hig-surface: #1C1C1E; --hig-track: #3A3A3C;
+  --hig-hair: rgba(255,255,255,.08); --hig-hover: #2C2C2E; --hig-border: rgba(255,255,255,.08);
+}
+
+/* Header / quick actions */
+.dash-hig .dash-period { font-size: 1.0625rem; font-weight: 600; letter-spacing: -.01em; color: var(--hig-text); }
+.dash-hig .dash-toolbar .btn { border-radius: 999px; font-weight: 500; padding: .35rem .9rem; }
+.dash-hig .dash-toolbar .btn-brand { background: var(--hig-blue); border-color: var(--hig-blue); color: #fff; }
+.dash-hig .dash-toolbar .btn-brand:hover { background: #0077ED; border-color: #0077ED; }
+.dash-hig .dash-toolbar .btn-outline-secondary {
+  background: #fff; border: 1px solid var(--hig-border); color: var(--hig-text);
+}
+.dash-hig .dash-toolbar .btn-outline-secondary:hover:not(:disabled) { background: var(--hig-hover); }
+[data-bs-theme="dark"] .dash-hig .dash-toolbar .btn-outline-secondary { background: var(--hig-surface); }
+.dash-hig .text-muted { color: var(--hig-muted) !important; }
+
+/* Bento KPI grid */
+.dash-hig .dash-kpi-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 16px;
+}
+.dash-hig .stat-card {
+  display: flex; flex-direction: column-reverse; justify-content: flex-end; gap: 6px;
+  background: var(--hig-surface); border: 1px solid var(--hig-border); border-left-width: 1px;
+  border-radius: 16px; padding: 20px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.03), 0 6px 16px rgba(0,0,0,.03);
+}
+.dash-hig .stat-card[class*="sc-"]::after { display: none; }
+.dash-hig .stat-card .stat-label {
+  font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--hig-muted);
+}
+.dash-hig .stat-card .stat-value,
+.dash-hig .stat-card[class*="sc-"] .stat-value {
+  font-size: 28px; font-weight: 600; letter-spacing: -.02em; color: var(--hig-text); line-height: 1.15;
+}
+
+/* Widget cards */
+.dash-hig .card {
+  background: var(--hig-surface); border: 1px solid var(--hig-border); border-radius: 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.03), 0 6px 16px rgba(0,0,0,.03);
+}
+.dash-hig .page-body .card > .card-header, .dash-hig .card > .card-header {
+  background: transparent; border-bottom: 1px solid var(--hig-hair); padding: 16px 20px;
+  font-weight: 600; letter-spacing: -.01em; color: var(--hig-text);
+}
+.dash-hig .card-body { padding: 16px 20px; }
+.dash-hig .alert-tile, .dash-hig .badge-low, .dash-hig .badge-over {
+  background: transparent; color: var(--hig-text); border-radius: 0; margin: 0; padding: 11px 6px;
+  border-bottom: 1px solid var(--hig-hair); gap: 12px;
+}
+.dash-hig .alert-tile:last-of-type { border-bottom: 0; }
+.dash-hig .alert-tile > span:last-child { color: var(--hig-muted); text-align: right; }
+.dash-hig .alert-tile.badge-low > span:last-child { color: var(--hig-red); }
+.dash-hig .alert-tile.badge-over > span:last-child { color: #B26A00; }
+.dash-hig .table { --bs-table-bg: transparent; --bs-table-hover-bg: var(--hig-hover); }
+.dash-hig .table > :not(caption) > * > * { padding: 11px 8px; border-bottom: 1px solid var(--hig-hair); }
+.dash-hig .table thead th { border-bottom: 1px solid var(--hig-hair); }
+.dash-hig .table-hover > tbody > tr:hover > * { background: var(--hig-hover); }
+
+/* Target progress bars */
+.dash-hig .progress { height: 8px; background: var(--hig-track); border-radius: 999px; overflow: hidden; }
+.dash-hig .progress-bar { border-radius: 999px; transition: width .4s ease; }
+.dash-hig .progress-bar.bg-primary { background-color: var(--hig-blue) !important; }
+.dash-hig .progress-bar.bg-success { background-color: var(--hig-green) !important; }
+.dash-hig .progress-bar.bg-warning { background-color: var(--hig-amber) !important; }
+.dash-hig .progress-bar.bg-danger  { background-color: var(--hig-red) !important; }
+
+@media (max-width: 768px) {
+  .dash-hig .dash-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .dash-hig .stat-card { padding: 16px; }
+  .dash-hig .stat-card .stat-value, .dash-hig .stat-card[class*="sc-"] .stat-value { font-size: clamp(20px, 5vw, 26px); overflow-wrap: anywhere; }
+  .dash-hig .stat-card { min-width: 0; }
+  .dash-hig .btn, .dash-hig a.small { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
+  .dash-hig .card-body, .dash-hig .card > .card-header { padding: 14px 16px; }
+}
