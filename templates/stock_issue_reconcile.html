@@ -2,6 +2,7 @@
 {% block title %}Reconcile Stock Issue{% endblock %}
 {% block page_title %}{% if is_reedit %}Edit Reconciliation{% else %}Reconcile{% endif %} — {{ issue.EmployeeName }}, {{ issue.IssueDate|dmy }}{% endblock %}
 {% block content %}
+<div class="dash-hig hig">
 {% if is_reedit %}
 <div class="alert alert-warning">Correcting an already-reconciled Stock Issue (Admin only). This is a closed book —
   saving requires a reason below, replaces the previous sold/returned/free/discount figures and cash collected
@@ -179,6 +180,7 @@
   </div>
 </form>
 </div></div>
+</div>
 {% endblock %}
 {% block scripts %}
 <script>

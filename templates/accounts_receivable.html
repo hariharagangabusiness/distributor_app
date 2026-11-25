@@ -2,6 +2,7 @@
 {% block title %}Accounts Receivable{% endblock %}
 {% block page_title %}Accounts Receivable{% endblock %}
 {% block content %}
+<div class="dash-hig hig">
 
 <div class="row g-3 mb-3">
   <div class="col-md-3 col-6"><div class="stat-card"><div class="stat-value text-danger">{{ (total_due)|inr(0) }}</div><div class="stat-label">Total Due (Taxable Amount − Received, all customers)</div></div></div>
@@ -286,6 +287,7 @@
 </div>
 {% endif %}
 
+</div>
 {% endblock %}
 {% block scripts %}
 <script>

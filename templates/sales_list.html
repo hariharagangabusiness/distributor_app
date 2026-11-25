@@ -2,6 +2,7 @@
 {% block title %}Sales{% endblock %}
 {% block page_title %}Sales{% endblock %}
 {% block content %}
+<div class="dash-hig hig">
 {% if filt == 'unassigned' %}
 <div class="alert alert-warning d-flex justify-content-between align-items-center">
   <span>Showing only sales still billed to <strong>Unassigned</strong> — open one and use Reassign to split it to the real customer(s).</span>
@@ -83,6 +84,7 @@
   </div>
 </div>
 {% endif %}
+</div>
 {% endblock %}
 {% block scripts %}
 <script>

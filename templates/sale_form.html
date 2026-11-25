@@ -2,6 +2,7 @@
 {% block title %}{% if sale %}Edit Sale{% else %}New Sale{% endif %}{% endblock %}
 {% block page_title %}{% if sale %}Edit Sale {{ sale.InvoiceNumber }}{% else %}New Sale{% endif %}{% endblock %}
 {% block content %}
+<div class="dash-hig hig">
 {% if not company.GSTIN %}
 <div class="alert alert-warning">
   Your <a href="{{ url_for('settings_form') }}">Company / GST Settings</a> aren't filled in yet — GSTIN and state
@@ -35,6 +36,7 @@
   <input type="hidden" name="sale_lat" id="sale_lat">
   <input type="hidden" name="sale_lng" id="sale_lng">
   <input type="hidden" name="sale_accuracy" id="sale_accuracy">
+  <div class="hig-inset">
   <div class="row g-3 mb-3">
     <div class="col-md-3" style="{{ fstyle('invoice_number', header_fields) }}"><label class="form-label">Invoice Number</label>
       {% if sale %}
@@ -146,7 +148,9 @@
       {% endif %}
     </div>
   </div>
+  </div>
 
+  <div class="hig-inset">
   <div class="d-flex justify-content-between align-items-center">
     <h6>Line Items</h6>
     {% if current_user and current_user.Role == 'Admin' %}
@@ -180,6 +184,8 @@
     </table>
   </div>
 
+  </div>
+
   {% include "_custom_fields_form.html" %}
 
   <div class="row g-3 mb-3">
@@ -187,7 +193,7 @@
       <input name="notes" class="form-control" value="{{ sale.Notes if sale else '' }}"></div>
   </div>
 
-  <div class="d-flex gap-2">
+  <div class="d-flex gap-2 hig-savebar">
     <button type="submit" class="btn btn-brand">Save Sale</button>
     <a href="{{ url_for('sale_view', sid=sale.SaleID) if sale else url_for('sales_list') }}" class="btn btn-outline-secondary">Cancel</a>
   </div>
@@ -218,6 +224,7 @@
     <td><button type="button" class="btn btn-sm btn-outline-danger remove-line">✕</button></td>
   </tr>
 </template>
+</div>
 {% endblock %}
 {% block scripts %}
 <script>

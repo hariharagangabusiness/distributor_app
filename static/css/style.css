@@ -882,7 +882,7 @@ main.content[data-section="dashboard"] { background: #F5F5F7; }
   font-weight: 600; letter-spacing: -.01em; color: var(--hig-text);
 }
 .dash-hig .card-body { padding: 16px 20px; }
-.dash-hig .alert-tile, .dash-hig .badge-low, .dash-hig .badge-over {
+.dash-hig .alert-tile {
   background: transparent; color: var(--hig-text); border-radius: 0; margin: 0; padding: 11px 6px;
   border-bottom: 1px solid var(--hig-hair); gap: 12px;
 }
@@ -910,4 +910,105 @@ main.content[data-section="dashboard"] { background: #F5F5F7; }
   .dash-hig .stat-card { min-width: 0; }
   .dash-hig .btn, .dash-hig a.small { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
   .dash-hig .card-body, .dash-hig .card > .card-header { padding: 14px 16px; }
+}
+
+/* ============ Apple HIG - shared operational screens ============
+   Opt-in via <div class="dash-hig hig"> in Targets, Sales (list + form), Stock Issues
+   (list/view/reconcile) and Accounts Receivable. .dash-hig supplies the variables, cards,
+   KPI grid and progress bars above; the rules below add tables, forms, pills and mobile. */
+main.content:has(.hig) { background: #F5F5F7; }
+[data-bs-theme="dark"] main.content:has(.hig) { background: transparent; }
+
+/* Cards: drop the per-section accent stripe/tint in favour of a hairline border. */
+.dash-hig .card:not(.report-card) { border: 1px solid var(--hig-border); overflow: hidden; }
+.dash-hig .card:not(.report-card)::after { display: none; }
+.dash-hig .card:not(.report-card) > .card-header,
+.dash-hig .card:not(.report-card) > .card-body > .card-title { color: var(--hig-text); }
+.dash-hig .card-body { padding: 18px 20px; }
+
+/* Buttons: pills, blue primary, white hairline secondary */
+.hig .btn { border-radius: 999px; font-weight: 500; }
+.hig .btn-brand, .hig .btn-primary { background: var(--hig-blue); border-color: var(--hig-blue); color: #fff; }
+.hig .btn-brand:hover, .hig .btn-primary:hover { background: #0077ED; border-color: #0077ED; color: #fff; }
+.hig .btn-outline-secondary { background: var(--hig-surface); border: 1px solid var(--hig-border); color: var(--hig-text); }
+.hig .btn-outline-secondary:hover:not(:disabled) { background: var(--hig-hover); color: var(--hig-text); }
+
+/* Inputs / filters */
+.hig .form-control, .hig .form-select {
+  border-radius: 10px; border: 1px solid rgba(0,0,0,.12); background-color: var(--hig-surface); color: var(--hig-text);
+}
+[data-bs-theme="dark"] .hig .form-control, [data-bs-theme="dark"] .hig .form-select { border-color: rgba(255,255,255,.14); }
+.hig .form-control:focus, .hig .form-select:focus {
+  border-color: var(--hig-blue); box-shadow: 0 0 0 3px rgba(0,113,227,.25);
+}
+.hig .form-label { font-size: 12px; font-weight: 600; color: var(--hig-muted); }
+
+/* Tables */
+.hig .table thead th {
+  font-size: 11.5px; font-weight: 600; color: var(--hig-muted); text-transform: uppercase; letter-spacing: .04em;
+  position: sticky; top: 0; z-index: 2; background: var(--hig-surface); white-space: nowrap;
+}
+.hig .table > :not(caption) > * > * { padding: 11px 14px; }
+.hig .table-sm > :not(caption) > * > * { padding: 9px 12px; }
+.hig .table > tbody > tr > td { color: var(--hig-text); }
+
+/* Status pills (Bootstrap text-bg-* and the app's badge-ok/low/over) */
+.hig .badge {
+  border-radius: 999px; font-size: 11.5px; font-weight: 600; letter-spacing: .01em; padding: .35em .75em;
+}
+.hig .badge.text-bg-success, .hig .badge-ok   { background: rgba(52,199,89,.15) !important;  color: #1E7E34 !important; }
+.hig .badge.text-bg-warning, .hig .badge-over { background: rgba(255,159,10,.16) !important; color: #9A5B00 !important; }
+.hig .badge.text-bg-danger, .hig .badge-low   { background: rgba(255,59,48,.12) !important;  color: #C4281C !important; }
+.hig .badge.text-bg-info                      { background: rgba(0,113,227,.10) !important;  color: #0058B0 !important; }
+.hig .badge.text-bg-secondary                 { background: rgba(0,0,0,.06) !important;      color: var(--hig-muted) !important; }
+[data-bs-theme="dark"] .hig .badge.text-bg-success, [data-bs-theme="dark"] .hig .badge-ok   { color: #5BD97A !important; }
+[data-bs-theme="dark"] .hig .badge.text-bg-warning, [data-bs-theme="dark"] .hig .badge-over { color: #FFB84D !important; }
+[data-bs-theme="dark"] .hig .badge.text-bg-danger, [data-bs-theme="dark"] .hig .badge-low   { color: #FF7A72 !important; }
+[data-bs-theme="dark"] .hig .badge.text-bg-info { color: #66B0FF !important; }
+
+/* Sale form: iOS-style inset groups */
+.hig .hig-inset {
+  background: var(--hig-surface); border: 1px solid var(--hig-border); border-radius: 14px; padding: 16px; margin-bottom: 16px;
+}
+.hig #lines-table input, .hig #lines-table select, .hig #lines-body td.text-end { font-variant-numeric: tabular-nums; }
+.hig #lines-table input[name="qty[]"], .hig #lines-table input[name="unit_price[]"],
+.hig #lines-table input[name="discount_amount[]"] { text-align: right; }
+.hig .taxable-cell, .hig .tax-cell, .hig .line-total { text-align: right; }
+
+@media (max-width: 768px) {
+  main.content:has(.hig) .page-body { padding-left: 12px; padding-right: 12px; }
+  .hig .stat-card .stat-value, .hig .stat-card[class*="sc-"] .stat-value { font-size: clamp(20px, 5vw, 26px); }
+  .hig .card, .hig .stat-card, .hig .card-body { min-width: 0; }
+  .hig .card-body .fs-5 { font-size: clamp(16px, 4.6vw, 20px) !important; overflow-wrap: anywhere; }
+  .hig .form-control, .hig .form-select { min-height: 44px; font-size: 16px; }
+  .hig .btn { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
+  .hig .hig-inset { padding: 14px; }
+
+  /* Stacked mobile cards (table-cards-mobile / list-view-toggle) */
+  body:not(.mobile-ui-off) .hig table.table-cards-mobile tbody tr {
+    border: 1px solid var(--hig-border); border-radius: 14px; padding: 12px 14px; margin-bottom: 10px;
+    background: var(--hig-surface);
+  }
+  body:not(.mobile-ui-off) .hig table.table-cards-mobile td { padding: 6px 0; font-variant-numeric: tabular-nums; }
+  body:not(.mobile-ui-off) .hig table.table-cards-mobile td:not(:last-child) { border-bottom: 1px solid var(--hig-hair) !important; }
+  body:not(.mobile-ui-off) .hig table.table-cards-mobile td[data-label]::before {
+    font-size: 12px; font-weight: 600; color: var(--hig-muted);
+  }
+  body:not(.mobile-ui-off) .hig table.table-cards-mobile td a.btn,
+  body:not(.mobile-ui-off) .hig table.table-cards-mobile td button.btn { min-height: 44px; }
+
+  .hig table a.btn, .hig table button.btn, .hig table a[title][href] {
+    min-height: 44px; min-width: 44px; display: inline-flex; align-items: center; justify-content: center;
+  }
+  /* Keep the sticky Save bar from covering the last line item / totals */
+  .hig form:has(.hig-savebar) { padding-bottom: 76px; }
+
+  /* Sale form: sticky frosted Save bar */
+  .hig .hig-savebar {
+    position: sticky; bottom: 0; z-index: 20; margin: 0 -12px -12px; padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+    background: rgba(255,255,255,.72); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
+    border-top: 1px solid var(--hig-hair);
+  }
+  [data-bs-theme="dark"] .hig .hig-savebar { background: rgba(28,28,30,.72); }
+  .hig .hig-savebar .btn { flex: 1 1 0; }
 }

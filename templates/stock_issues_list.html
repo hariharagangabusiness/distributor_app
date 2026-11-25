@@ -2,6 +2,7 @@
 {% block title %}Stock Issues{% endblock %}
 {% block page_title %}Stock Issues — Van/Route Sales{% endblock %}
 {% block content %}
+<div class="dash-hig hig">
 <div class="d-flex justify-content-end gap-2 mb-3">
   <a href="{{ url_for('export_module', module='stock_issues') }}" class="btn btn-outline-secondary"><i class="bi bi-file-earmark-excel"></i> Export to Excel</a>
   <a href="{{ url_for('export_module_pdf', module='stock_issues') }}" class="btn btn-outline-secondary"><i class="bi bi-file-earmark-pdf"></i> PDF</a>
@@ -70,6 +71,7 @@
     {% endif %}
   </table>
   </div>
+</div>
 </div>
 {% endblock %}
 {% block scripts %}

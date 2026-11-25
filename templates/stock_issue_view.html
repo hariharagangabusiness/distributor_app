@@ -2,6 +2,7 @@
 {% block title %}Stock Issue{% endblock %}
 {% block page_title %}Stock Issue {{ issue.IssueNumber or ('#' ~ issue.IssueID) }} — {{ issue.EmployeeName }}, {{ issue.IssueDate|dmy }}{% endblock %}
 {% block content %}
+<div class="dash-hig hig">
 {% if issue.ReviewStatus == 'Pending' %}
 <div class="alert alert-warning d-flex justify-content-between align-items-center">
   <span><i class="bi bi-hourglass-split"></i> This Stock Issue was <strong>auto-created</strong> from a Sales-tab
@@ -257,4 +258,5 @@
   </div>
 </div>
 {% endif %}
+</div>
 {% endblock %}
