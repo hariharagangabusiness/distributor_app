@@ -289,6 +289,38 @@ def target_days_elapsed(year, month):
     return today.day
 
 
+def unlinked_sale_rows(employee_ids, date_from, date_to, product_id=None):
+    """Completed Sales attributed to these employees whose quantity was NOT credited to a Stock
+    Issue line (no open issue that day, issue oversold, or a late sale after reconciliation) -
+    those units never reach StockIssueLines.QtySold, so Stock-Issue-only target actuals missed
+    them entirely. Returns one dict per (sale, product) with only the un-credited share
+    (qty/expected/discount/collected/date), so nothing is double-counted with the issue figures."""
+    ids = list(employee_ids)
+    if not ids:
+        return []
+    sql = f"""SELECT s.SaleDate, s.AmountReceived, s.TaxableAmount, SUM(sl.Qty) q,
+                 SUM(sl.Qty*sl.UnitPrice - COALESCE(sl.DiscountAmount,0)) exp,
+                 SUM(COALESCE(sl.DiscountAmount,0)) disc,
+                 COALESCE((SELECT SUM(ssl.QtyApplied) FROM SaleStockIssueLinks ssl
+                           JOIN StockIssueLines sil ON sil.LineID = ssl.StockIssueLineID
+                           WHERE ssl.SaleID = s.SaleID AND sil.ProductID = sl.ProductID), 0) linked
+              FROM Sales s JOIN SalesLines sl ON sl.SaleID = s.SaleID
+              WHERE s.EmployeeID IN ({','.join('?' * len(ids))}) AND s.Status='Completed'
+                AND s.SaleDate BETWEEN ? AND ?{' AND sl.ProductID=?' if product_id else ''}
+              GROUP BY s.SaleID, sl.ProductID"""
+    params = tuple(ids) + (date_from, date_to) + ((product_id,) if product_id else ())
+    out = []
+    for r in db.query(sql, params):
+        q = r["q"] or 0
+        frac = max(q - r["linked"], 0) / q if q else 0
+        if frac <= 0:
+            continue
+        exp = (r["exp"] or 0) * frac
+        out.append({"date": r["SaleDate"], "qty": q * frac, "expected": exp, "discount": (r["disc"] or 0) * frac,
+                    "collected": (r["AmountReceived"] or 0) * exp / r["TaxableAmount"] if r["TaxableAmount"] else 0})
+    return out
+
+
 def compute_target_actuals(employee_id, product_id, date_from, date_to):
     """Actuals for one Employee (+ optional Product) over a date range, all
     computed live from Stock Issues so a target is never stale. For a
@@ -330,6 +362,13 @@ def compute_target_actuals(employee_id, product_id, date_from, date_to):
         qty_sold = sum(r["QtySold"] or 0 for r in line_rows)
         discount = sum(r["DiscountAmount"] or 0 for r in line_rows)
         qty_no_discount = sum((r["QtySold"] or 0) for r in line_rows if not (r["DiscountAmount"] or 0))
+    for r in unlinked_sale_rows([employee_id], date_from, date_to, product_id):
+        qty_sold += r["qty"]
+        expected += r["expected"]
+        collected += r["collected"]
+        discount += r["discount"]
+        if not r["discount"]:
+            qty_no_discount += r["qty"]
     return {"qty_sold": round(qty_sold, 2), "expected": round(expected, 2), "collected": round(collected, 2),
             "discount": round(discount, 2), "qty_no_discount": round(qty_no_discount, 2)}
 

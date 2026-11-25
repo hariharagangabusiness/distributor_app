@@ -3,7 +3,7 @@ import bulk_import
 import db
 import os
 from core.auth import admin_required, get_current_user
-from core.helpers import locked_issue_for_sale, locked_sale_message, INDIAN_STATES, MONTH_NAMES, STATE_NAME_BY_CODE, SaleStockIssueLockedError, UPLOAD_ROOT, _now_ist, amount_in_words, build_target_view, create_sale, custom_field_attachment_module, get_attachments, get_company_settings, get_custom_attachments, get_custom_field_defs, get_custom_values, get_customer_due_info, get_effective_columns, get_effective_form_fields, get_products_with_stock, get_target_buckets, log_stock_issue_change, next_customer_account_number, pct, reverse_sale_stock_issue_links, sale_balance_due, sale_due_amount, save_custom_fields, target_days_elapsed, target_month_bounds, today_str
+from core.helpers import locked_issue_for_sale, locked_sale_message, INDIAN_STATES, MONTH_NAMES, STATE_NAME_BY_CODE, SaleStockIssueLockedError, UPLOAD_ROOT, _now_ist, amount_in_words, build_target_view, create_sale, custom_field_attachment_module, get_attachments, get_company_settings, get_custom_attachments, get_custom_field_defs, get_custom_values, get_customer_due_info, get_effective_columns, get_effective_form_fields, get_products_with_stock, get_target_buckets, log_stock_issue_change, next_customer_account_number, pct, reverse_sale_stock_issue_links, sale_balance_due, sale_due_amount, save_custom_fields, target_days_elapsed, target_month_bounds, today_str, unlinked_sale_rows
 from datetime import date, datetime, timedelta
 from flask import flash, redirect, render_template, request, url_for
 
@@ -1113,6 +1113,8 @@ def targets_view():
                              GROUP BY si.IssueDate""",
                              tuple(emp_ids) + (start.isoformat(), (start + timedelta(days=days_elapsed - 1)).isoformat()))
         qty_by_day = {r["d"]: r["qty"] for r in day_rows}
+        for r in unlinked_sale_rows(emp_ids, start.isoformat(), (start + timedelta(days=days_elapsed - 1)).isoformat()):
+            qty_by_day[r["date"]] = qty_by_day.get(r["date"], 0) + r["qty"]
         cum_actual = 0.0
         for i in range(days_elapsed):
             d = start + timedelta(days=i)
@@ -1136,9 +1138,11 @@ def targets_view():
                              WHERE si.EmployeeID IN ({','.join('?' * len(emp_ids))})
                                AND si.IssueDate BETWEEN ? AND ?""",
                              tuple(emp_ids) + (week_start.isoformat(), today.isoformat()), one=True)
-        wtd = {"week_start": week_start.isoformat(), "qty_actual": round(wtd_rows["qty"], 2),
-               "qty_target": wtd_target_qty, "discount": round(wtd_rows["discount"], 2),
-               "pct": pct(wtd_rows["qty"], wtd_target_qty)}
+        extra = unlinked_sale_rows(emp_ids, week_start.isoformat(), today.isoformat())
+        wtd_qty = wtd_rows["qty"] + sum(r["qty"] for r in extra)
+        wtd = {"week_start": week_start.isoformat(), "qty_actual": round(wtd_qty, 2),
+               "qty_target": wtd_target_qty, "discount": round(wtd_rows["discount"] + sum(r["discount"] for r in extra), 2),
+               "pct": pct(wtd_qty, wtd_target_qty)}
 
     edit_target = None
     edit_target_buckets = []
