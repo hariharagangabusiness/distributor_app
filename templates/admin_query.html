@@ -2,6 +2,7 @@
 {% block title %}Data Query{% endblock %}
 {% block page_title %}Data Query{% endblock %}
 {% block content %}
+<div class="dash-hig hig">
 <p class="text-muted">Run a read-only SELECT query straight against the database - the in-browser replacement for
   writing a one-off script and running it via the terminal. Only SELECT is allowed (enforced both by checking the
   query text and by running it against a connection that is read-only at the database level, so nothing here can
@@ -43,4 +44,5 @@
   </div>
 </div>
 {% endif %}
+</div>
 {% endblock %}

@@ -2,6 +2,7 @@
 {% block title %}Deleted Sales{% endblock %}
 {% block page_title %}Deleted Sales{% endblock %}
 {% block content %}
+<div class="dash-hig hig">
 <p class="text-muted">Every Sale an Admin has permanently deleted (Sales tab &gt; Delete Sale), read from a
   snapshot taken right before each deletion — the Sale itself no longer exists afterward, so this is the only
   record of what it was and who removed it. Deletions from before this log existed aren't recoverable.</p>
@@ -79,5 +80,6 @@
     {% endif %}
   </table>
   </div>
+</div>
 </div>
 {% endblock %}

@@ -2,6 +2,7 @@
 {% block title %}Customize Columns — {{ module_label }}{% endblock %}
 {% block page_title %}Customize Columns — {{ module_label }}{% endblock %}
 {% block content %}
+<div class="dash-hig hig">
 <div class="card" style="max-width:640px"><div class="card-body">
 <form method="post">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -31,4 +32,5 @@
   </div>
 </form>
 </div></div>
+</div>
 {% endblock %}

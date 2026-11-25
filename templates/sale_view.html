@@ -2,6 +2,7 @@
 {% block title %}Sale {{ sale.InvoiceNumber }}{% endblock %}
 {% block page_title %}Sale — {{ sale.InvoiceNumber }}{% endblock %}
 {% block content %}
+<div class="dash-hig hig">
 {% if sale.IsUnassignedBucket %}
 <div class="alert alert-warning">This sale is billed to the system <strong>Unassigned</strong> customer (auto-created
   from a reconciled Stock Issue). Use Reassign below to split it to the real customer(s).</div>
@@ -134,4 +135,5 @@
 </div>
 {% include "_custom_fields_display.html" %}
 <a href="{{ url_for('sales_list') }}" class="btn btn-outline-secondary mt-3">Back to Sales</a>
+</div>
 {% endblock %}

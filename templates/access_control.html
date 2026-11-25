@@ -2,6 +2,7 @@
 {% block title %}Access Control{% endblock %}
 {% block page_title %}Access Control{% endblock %}
 {% block content %}
+<div class="dash-hig hig">
 <p class="text-muted">Choose which sidebar tabs each role can see and use. <strong>Admin</strong> always has access
   to everything and isn't shown here — this only configures <strong>Staff</strong>, <strong>Supervisor</strong> and
   <strong>Manager</strong> (increasing seniority). Dashboard and Reports are always visible to every signed-in user
@@ -41,4 +42,5 @@
   </div>
   <button type="submit" class="btn btn-brand"><i class="bi bi-check-lg"></i> Save Access Control Settings</button>
 </form>
+</div>
 {% endblock %}

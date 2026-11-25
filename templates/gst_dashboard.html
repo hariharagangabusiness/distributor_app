@@ -2,6 +2,7 @@
 {% block title %}GST Filing{% endblock %}
 {% block page_title %}GST Filing{% endblock %}
 {% block content %}
+<div class="dash-hig hig">
 <div class="alert alert-info small">
   These reports are a <strong>working reference</strong> computed from your Sales and Purchases here — they aren't
   fetched from, and aren't submitted to, the GST portal. Always confirm figures and due dates on
@@ -83,4 +84,5 @@
   <div class="card-body py-2"><a href="{{ url_for('gst_gstr2b_list') }}" class="small">Manage GSTR-2B uploads →</a></div>
 </div>
 {% endif %}
+</div>
 {% endblock %}

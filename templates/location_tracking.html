@@ -2,6 +2,7 @@
 {% block title %}Location Tracking{% endblock %}
 {% block page_title %}Location Tracking — {{ date_str }}{% endblock %}
 {% block content %}
+<div class="dash-hig hig">
 <p class="text-muted">A round dot is a routine location captured from a Staff/Supervisor/Manager's own phone or
   browser while the app was open, every {{ ping_interval_minutes }} minute(s) between 9 AM-8 PM on configured
   working days ({{ working_days_display }}). This only works while that person has the app open and has allowed
@@ -118,6 +119,7 @@
 </div>
 {% endif %}
 
+</div>
 {% endblock %}
 {% block modals %}
 {% if can_manage_visit_plan %}

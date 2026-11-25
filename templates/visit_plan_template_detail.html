@@ -2,6 +2,7 @@
 {% block title %}{{ template.template.Name }} — Template{% endblock %}
 {% block page_title %}Template — {{ template.template.Name }}{% endblock %}
 {% block content %}
+<div class="dash-hig hig">
 <div class="d-flex justify-content-end mb-3">
   <a href="{{ url_for('visit_plan_templates_list') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left"></i> Back to Templates</a>
 </div>
@@ -64,5 +65,6 @@
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button type="submit" class="btn btn-outline-danger btn-sm"><i class="bi bi-trash"></i> Delete Template</button>
   </form>
+</div>
 </div>
 {% endblock %}

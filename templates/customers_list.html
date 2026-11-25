@@ -2,6 +2,7 @@
 {% block title %}Customers{% endblock %}
 {% block page_title %}Customers{% endblock %}
 {% block content %}
+<div class="dash-hig hig">
 <div class="d-flex justify-content-end gap-2 mb-3">
   <a href="{{ url_for('customers_import_upload') }}" class="btn btn-outline-secondary"><i class="bi bi-upload"></i> Import from Excel</a>
   <a href="{{ url_for('export_module', module='customers') }}" class="btn btn-outline-secondary"><i class="bi bi-file-earmark-excel"></i> Export to Excel</a>
@@ -62,6 +63,7 @@
   </div>
 </div>
 {% endif %}
+</div>
 {% endblock %}
 {% block scripts %}
 <script>

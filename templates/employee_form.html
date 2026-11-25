@@ -2,6 +2,7 @@
 {% block title %}{{ 'Edit' if employee else 'Add' }} Employee{% endblock %}
 {% block page_title %}{{ 'Edit Employee' if employee else 'Add Employee' }}{% endblock %}
 {% block content %}
+<div class="dash-hig hig">
 <div class="card" style="max-width:640px"><div class="card-body">
 <form method="post">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -25,7 +26,7 @@
       <input name="bank_account" class="form-control" value="{{ employee.BankAccount if employee else '' }}"></div>
   </div>
   {% include "_custom_fields_form.html" %}
-  <div class="mt-4 d-flex gap-2">
+  <div class="mt-4 d-flex gap-2 hig-savebar">
     <button class="btn btn-brand" type="submit">Save Employee</button>
     <a href="{{ url_for('employees_list') }}" class="btn btn-outline-secondary">Cancel</a>
   </div>
@@ -39,4 +40,5 @@
   <span class="text-muted small ms-2">Annual leave quotas are shared by everyone — set on the <a href="{{ url_for('leave_types_admin') }}">Leave Types</a> page.</span>
 </div>
 {% endif %}
+</div>
 {% endblock %}

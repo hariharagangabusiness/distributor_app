@@ -2,6 +2,7 @@
 {% block title %}{{ 'Edit' if customer else 'Add' }} Customer{% endblock %}
 {% block page_title %}{{ 'Edit Customer' if customer else 'Add Customer' }}{% endblock %}
 {% block content %}
+<div class="dash-hig hig">
 {% if customer %}
 <div class="d-flex justify-content-end mb-2">
   <a href="{{ url_for('customer_purchase_history', cid=customer.CustomerID) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-clock-history"></i> Purchase History</a>
@@ -90,12 +91,13 @@
       <label class="form-check-label" for="active">Active</label></div>
   </div>
   {% include "_custom_fields_form.html" %}
-  <div class="mt-4 d-flex gap-2">
+  <div class="mt-4 d-flex gap-2 hig-savebar">
     <button class="btn btn-brand" type="submit">Save Customer</button>
     <a href="{{ url_for('customers_list') }}" class="btn btn-outline-secondary">Cancel</a>
   </div>
 </form>
 </div></div>
+</div>
 {% endblock %}
 {% block scripts %}
 <script>

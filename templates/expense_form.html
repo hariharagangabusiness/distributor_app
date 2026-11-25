@@ -2,6 +2,7 @@
 {% block title %}{{ 'Edit' if expense else 'Add' }} Expense{% endblock %}
 {% block page_title %}{{ 'Edit Expense' if expense else 'Add Expense' }}{% endblock %}
 {% block content %}
+<div class="dash-hig hig">
 <div class="card" style="max-width:640px"><div class="card-body">
 <form method="post">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -32,11 +33,12 @@
       <textarea name="description" class="form-control" rows="2">{{ expense.Description if expense else '' }}</textarea></div>
   </div>
   {% include "_custom_fields_form.html" %}
-  <div class="mt-4 d-flex gap-2">
+  <div class="mt-4 d-flex gap-2 hig-savebar">
     <button class="btn btn-brand" type="submit">Save Expense</button>
     <a href="{{ url_for('expenses_list') }}" class="btn btn-outline-secondary">Cancel</a>
   </div>
 </form>
 </div></div>
 {% if expense %}{% include "_attachments.html" %}{% endif %}
+</div>
 {% endblock %}

@@ -2,6 +2,7 @@
 {% block title %}Add More Products{% endblock %}
 {% block page_title %}Add More Products — {{ issue.EmployeeName }}, {{ issue.IssueDate|dmy }}{% endblock %}
 {% block content %}
+<div class="dash-hig hig">
 <div class="alert alert-info">Adding lines here appends them to this same Stock Issue (for a salesperson who got
   re-stocked more than once today) instead of creating a separate issue. These new lines are deducted from stock
   immediately, just like the original issue, and will show up alongside the existing lines when this issue is
@@ -65,6 +66,7 @@
     <td><button type="button" class="btn btn-sm btn-outline-danger remove-line">✕</button></td>
   </tr>
 </template>
+</div>
 {% endblock %}
 {% block scripts %}
 <script>

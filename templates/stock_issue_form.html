@@ -2,6 +2,7 @@
 {% block title %}Issue Stock{% endblock %}
 {% block page_title %}Issue Stock to Salesperson{% endblock %}
 {% block content %}
+<div class="dash-hig hig">
 <div class="card"><div class="card-body">
 <form method="post">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -28,7 +29,7 @@
   </div>
   <button type="button" class="btn btn-sm btn-outline-secondary mb-3" id="add-line">+ Add Line</button>
 
-  <div class="d-flex gap-2">
+  <div class="d-flex gap-2 hig-savebar">
     <button type="submit" class="btn btn-brand">Issue Stock</button>
     <a href="{{ url_for('stock_issues_list') }}" class="btn btn-outline-secondary">Cancel</a>
   </div>
@@ -55,6 +56,7 @@
     <td><button type="button" class="btn btn-sm btn-outline-danger remove-line">✕</button></td>
   </tr>
 </template>
+</div>
 {% endblock %}
 {% block scripts %}
 <script>

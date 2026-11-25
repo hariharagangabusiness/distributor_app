@@ -1012,3 +1012,18 @@ main.content:has(.hig) { background: #F5F5F7; }
   [data-bs-theme="dark"] .hig .hig-savebar { background: rgba(28,28,30,.72); }
   .hig .hig-savebar .btn { flex: 1 1 0; }
 }
+
+/* Print / PDF safety: strip the HIG screen chrome so printed pages stay crisp and unclipped. */
+@media print {
+  main.content:has(.hig), main.content[data-section="dashboard"] { background: #fff !important; }
+  .dash-hig .card, .dash-hig .stat-card, .hig .hig-inset {
+    background: #fff !important; box-shadow: none !important; border-radius: 0 !important; border-color: #ccc !important;
+    overflow: visible !important;
+  }
+  .hig .hig-savebar { position: static !important; margin: 0 !important; padding: 0 !important; background: none !important;
+    -webkit-backdrop-filter: none; backdrop-filter: none; border: 0 !important; display: none !important; }
+  .hig form:has(.hig-savebar) { padding-bottom: 0 !important; }
+  .hig .table thead th { position: static !important; background: none !important; }
+  .hig .badge { background: none !important; border: 1px solid #999; color: #000 !important; }
+  .hig .progress { border: 1px solid #999; }
+}

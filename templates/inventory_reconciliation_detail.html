@@ -2,6 +2,7 @@
 {% block title %}Reconciliation — {{ product.ProductName }}{% endblock %}
 {% block page_title %}Inventory Reconciliation — {{ product.ProductName }}{% endblock %}
 {% block content %}
+<div class="dash-hig hig">
 <div class="d-flex justify-content-end mb-3">
   <a href="{{ url_for('inventory_reconciliation_summary') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left"></i> Back to all products</a>
 </div>
@@ -149,5 +150,6 @@
       </tbody>
     </table>
   </div>
+</div>
 </div>
 {% endblock %}

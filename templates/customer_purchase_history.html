@@ -2,6 +2,7 @@
 {% block title %}Purchase History — {{ customer.CustomerName }}{% endblock %}
 {% block page_title %}Purchase History — {{ customer.CustomerName }}{% if customer.AccountNumber %} <span class="text-muted fw-normal" style="font-size:0.7em">({{ customer.AccountNumber }})</span>{% endif %}{% endblock %}
 {% block content %}
+<div class="dash-hig hig">
 <div class="d-flex justify-content-between align-items-center mb-3 no-print">
   <div>
     {% if parent_account %}
@@ -202,4 +203,5 @@
   .sidebar, .topbar, .no-print, .nav-tabs { display: none !important; }
   main.content { margin: 0 !important; padding: 0 !important; width: 100% !important; }
 </style>
+</div>
 {% endblock %}

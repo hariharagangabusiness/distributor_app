@@ -2,6 +2,7 @@
 {% block title %}{{ 'Edit' if vehicle else 'Add' }} Vehicle{% endblock %}
 {% block page_title %}{{ 'Edit Vehicle' if vehicle else 'Add Vehicle' }}{% endblock %}
 {% block content %}
+<div class="dash-hig hig">
 <div class="card" style="max-width:760px"><div class="card-body">
 <form method="post">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -39,11 +40,12 @@
       <input type="date" name="fitness_expiry" class="form-control" value="{{ vehicle.FitnessExpiry if vehicle else '' }}"></div>
   </div>
   {% include "_custom_fields_form.html" %}
-  <div class="mt-4 d-flex gap-2">
+  <div class="mt-4 d-flex gap-2 hig-savebar">
     <button class="btn btn-brand" type="submit">Save Vehicle</button>
     <a href="{{ url_for('vehicles_list') }}" class="btn btn-outline-secondary">Cancel</a>
   </div>
 </form>
 </div></div>
 {% if vehicle %}{% include "_attachments.html" %}{% endif %}
+</div>
 {% endblock %}

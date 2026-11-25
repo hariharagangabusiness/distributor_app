@@ -2,6 +2,7 @@
 {% block title %}Today's Discrepancy — Line-wise{% endblock %}
 {% block page_title %}Today's Discrepancy — Line-wise{% endblock %}
 {% block content %}
+<div class="dash-hig hig">
 <p class="text-muted">Every Stock Issue on this date with a nonzero Discrepancy, a pending Amount Due, or a line
   whose stored Qty Sold looks lower than the true total actually sold (the multi-top-up pattern — see the Product
   Qty Sold / Stock Issue Top-up History reports). If Amount Due looks lower than it should be, the "Gap" and "Est.
@@ -73,4 +74,5 @@
   {% endif %}
 </div>
 {% endfor %}
+</div>
 {% endblock %}

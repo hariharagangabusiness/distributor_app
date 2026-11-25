@@ -2,6 +2,7 @@
 {% block title %}Maintenance{% endblock %}
 {% block page_title %}Vehicle Maintenance{% endblock %}
 {% block content %}
+<div class="dash-hig hig">
 <div class="d-flex justify-content-end gap-2 mb-3">
   <a href="{{ url_for('export_module', module='maintenance') }}" class="btn btn-outline-secondary"><i class="bi bi-file-earmark-excel"></i> Export to Excel</a>
   <a href="{{ url_for('export_module_pdf', module='maintenance') }}" class="btn btn-outline-secondary"><i class="bi bi-file-earmark-pdf"></i> PDF</a>
@@ -39,6 +40,7 @@
     </tbody>
   </table>
   </div>
+</div>
 </div>
 {% endblock %}
 {% block scripts %}

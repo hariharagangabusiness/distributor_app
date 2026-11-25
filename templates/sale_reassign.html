@@ -2,6 +2,7 @@
 {% block title %}Reassign Sale{% endblock %}
 {% block page_title %}Reassign — {{ sale.InvoiceNumber }}{% endblock %}
 {% block content %}
+<div class="dash-hig hig">
 <div class="card mb-3"><div class="card-body">
   <p class="text-muted mb-0">This sale is billed to the system "Unassigned" customer. For each product line, break
     its quantity down across one or more customers — pick an existing customer or type a new one's details directly
@@ -67,6 +68,7 @@
     </div>
   </div>
 </template>
+</div>
 {% endblock %}
 {% block scripts %}
 <script>

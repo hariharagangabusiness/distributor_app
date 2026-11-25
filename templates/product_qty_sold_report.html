@@ -2,6 +2,7 @@
 {% block title %}Product Qty Sold{% endblock %}
 {% block page_title %}Product Qty Sold{% endblock %}
 {% block content %}
+<div class="dash-hig hig">
 <p class="text-muted">For a product and date, every customer who bought it (ground truth from the Sales tab), plus
   any Stock Issue lines that day so a mismatch between "Qty Sold" on a Stock Issue and the real total can be spotted
   without a terminal script.</p>
@@ -78,4 +79,5 @@
   </div>
 </div>
 {% endif %}
+</div>
 {% endblock %}

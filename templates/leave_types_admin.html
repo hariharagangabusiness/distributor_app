@@ -2,6 +2,7 @@
 {% block title %}Leave Types{% endblock %}
 {% block page_title %}Leave Types{% endblock %}
 {% block content %}
+<div class="dash-hig hig">
 <div class="d-flex justify-content-end mb-3">
   <a href="{{ url_for('attendance_month') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left"></i> Back to Attendance</a>
 </div>
@@ -69,4 +70,5 @@
   </div>
 </div>
 <p class="text-muted small mt-2">Hidden leave types stop appearing on the attendance entry screen, but their historical data is kept. Deleting is permanent. Changing a quota here only affects future attendance months — months already saved keep the Paid/Unpaid split that was locked in at the time.</p>
+</div>
 {% endblock %}

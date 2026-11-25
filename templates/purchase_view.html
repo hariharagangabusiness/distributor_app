@@ -2,6 +2,7 @@
 {% block title %}Purchase {{ purchase.PONumber }}{% endblock %}
 {% block page_title %}Purchase — {{ purchase.PONumber }}{% endblock %}
 {% block content %}
+<div class="dash-hig hig">
 <div class="card mb-3"><div class="card-body">
   <div class="row">
     <div class="col-md-4"><strong>Supplier:</strong> {{ purchase.SupplierName }}<br>{{ purchase.Phone or '' }}<br>{{ purchase.Address or '' }}
@@ -37,4 +38,5 @@
 {% include "_custom_fields_display.html" %}
 {% include "_attachments.html" %}
 <a href="{{ url_for('purchases_list') }}" class="btn btn-outline-secondary mt-3">Back to Purchases</a>
+</div>
 {% endblock %}

@@ -2,6 +2,7 @@
 {% block title %}Salary Schedule{% endblock %}
 {% block page_title %}Salary Schedule{% endblock %}
 {% block content %}
+<div class="dash-hig hig">
 <div class="d-flex justify-content-between align-items-center mb-3">
   <div class="btn-group">
     <a class="btn btn-outline-secondary" href="{{ url_for('salary_month', year=prev_year, month=prev_month) }}">&laquo; Prev</a>
@@ -71,6 +72,7 @@
     </tbody>
   </table>
   </div>
+</div>
 </div>
 {% endblock %}
 {% block scripts %}

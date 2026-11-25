@@ -2,6 +2,7 @@
 {% block title %}{% if purchase %}Edit Purchase{% else %}New Purchase{% endif %}{% endblock %}
 {% block page_title %}{% if purchase %}Edit Purchase {{ purchase.PONumber }}{% else %}New Purchase{% endif %}{% endblock %}
 {% block content %}
+<div class="dash-hig hig">
 {% if not company.StateCode %}
 <div class="alert alert-warning">
   Your <a href="{{ url_for('settings_form') }}">Company / GST Settings</a> state isn't set yet — that's needed to
@@ -85,7 +86,7 @@
 
   {% include "_custom_fields_form.html" %}
 
-  <div class="d-flex gap-2">
+  <div class="d-flex gap-2 hig-savebar">
     <button type="submit" class="btn btn-brand">Save Purchase</button>
     <a href="{{ url_for('purchase_view', pid=purchase.PurchaseID) if purchase else url_for('purchases_list') }}" class="btn btn-outline-secondary">Cancel</a>
   </div>
@@ -110,6 +111,7 @@
     <td><button type="button" class="btn btn-sm btn-outline-danger remove-line">✕</button></td>
   </tr>
 </template>
+</div>
 {% endblock %}
 {% block scripts %}
 <script>

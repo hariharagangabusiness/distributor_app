@@ -2,6 +2,7 @@
 {% block title %}Inventory{% endblock %}
 {% block page_title %}Products & Stock{% endblock %}
 {% block content %}
+<div class="dash-hig hig">
 <div class="d-flex justify-content-between mb-3">
   <form class="d-flex gap-2" method="get">
     <input type="text" name="q" value="{{ q }}" class="form-control" placeholder="Search product / SKU" style="width:260px">
@@ -72,6 +73,7 @@
     </tbody>
   </table>
   </div>
+</div>
 </div>
 {% endblock %}
 {% block scripts %}

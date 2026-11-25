@@ -2,6 +2,7 @@
 {% block title %}{{ 'Edit' if claim else 'Add' }} Scheme Claim{% endblock %}
 {% block page_title %}{{ 'Edit Scheme Claim' if claim else 'Add Scheme Claim' }}{% endblock %}
 {% block content %}
+<div class="dash-hig hig">
 <div class="card" style="max-width:760px">
   <div class="card-body">
   <form method="post">
@@ -34,11 +35,12 @@
         <textarea name="notes" class="form-control" rows="2">{{ claim.Notes if claim else '' }}</textarea>
       </div>
     </div>
-    <div class="mt-4 d-flex gap-2">
+    <div class="mt-4 d-flex gap-2 hig-savebar">
       <button type="submit" class="btn btn-brand">Save Claim</button>
       <a href="{{ url_for('scheme_claims_list') }}" class="btn btn-outline-secondary">Cancel</a>
     </div>
   </form>
   </div>
+</div>
 </div>
 {% endblock %}

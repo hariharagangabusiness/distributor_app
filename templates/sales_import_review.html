@@ -2,6 +2,7 @@
 {% block title %}Review Sales Import{% endblock %}
 {% block page_title %}Review Sales Import{% endblock %}
 {% block content %}
+<div class="dash-hig hig">
 <form method="post" action="{{ url_for('sales_import_confirm') }}">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="row_count" value="{{ rows|length }}">
@@ -77,6 +78,7 @@
   <button type="submit" class="btn btn-primary">Confirm &amp; Create Sale(s)</button>
   <a href="{{ url_for('sales_import_upload') }}" class="btn btn-outline-secondary">Cancel / Upload a different file</a>
 </form>
+</div>
 {% endblock %}
 {% block scripts %}
 <script>

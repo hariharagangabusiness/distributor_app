@@ -2,6 +2,7 @@
 {% block title %}Advance Payments{% endblock %}
 {% block page_title %}Employee Advance Payments{% endblock %}
 {% block content %}
+<div class="dash-hig hig">
 <div class="d-flex justify-content-end gap-2 mb-3">
   <a href="{{ url_for('export_module', module='advances') }}" class="btn btn-outline-secondary"><i class="bi bi-file-earmark-excel"></i> Export to Excel</a>
   <a href="{{ url_for('export_module_pdf', module='advances') }}" class="btn btn-outline-secondary"><i class="bi bi-file-earmark-pdf"></i> PDF</a>
@@ -54,6 +55,7 @@
 </div>
 {% endif %}
 <p class="text-muted small mt-2">Advances are automatically deducted from salary each month (up to the monthly deduction amount) when you generate and pay the monthly salary schedule.</p>
+</div>
 {% endblock %}
 {% block scripts %}
 <script>

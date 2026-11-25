@@ -2,6 +2,7 @@
 {% block title %}Zones{% endblock %}
 {% block page_title %}Zones{% endblock %}
 {% block content %}
+<div class="dash-hig hig">
 <div class="d-flex justify-content-end mb-3">
   <a href="{{ url_for('customers_list') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left"></i> Back to Customers</a>
 </div>
@@ -56,4 +57,5 @@
   </div>
 </div>
 <p class="text-muted small mt-2">Hidden zones stop appearing on the Customer form's Zone dropdown, but existing customers keep whatever zone they already had. Deleting is permanent for this list, but does not change the Zone value already saved on any customer.</p>
+</div>
 {% endblock %}

@@ -2,6 +2,7 @@
 {% block title %}Review Import{% endblock %}
 {% block page_title %}Review Import — {{ supplier.SupplierName }}{% endblock %}
 {% block content %}
+<div class="dash-hig hig">
 <form method="post" action="{{ url_for('purchase_import_confirm') }}">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="supplier_id" value="{{ supplier.SupplierID }}">
@@ -93,4 +94,5 @@
   <button type="submit" class="btn btn-primary">Confirm &amp; Create Purchase(s)</button>
   <a href="{{ url_for('purchase_import_upload') }}" class="btn btn-outline-secondary">Cancel / Upload a different file</a>
 </form>
+</div>
 {% endblock %}

@@ -2,6 +2,7 @@
 {% block title %}Employees{% endblock %}
 {% block page_title %}Employees{% endblock %}
 {% block content %}
+<div class="dash-hig hig">
 <div class="d-flex justify-content-end gap-2 mb-3">
   <a href="{{ url_for('export_module', module='employees') }}" class="btn btn-outline-secondary"><i class="bi bi-file-earmark-excel"></i> Export to Excel</a>
   <a href="{{ url_for('export_module_pdf', module='employees') }}" class="btn btn-outline-secondary"><i class="bi bi-file-earmark-pdf"></i> PDF</a>
@@ -43,6 +44,7 @@
   </div>
 </div>
 {% endif %}
+</div>
 {% endblock %}
 {% block scripts %}
 <script>

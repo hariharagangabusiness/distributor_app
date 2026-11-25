@@ -2,6 +2,7 @@
 {% block title %}Merge Duplicate Customers{% endblock %}
 {% block page_title %}Merge Duplicate Customers{% endblock %}
 {% block content %}
+<div class="dash-hig hig">
 <p class="text-muted">Groups of customers whose name matches (ignoring case and extra spaces) — usually created by
   typing an existing customer's name on the New Sale page instead of picking them from the search box. Pick which
   one to keep as the <strong>primary</strong> record; every Sale on the others is moved onto it and the duplicate
@@ -40,4 +41,5 @@
   </div>
 </div>
 {% endfor %}
+</div>
 {% endblock %}

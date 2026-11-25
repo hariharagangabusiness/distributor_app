@@ -2,6 +2,7 @@
 {% block title %}Live Sales Monitor{% endblock %}
 {% block page_title %}Live Sales Monitor — {{ date_str }}{% endblock %}
 {% block content %}
+<div class="dash-hig hig">
 <p class="text-muted">Everything happening today for each salesperson in one place: stock issued/sold/returned,
   direct Sales-tab entries with their Cash/Bank split, and a live Expected-vs-Collected tally — pulled together
   from Stock Issues and Sales as they're entered. This page auto-refreshes every 60 seconds while it's open.</p>
@@ -169,6 +170,7 @@
 </div>
 {% endif %}
 
+</div>
 {% endblock %}
 {% block scripts %}
 <script>

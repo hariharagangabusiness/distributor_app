@@ -2,6 +2,7 @@
 {% block title %}Manage Users{% endblock %}
 {% block page_title %}Manage Users{% endblock %}
 {% block content %}
+<div class="dash-hig hig">
 <div class="d-flex justify-content-end gap-2 mb-3">
   <a href="{{ url_for('access_control') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-shield-lock"></i> Access Control</a>
   <a href="{{ url_for('user_add') }}" class="btn btn-brand btn-sm"><i class="bi bi-person-plus"></i> Add User</a>
@@ -61,4 +62,5 @@
   </div>
 </div>
 <p class="text-muted small mt-2">Roles, in increasing seniority: <strong>Staff</strong> &lt; <strong>Supervisor</strong> &lt; <strong>Manager</strong> &lt; <strong>Admin</strong>. Only Admin can manage users, reset passwords, and configure Access Control — Admin itself always has access to every tab. What Staff/Supervisor/Manager can see is set from the Access Control screen above; change a login's role using the dropdown in the Role column. Deactivating a login blocks it from signing in without deleting its history.</p>
+</div>
 {% endblock %}

@@ -2,6 +2,7 @@
 {% block title %}Stock Issue Top-up History{% endblock %}
 {% block page_title %}Stock Issue Top-up History{% endblock %}
 {% block content %}
+<div class="dash-hig hig">
 <p class="text-muted">For a Stock Issue + product, every time its Qty Issued capacity was topped up during the day
   (a fresh "Issue" transaction), in order. More than one top-up is why a line's "Qty Sold" can read lower than the
   true total sold - see the Product Qty Sold report for the full explanation.</p>
@@ -73,4 +74,5 @@
   the explanation here.</div>
 {% endif %}
 {% endif %}
+</div>
 {% endblock %}

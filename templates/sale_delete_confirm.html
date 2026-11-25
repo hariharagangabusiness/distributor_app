@@ -2,6 +2,7 @@
 {% block title %}Delete Sale {{ sale.InvoiceNumber }}{% endblock %}
 {% block page_title %}Delete Sale — {{ sale.InvoiceNumber }}{% endblock %}
 {% block content %}
+<div class="dash-hig hig">
 <div class="card mb-3"><div class="card-body">
   <div class="row">
     <div class="col-md-4"><strong>Customer:</strong> {{ sale.CustomerName }}</div>
@@ -74,4 +75,5 @@
   <button type="submit" class="btn btn-danger"><i class="bi bi-trash"></i> Yes, delete this sale</button>
   <a href="{{ url_for('sale_view', sid=sale.SaleID) }}" class="btn btn-outline-secondary">Cancel — go back</a>
 </form>
+</div>
 {% endblock %}

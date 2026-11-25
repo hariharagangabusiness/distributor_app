@@ -2,6 +2,7 @@
 {% block title %}Customize Fields — {{ module_label }}{% endblock %}
 {% block page_title %}Customize Fields — {{ module_label }}{% endblock %}
 {% block content %}
+<div class="dash-hig hig">
 <div class="d-flex gap-2 mb-3">
   <a href="{{ url_for('form_fields_customize', module='SaleFormHeader') }}" class="btn btn-sm {% if module=='SaleFormHeader' %}btn-brand{% else %}btn-outline-secondary{% endif %}">Header Fields</a>
   <a href="{{ url_for('form_fields_customize', module='SaleFormLine') }}" class="btn btn-sm {% if module=='SaleFormLine' %}btn-brand{% else %}btn-outline-secondary{% endif %}">Product Line Columns</a>
@@ -39,4 +40,5 @@
   </div>
 </form>
 </div></div>
+</div>
 {% endblock %}
