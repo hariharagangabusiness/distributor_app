@@ -289,6 +289,38 @@ def target_days_elapsed(year, month):
     return today.day
 
 
+def unlinked_sale_rows(employee_ids, date_from, date_to, product_id=None):
+    """Completed Sales attributed to these employees whose quantity was NOT credited to a Stock
+    Issue line (no open issue that day, issue oversold, or a late sale after reconciliation) -
+    those units never reach StockIssueLines.QtySold, so Stock-Issue-only target actuals missed
+    them entirely. Returns one dict per (sale, product) with only the un-credited share
+    (qty/expected/discount/collected/date), so nothing is double-counted with the issue figures."""
+    ids = list(employee_ids)
+    if not ids:
+        return []
+    sql = f"""SELECT s.SaleDate, s.AmountReceived, s.TaxableAmount, SUM(sl.Qty) q,
+                 SUM(sl.Qty*sl.UnitPrice - COALESCE(sl.DiscountAmount,0)) exp,
+                 SUM(COALESCE(sl.DiscountAmount,0)) disc,
+                 COALESCE((SELECT SUM(ssl.QtyApplied) FROM SaleStockIssueLinks ssl
+                           JOIN StockIssueLines sil ON sil.LineID = ssl.StockIssueLineID
+                           WHERE ssl.SaleID = s.SaleID AND sil.ProductID = sl.ProductID), 0) linked
+              FROM Sales s JOIN SalesLines sl ON sl.SaleID = s.SaleID
+              WHERE s.EmployeeID IN ({','.join('?' * len(ids))}) AND s.Status='Completed'
+                AND s.SaleDate BETWEEN ? AND ?{' AND sl.ProductID=?' if product_id else ''}
+              GROUP BY s.SaleID, sl.ProductID"""
+    params = tuple(ids) + (date_from, date_to) + ((product_id,) if product_id else ())
+    out = []
+    for r in db.query(sql, params):
+        q = r["q"] or 0
+        frac = max(q - r["linked"], 0) / q if q else 0
+        if frac <= 0:
+            continue
+        exp = (r["exp"] or 0) * frac
+        out.append({"date": r["SaleDate"], "qty": q * frac, "expected": exp, "discount": (r["disc"] or 0) * frac,
+                    "collected": (r["AmountReceived"] or 0) * exp / r["TaxableAmount"] if r["TaxableAmount"] else 0})
+    return out
+
+
 def compute_target_actuals(employee_id, product_id, date_from, date_to):
     """Actuals for one Employee (+ optional Product) over a date range, all
     computed live from Stock Issues so a target is never stale. For a
@@ -330,6 +362,13 @@ def compute_target_actuals(employee_id, product_id, date_from, date_to):
         qty_sold = sum(r["QtySold"] or 0 for r in line_rows)
         discount = sum(r["DiscountAmount"] or 0 for r in line_rows)
         qty_no_discount = sum((r["QtySold"] or 0) for r in line_rows if not (r["DiscountAmount"] or 0))
+    for r in unlinked_sale_rows([employee_id], date_from, date_to, product_id):
+        qty_sold += r["qty"]
+        expected += r["expected"]
+        collected += r["collected"]
+        discount += r["discount"]
+        if not r["discount"]:
+            qty_no_discount += r["qty"]
     return {"qty_sold": round(qty_sold, 2), "expected": round(expected, 2), "collected": round(collected, 2),
             "discount": round(discount, 2), "qty_no_discount": round(qty_no_discount, 2)}
 
@@ -896,11 +935,36 @@ class SaleStockIssueLockedError(Exception):
     the top of create_sale()'s edit branch. Reconciled figures are meant to be a closed
     book; blindly re-deriving them from whatever the world looks like at edit time (rather
     than when the Sale was first entered) is exactly what silently corrupted a Stock
-    Issue's numbers once already. Callers should catch this and tell the user to use
-    'Reopen & Correct' on the named Stock Issue first."""
+    Issue's numbers once already. Callers should show locked_sale_message()."""
     def __init__(self, issue_id):
         self.issue_id = issue_id
         super().__init__(f"Sale is entangled with reconciled Stock Issue #{issue_id}")
+
+
+def locked_sale_message(issue_id, action="edit"):
+    return (f"Nothing was saved. This sale is tied to Stock Issue #{issue_id}, which is already Reconciled, so its "
+            f"lines, quantities, discounts, salesperson, date and status can't be changed or deleted directly. "
+            f"To correct them, use 'Reopen & Correct' on Stock Issue #{issue_id} to adjust the reconciliation "
+            f"figures. " + ("Only the Notes and Due Date can still be edited here." if action == "edit"
+                           else "The sale itself stays as recorded."))
+
+
+def locked_issue_for_sale(sale_id):
+    """IssueID of the Reconciled Stock Issue this Sale is tied to, else None. Tied means it credited one
+    of that issue's lines (SaleStockIssueLinks), or it's a Completed sale whose stored (salesperson, date)
+    matches a Reconciled issue. Anything that would rewrite or remove such a sale must be blocked."""
+    row = db.query("""SELECT si.IssueID FROM SaleStockIssueLinks ssl
+                    JOIN StockIssueLines sil ON sil.LineID = ssl.StockIssueLineID
+                    JOIN StockIssues si ON si.IssueID = sil.IssueID
+                    WHERE ssl.SaleID=? AND si.Status='Reconciled' LIMIT 1""", (sale_id,), one=True)
+    if row:
+        return row["IssueID"]
+    sale = db.query("SELECT EmployeeID, SaleDate, Status FROM Sales WHERE SaleID=?", (sale_id,), one=True)
+    if sale and sale["EmployeeID"] and sale["Status"] == "Completed":
+        row = db.query("""SELECT IssueID FROM StockIssues WHERE EmployeeID=? AND IssueDate=? AND Status='Reconciled'
+                        ORDER BY IssueID DESC LIMIT 1""", (sale["EmployeeID"], sale["SaleDate"]), one=True)
+        return row["IssueID"] if row else None
+    return None
 
 
 def create_sale(customer_id, sale_date, status, payment_status, payment_due_date, amount_received, notes,
@@ -1011,28 +1075,25 @@ def create_sale(customer_id, sale_date, status, payment_status, payment_due_date
                          round_off, 1 if reverse_charge else 0, employee_id, cash_amount, bank_amount,
                          _now_ist().strftime("%Y-%m-%d %H:%M:%S")))
         else:
-            # Guardrail: block editing a Sale that's entangled with an already-Reconciled Stock
-            # Issue (checked against BOTH the employee/date being submitted now and whatever was
-            # stored before this edit, in case that's what's changing) - re-running the credit/
-            # covered/direct-deduction logic below against "whatever the Stock Issue looks like
-            # right now" rather than when the Sale was first saved is exactly how one Reconciled
-            # issue's Qty Sold got silently double-counted. Only applies when this call would
-            # actually touch that logic (status Completed, post_inventory on) - the internal
-            # calls this same function gets from stock_issue_reconcile()'s auto-invoice and
-            # sale_reassign() always pass post_inventory=False and no employee_id, so they're
-            # naturally exempt.
-            if status == "Completed" and post_inventory:
-                existing_sale_row = db.query("SELECT EmployeeID, SaleDate FROM Sales WHERE SaleID=?", (sale_id,), one=True)
-                entangled_candidates = {(employee_id, sale_date)}
-                if existing_sale_row and existing_sale_row["EmployeeID"]:
-                    entangled_candidates.add((existing_sale_row["EmployeeID"], existing_sale_row["SaleDate"]))
-                for emp_id, s_date in entangled_candidates:
-                    if not emp_id:
-                        continue
-                    locked_issue = db.query("""SELECT IssueID FROM StockIssues WHERE EmployeeID=? AND IssueDate=?
-                                             AND Status='Reconciled'""", (emp_id, s_date), one=True)
-                    if locked_issue:
-                        raise SaleStockIssueLockedError(locked_issue["IssueID"])
+            # Guardrail: block editing a Sale entangled with an already-Reconciled Stock Issue -
+            # re-running the credit/covered/direct-deduction logic below against "whatever the Stock
+            # Issue looks like right now" rather than when the Sale was first saved is exactly how
+            # one Reconciled issue's Qty Sold got silently double-counted. Applies whatever the NEW
+            # status is: cancelling or drafting a Completed sale also reverses its Stock Issue credit,
+            # which would silently rewrite the closed issue too. Only skipped for post_inventory=False -
+            # the internal calls from stock_issue_reconcile()'s auto-invoice and sale_reassign() pass
+            # that and no employee_id, so they're naturally exempt.
+            if post_inventory:
+                locked_issue_id = None
+                existing_sale_row = db.query("SELECT Status FROM Sales WHERE SaleID=?", (sale_id,), one=True)
+                if existing_sale_row and existing_sale_row["Status"] == "Completed":
+                    locked_issue_id = locked_issue_for_sale(sale_id)
+                if not locked_issue_id and status == "Completed" and employee_id:
+                    new_target = db.query("""SELECT IssueID FROM StockIssues WHERE EmployeeID=? AND IssueDate=?
+                                           AND Status='Reconciled'""", (employee_id, sale_date), one=True)
+                    locked_issue_id = new_target["IssueID"] if new_target else None
+                if locked_issue_id:
+                    raise SaleStockIssueLockedError(locked_issue_id)
             db.execute("""UPDATE Sales SET CustomerID=?, SaleDate=?, Status=?, PaymentStatus=?, PaymentDueDate=?,
                         TotalAmount=?, AmountReceived=?, Notes=?, PlaceOfSupplyState=?, PlaceOfSupplyStateCode=?,
                         IsInterState=?, TaxableAmount=?, CGSTAmount=?, SGSTAmount=?, IGSTAmount=?, RoundOff=?,
